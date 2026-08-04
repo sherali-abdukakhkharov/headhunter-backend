@@ -1,11 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 
 import {
   BadRequestError,
   ForbiddenError,
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
-import type { LocaleCode, UserRole } from '@infra/db/database.types';
+import type {
+  AccountStatus,
+  LocaleCode,
+  UserRole,
+} from '@infra/db/database.types';
 
 import type { DeviceInfo } from './session.service';
 import { SessionService } from './session.service';
@@ -31,12 +36,168 @@ export class AuthService {
   ) {}
 
   /**
+   * Finds, links or creates the account behind a verified Telegram identity and
+   * opens a session.
+   *
+   * The MVP login path (client direction, 2026-08-05). Like the phone flow,
+   * registration and login are the same call - the client cannot know which one it
+   * is performing, and asking it to would create a way to probe which Telegram
+   * accounts are registered.
+   *
+   * Three cases, resolved in this order inside one transaction:
+   *
+   * 1. **Known Telegram id** - sign in. A phone that arrived with the token is
+   *    written back, so granting the `phone` scope later fills it in.
+   * 2. **Unknown Telegram id, but the verified phone matches an account** - link.
+   *    This is what makes the switch from OTP survivable: an account created by the
+   *    old flow, or by a support import, is claimed by its owner rather than
+   *    duplicated. Safe *only* because `TelegramOidcService` has already refused
+   *    any phone Telegram did not mark verified.
+   * 3. **Neither** - create.
+   */
+  async completeTelegramLogin(
+    identity: {
+      telegramUserId: string;
+      username: string | null;
+      verifiedPhone: string | null;
+    },
+    locale: LocaleCode,
+    device: DeviceInfo,
+  ): Promise<AuthTokens> {
+    const { userId, isNewUser, roles } = await this.db
+      .transaction()
+      .execute(async (trx) => {
+        const byTelegram = await trx
+          .selectFrom('users')
+          .select(['id', 'status'])
+          .where('telegram_user_id', '=', identity.telegramUserId)
+          .executeTakeFirst();
+
+        if (byTelegram) {
+          assertNotBlocked(byTelegram.status);
+
+          await trx
+            .updateTable('users')
+            .set({
+              telegram_username: identity.username,
+              // Only ever fills a gap. Overwriting a phone already on the account
+              // would let a changed Telegram number silently move an identity that
+              // other records - and BR-09's contact rule - point at.
+              ...(identity.verifiedPhone
+                ? { phone: sql`COALESCE(phone, ${identity.verifiedPhone})` }
+                : {}),
+              last_login_at: new Date(),
+              updated_at: new Date(),
+            })
+            .where('id', '=', byTelegram.id)
+            .execute();
+
+          return {
+            userId: byTelegram.id,
+            isNewUser: false,
+            roles: await rolesIn(trx, byTelegram.id),
+          };
+        }
+
+        // Whether this phone is already on an account decides both branches below,
+        // so it is one lookup rather than two.
+        const phoneHolder = identity.verifiedPhone
+          ? await trx
+              .selectFrom('users')
+              .select(['id', 'status', 'telegram_user_id'])
+              .where('phone', '=', identity.verifiedPhone)
+              .executeTakeFirst()
+          : undefined;
+
+        if (phoneHolder) {
+          // A row already claimed by a *different* Telegram account is not ours to
+          // take over. Realistic here rather than theoretical: mobile numbers get
+          // recycled, so the new owner of a number can genuinely turn up holding a
+          // Telegram account of their own.
+          const byPhone =
+            phoneHolder.telegram_user_id === null ? phoneHolder : undefined;
+
+          if (byPhone) {
+            assertNotBlocked(byPhone.status);
+
+            await trx
+              .updateTable('users')
+              .set({
+                telegram_user_id: identity.telegramUserId,
+                telegram_username: identity.username,
+                last_login_at: new Date(),
+                updated_at: new Date(),
+              })
+              .where('id', '=', byPhone.id)
+              .execute();
+
+            // BR-08: linking a second credential to an existing account is a
+            // security-relevant change to it, so it leaves a trail even though the
+            // status did not move.
+            await trx
+              .insertInto('account_status_history')
+              .values({
+                user_id: byPhone.id,
+                from_status: byPhone.status,
+                to_status: byPhone.status,
+                actor_user_id: byPhone.id,
+                reason: 'telegram_account_linked',
+              })
+              .execute();
+
+            return {
+              userId: byPhone.id,
+              isNewUser: false,
+              roles: await rolesIn(trx, byPhone.id),
+            };
+          }
+        }
+
+        const created = await trx
+          .insertInto('users')
+          .values({
+            telegram_user_id: identity.telegramUserId,
+            telegram_username: identity.username,
+            // Left null when another account already holds this number. The phone
+            // is unique, so writing it here would fail the insert and turn a
+            // recycled number into a 500 on somebody's first login.
+            phone: phoneHolder ? null : identity.verifiedPhone,
+            locale,
+            last_login_at: new Date(),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+
+        // BR-08: the account's status history starts at creation, so the audit
+        // trail has no gap before the first admin action.
+        await trx
+          .insertInto('account_status_history')
+          .values({
+            user_id: created.id,
+            from_status: null,
+            to_status: 'active',
+            reason: 'registration_telegram',
+          })
+          .execute();
+
+        // Roles are chosen after registration (§4.1 onboarding), so a new account
+        // deliberately holds none yet.
+        return { userId: created.id, isNewUser: true, roles: [] as UserRole[] };
+      });
+
+    return this.issueTokens(userId, roles, device, isNewUser);
+  }
+
+  /**
    * Finds or creates the account behind a verified phone number and opens a
    * session.
    *
    * Registration and login are the same call because they are the same act with
    * a phone-only identity (§4.1): the client cannot know which one it is doing,
    * and asking it to would create a way to probe which numbers are registered.
+   *
+   * **Reachable only when `OTP_LOGIN_ENABLED` is on.** Telegram is the MVP login
+   * path; this is kept whole, with its tests, because §4.1 still specifies it.
    */
   async completePhoneVerification(
     phone: string,
@@ -210,6 +371,24 @@ export class AuthService {
       isNewUser,
     };
   }
+}
+
+/** BR-10: a blocked account cannot authenticate at all, not merely fail its
+ *  mutations. Shared by both login paths so neither can forget it. */
+function assertNotBlocked(status: AccountStatus): void {
+  if (status === 'blocked') {
+    throw new ForbiddenError('account.blocked');
+  }
+}
+
+async function rolesIn(trx: Database, userId: string): Promise<UserRole[]> {
+  const rows = await trx
+    .selectFrom('user_roles')
+    .select('role')
+    .where('user_id', '=', userId)
+    .execute();
+
+  return rows.map((row) => row.role);
 }
 
 /**

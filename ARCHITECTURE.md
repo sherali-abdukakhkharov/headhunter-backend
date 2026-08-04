@@ -280,11 +280,51 @@ but "may this user, acting as role R, do this to resource X".
 
 ### Auth flow
 
-Phone + OTP only (§4.1). OTP records store a **hash**, never the code; TTL,
-resend delay and attempt limits are server config (§4.2). Rate limit per phone
-**and** per IP (§12.5). New device or phone-number change requires additional
-confirmation. Sessions are listed and individually revocable, plus
-"terminate all" (§4.2). Refresh tokens rotate on use with reuse detection.
+**Decided 2026-08-05 (client direction): the MVP logs in with Telegram.** §4.1
+specifies phone + OTP; that flow is built and tested but switched off behind
+`OTP_LOGIN_ENABLED`, because §4.1 still specifies it and this is a deferral rather
+than a removal. Setup guide: [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
+
+The app uses Telegram's official native SDKs, which run OAuth2 + PKCE against
+`oauth.telegram.org` app-to-app and return an OpenID Connect `id_token`. The client
+posts that token to `POST /auth/telegram`; we verify it and issue our own session.
+
+Four checks decide whether a token is trusted, and the third is the load-bearing one:
+
+1. **Signature** against Telegram's JWKS — `jose` handles `kid` selection and key
+   rotation, which is the part not worth hand-rolling on a security path.
+2. **Issuer** is exactly `https://oauth.telegram.org`.
+3. **Audience is our bot id.** A genuine, correctly signed Telegram token issued for
+   any other application must not sign anyone in here, and this check is the only
+   thing preventing it. It is what makes accepting a client-supplied `id_token` sound
+   rather than merely convenient — the same reasoning as Google or Apple sign-in on
+   mobile.
+4. **Age** — `iat` within a short window, so a captured token is refused while `exp`
+   is still in the future. OIDC's `nonce` is the stronger defence but needs the client
+   SDK to accept a server-issued nonce, which the current Flutter package does not
+   expose; the claim is verified when present, ready for that.
+
+**Identity model consequences.** `telegram_user_id` becomes the credential and
+`users.phone` becomes nullable, with a CHECK that at least one is present — a row
+with neither is unreachable by every login path. The `phone` scope's
+`phone_number_verified` claim is what keeps the product's phone-based model working,
+and `TELEGRAM_REQUIRE_PHONE` (default on) refuses a login without it: BR-09 contact
+exposure has nothing to reveal without a phone number, and telling the user at login
+beats letting them discover it after building a profile.
+
+**Account linking** is what makes the switch survivable. A Telegram login carrying a
+verified phone that matches an unclaimed account attaches to it, with an audit row,
+rather than creating a duplicate. Only a Telegram-verified phone is ever matched on;
+matching an unverified one would be an account-takeover primitive. An account already
+claimed by a different Telegram user is never taken over — realistic rather than
+theoretical, since mobile numbers are recycled.
+
+Common to both paths: OTP records store a **hash**, never the code; TTL, resend delay
+and attempt limits are server config (§4.2). Rate limit per phone **and** per IP
+(§12.5). Sessions are listed and individually revocable, plus "terminate all" (§4.2).
+Refresh tokens rotate on use with reuse detection.
+
+Still owed from §4.2 either way: new-device and phone-change confirmation.
 
 ---
 

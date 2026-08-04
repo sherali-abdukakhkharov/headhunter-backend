@@ -28,12 +28,45 @@ export interface AppEnv {
   /** HMAC key for OTP and refresh-token hashes. See `infra/crypto/hash.ts`. */
   TOKEN_HASH_PEPPER: string;
 
+  /**
+   * Whether the phone + OTP routes exist.
+   *
+   * Off for the MVP: the client chose Telegram login (2026-08-05). §4.1 still
+   * specifies phone + OTP, so the flow is kept whole behind this flag rather than
+   * deleted. When off, every `/auth/otp/*` route answers 404.
+   */
+  OTP_LOGIN_ENABLED: boolean;
+
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;
   OTP_RESEND_DELAY_SECONDS: number;
   OTP_MAX_ATTEMPTS: number;
   /** Development only: return the OTP in the send response instead of an SMS. */
   OTP_ECHO_IN_RESPONSE: boolean;
+
+  /**
+   * Bot id the Telegram `id_token` must be addressed to - its `aud` claim.
+   *
+   * The numeric part of the bot token, before the colon. Checking it is what stops
+   * a token minted for a different application being replayed here.
+   */
+  TELEGRAM_LOGIN_BOT_ID: string;
+  TELEGRAM_OIDC_ISSUER: string;
+  TELEGRAM_JWKS_URL: string;
+  /**
+   * How old an `id_token` may be, by its `iat`.
+   *
+   * The practical replay defence: a captured token is refused once this elapses,
+   * even while `exp` is still in the future.
+   */
+  TELEGRAM_ID_TOKEN_MAX_AGE_SECONDS: number;
+  /**
+   * Refuse a login whose `phone` scope was declined.
+   *
+   * On by default: BR-09 and §11.1 are about revealing a candidate's contact
+   * details to an employer, and an account with no phone number cannot take part.
+   */
+  TELEGRAM_REQUIRE_PHONE: boolean;
 
   /**
    * Number of reverse proxies in front of this service.
@@ -117,6 +150,10 @@ export const envSchema = Joi.object<AppEnv, true>({
 
   TOKEN_HASH_PEPPER: Joi.string().min(32).required(),
 
+  // Defaults to off. Telegram login is the MVP path; leaving a second, unwatched
+  // way into every account switched on by default would be the wrong default.
+  OTP_LOGIN_ENABLED: Joi.boolean().default(false),
+
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.
   OTP_LENGTH: Joi.number().integer().min(4).max(8).default(6),
@@ -148,6 +185,49 @@ export const envSchema = Joi.object<AppEnv, true>({
   RATE_LIMIT_AUTH_PER_PHONE: Joi.number().integer().min(1).default(20),
   RATE_LIMIT_AUTH_PER_IP: Joi.number().integer().min(1).default(120),
   RATE_LIMIT_FILES_PER_IP: Joi.number().integer().min(1).default(120),
+
+  // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
+  // token; it is public, and it is the audience an id_token must be addressed to.
+  TELEGRAM_LOGIN_BOT_ID: Joi.string()
+    .pattern(/^\d+$/)
+    .required()
+    .messages({
+      'string.pattern.base':
+        'TELEGRAM_LOGIN_BOT_ID must be the numeric bot id - the part of ' +
+        'TELEGRAM_BOT_TOKEN before the colon.',
+    }),
+  // Pinned rather than derived from the JWKS document: the issuer is the identity
+  // being trusted, so it is configuration, not something a fetched file gets to
+  // tell us.
+  TELEGRAM_OIDC_ISSUER: Joi.string()
+    .uri({ scheme: ['https'] })
+    .default('https://oauth.telegram.org'),
+  // https in production, where fetching signing keys over plaintext would let
+  // anyone on the path substitute their own and forge logins. `http` is permitted
+  // outside production so the API can be run against a local Telegram stub - which
+  // is the only way to exercise the login path without a real bot.
+  TELEGRAM_JWKS_URL: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string()
+        .uri({ scheme: ['https'] })
+        .messages({
+          'string.uriCustomScheme':
+            'TELEGRAM_JWKS_URL must be https in production: signing keys fetched ' +
+            'over plaintext can be substituted, which forges every login.',
+        }),
+    })
+    .default('https://oauth.telegram.org/.well-known/jwks.json'),
+  // Five minutes: long enough for a slow handset to finish the round trip after
+  // Telegram issues the token, short enough that a captured token is nearly always
+  // already dead.
+  TELEGRAM_ID_TOKEN_MAX_AGE_SECONDS: Joi.number()
+    .integer()
+    .min(30)
+    .max(3600)
+    .default(300),
+  TELEGRAM_REQUIRE_PHONE: Joi.boolean().default(true),
 
   // Telegram-backed file storage (ARCHITECTURE.md §9).
   TELEGRAM_BOT_TOKEN: Joi.string().required(),

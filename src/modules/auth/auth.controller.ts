@@ -8,27 +8,27 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
-import type { Request } from 'express';
 
 import { Public } from '@infra/api/decorators/public.decorator';
 import { RateLimit } from '@infra/api/decorators/rate-limit.decorator';
+import { XLang } from '@infra/api/decorators/x-lang.decorator';
 import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import {
   ActiveUser,
   type CurrentUser,
 } from '@infra/api/decorators/current-user.decorator';
+import type { LocaleCode } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
-import { normalizePhone } from '@infra/phone/phone';
 import { formatWithOffset } from '@infra/time/format';
 
 import { AuthService } from './auth.service';
@@ -36,19 +36,17 @@ import {
   LogoutDto,
   RefreshDto,
   SelectRolesDto,
-  SendOtpDto,
   SwitchRoleDto,
-  VerifyOtpDto,
+  TelegramLoginDto,
 } from './dto/auth-request.dto';
 import {
   AccessTokenResponseDto,
   AuthTokensResponseDto,
-  OtpSentResponseDto,
   RolesResponseDto,
   SessionResponseDto,
 } from './dto/auth-response.dto';
-import { OtpService } from './otp.service';
 import { SessionService } from './session.service';
+import { TelegramOidcService } from './telegram-oidc.service';
 import type { DeviceInfo } from './session.service';
 
 @ApiTags('auth')
@@ -58,7 +56,7 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
-    private readonly otp: OtpService,
+    private readonly telegram: TelegramOidcService,
     private readonly sessions: SessionService,
     config: ConfigService<AppEnv, true>,
   ) {
@@ -66,73 +64,38 @@ export class AuthController {
   }
 
   @Public()
-  @RateLimit('otp')
-  @Post('otp/send')
-  @ApiOperation({
-    summary: 'Send a login or registration code',
-    description:
-      'Registration and login are one flow for a phone-only identity (§4.1). ' +
-      'TTL, resend delay and attempt limits are server configuration (§4.2). ' +
-      'Rate limited per phone and per IP; a 429 carries `Retry-After`.',
-  })
-  @ApiOkResponse({ type: OtpSentResponseDto })
-  async sendOtp(
-    @Body() dto: SendOtpDto,
-    @Req() request: Request,
-  ): Promise<OtpSentResponseDto> {
-    const result = await this.otp.send(
-      normalizePhone(dto.phone),
-      dto.purpose ?? 'login',
-      request.ip ?? null,
-    );
-
-    return {
-      expiresAt: formatWithOffset(result.expiresAt, this.timeZone),
-      resendAvailableAt: formatWithOffset(
-        result.resendAvailableAt,
-        this.timeZone,
-      ),
-      ...(result.devCode ? { devCode: result.devCode } : {}),
-    };
-  }
-
-  @Public()
-  @RateLimit('otp')
-  @Post('otp/resend')
-  @ApiOperation({
-    summary: 'Resend the code',
-    description:
-      'Identical to send: the resend delay is enforced there, and a new code ' +
-      'supersedes the previous one so only one is ever valid.',
-  })
-  @ApiOkResponse({ type: OtpSentResponseDto })
-  resendOtp(
-    @Body() dto: SendOtpDto,
-    @Req() request: Request,
-  ): Promise<OtpSentResponseDto> {
-    return this.sendOtp(dto, request);
-  }
-
-  @Public()
   @RateLimit('auth')
-  @Post('otp/verify')
+  @Post('telegram')
   @ApiOperation({
-    summary: 'Verify a code and open a session',
+    summary: 'Log in with Telegram',
     description:
-      'Creates the account when the phone is new. `isNewUser` tells the client ' +
-      'to route into role selection rather than the home screen.',
+      'The MVP login path. Send the `id_token` the Telegram Login SDK returned; ' +
+      'it is verified against Telegram’s JWKS with this bot’s id as the audience ' +
+      'before any account is touched.\n\n' +
+      'Registration and login are the same call - the client cannot know which ' +
+      'one it is doing, and asking it to would create a way to probe which ' +
+      'Telegram accounts are registered. `isNewUser` tells the client to route ' +
+      'into role selection rather than the home screen.\n\n' +
+      'A token whose `phone` scope was declined is refused while ' +
+      '`TELEGRAM_REQUIRE_PHONE` is on: an account with no phone number cannot ' +
+      'take part in BR-09 contact exposure, and finding that out at login is ' +
+      'better than after building a profile.',
   })
   @ApiOkResponse({ type: AuthTokensResponseDto })
-  async verifyOtp(@Body() dto: VerifyOtpDto): Promise<AuthTokensResponseDto> {
-    const phone = normalizePhone(dto.phone);
+  @ApiHeader({
+    name: 'x-lang',
+    required: false,
+    description:
+      'Interface language. Becomes the account’s stored locale when this login ' +
+      'creates it (§3.2); change it later with PATCH /users/me/locale.',
+  })
+  async telegramLogin(
+    @Body() dto: TelegramLoginDto,
+    @XLang() locale: LocaleCode,
+  ): Promise<AuthTokensResponseDto> {
+    const identity = await this.telegram.verify(dto.idToken);
 
-    await this.otp.verify(phone, dto.purpose ?? 'login', dto.code);
-
-    return this.auth.completePhoneVerification(
-      phone,
-      dto.locale ?? 'uz-Latn',
-      deviceFrom(dto),
-    );
+    return this.auth.completeTelegramLogin(identity, locale, deviceFrom(dto));
   }
 
   @Public()

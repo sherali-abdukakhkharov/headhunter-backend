@@ -3,8 +3,11 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { OtpController } from './otp.controller';
+import { OtpEnabledGuard } from './otp-enabled.guard';
 import { OtpService } from './otp.service';
 import { SessionService } from './session.service';
+import { TelegramOidcService } from './telegram-oidc.service';
 import { TokenService } from './token.service';
 
 /**
@@ -19,8 +22,19 @@ import { TokenService } from './token.service';
   // Secret and expiry are passed per call in TokenService, so the module itself
   // needs no async configuration.
   imports: [JwtModule.register({})],
-  controllers: [AuthController],
-  providers: [AuthService, OtpService, SessionService, TokenService],
+  // `OtpController` is registered even for the MVP, where every one of its routes
+  // answers 404 via `OtpEnabledGuard`. Registering it conditionally would mean
+  // reading process.env before the Joi schema has validated it, and would let the
+  // OTP code drift out of compilation while switched off.
+  controllers: [AuthController, OtpController],
+  providers: [
+    AuthService,
+    OtpService,
+    OtpEnabledGuard,
+    SessionService,
+    TelegramOidcService,
+    TokenService,
+  ],
   exports: [TokenService, SessionService],
 })
 export class AuthModule {}

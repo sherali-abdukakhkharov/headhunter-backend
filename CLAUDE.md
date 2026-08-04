@@ -42,6 +42,12 @@ re-derivable from the text.
   request's `x-lang`. The key is also the client-visible error `code`.
 - **Never give a client a Telegram file URL.** It embeds the bot token. File bytes
   are proxied through this API after an ownership check (ARCHITECTURE.md §9).
+- **Login is Telegram OIDC, and the audience check is the security.** An `id_token`
+  is trusted only after signature, issuer, `aud` = our bot id, and `iat` age all
+  pass. Never match an account on a phone Telegram did not mark verified.
+- **Phone + OTP is switched off, not deleted** (`OTP_LOGIN_ENABLED`). §4.1 still
+  specifies it; its routes answer 404 so a disabled endpoint is indistinguishable
+  from one that never existed.
 - **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
   BR-06 is checked inside the insert transaction.
 - **Never throw from inside a transaction that already wrote something.** Kysely

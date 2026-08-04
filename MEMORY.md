@@ -30,6 +30,49 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 - Login is Telegram OIDC; the audience check is what makes it safe
+Client direction: the MVP logs in with Telegram, not §4.1's phone + OTP. The app runs
+Telegram's official native SDK (OAuth2 + PKCE, app-to-app) and posts the resulting
+`id_token`; we verify signature, issuer, **audience = our bot id**, and `iat` age.
+*Why accepting a client-supplied id_token is sound:* the audience check. A genuine,
+correctly signed Telegram token minted for any other application fails it, so the
+only tokens that pass are ones produced by an authorization for our bot. Same
+reasoning as Google/Apple sign-in on mobile. Remove that check and the endpoint
+accepts every Telegram login on earth.
+*Why `iat` age and not just `exp`:* a captured token would otherwise be replayable
+for its full hour. OIDC's `nonce` is the better answer but needs the client SDK to
+accept a server-issued nonce, which the Flutter package does not expose - the claim
+is verified when present, ready for the day it does.
+*Why not the legacy Login Widget, Mini App initData, or a bot deep link:* browser-only,
+Telegram-client-only, and needs an inbound webhook plus a second round trip for the
+phone, respectively. The deciding factor was the `phone` scope - see below.
+
+### 2026-08-05 - The `phone` scope is what keeps the identity model intact
+§4.1 makes the platform's identity a phone number and BR-09 is about revealing it to
+employers. Telegram's `phone` scope returns `phone_number_verified`, so the model
+survives the switch: `telegram_user_id` becomes the credential, `phone` becomes
+nullable but is still unique, and a CHECK requires at least one of the two.
+*`TELEGRAM_REQUIRE_PHONE` defaults to on:* an account with no phone silently cannot
+take part in hiring, and saying so at login beats letting the user find out after
+building a profile.
+*Only a verified phone is ever matched on.* Linking on an unverified value would let
+anyone claim an existing account by naming its number. And an account already claimed
+by a different Telegram user is never taken over - mobile numbers get recycled, so
+that case is real, not theoretical. It also has to be handled explicitly because
+`phone` is unique: writing it blindly on the new account turns a recycled number into
+a 500 on somebody's first login.
+
+### 2026-08-05 - Disabling a flow means a flag and a 404, not commented-out code
+Phone + OTP is switched off with `OTP_LOGIN_ENABLED=false`, its routes moved to their
+own controller behind a guard that answers **404**.
+*Why 404 and not 403:* a disabled endpoint should be indistinguishable from one that
+was never built. A 403 advertises that it exists and is merely off, which invites
+probing - and a reachable OTP endpoint is a second, unwatched way into every account.
+*Why not comment it out or delete it:* §4.1 still specifies phone + OTP, so this is a
+deferral. Keeping the controller registered means the code, the schema and its 12
+integration tests all still compile and run, so it cannot rot silently while off.
+Turning it back on is one environment variable, not a revert.
+
 ### 2026-08-04 - Files live in Telegram, and are always proxied, never redirected
 Client direction: the file store is a Telegram bot posting to one fixed chat.
 *The consequence that shapes the code:* Telegram's download URL is

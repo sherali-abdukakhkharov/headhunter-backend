@@ -91,6 +91,27 @@ export class VerifyOtpDto extends DeviceInfoDto {
   locale?: LocaleCode;
 }
 
+export class TelegramLoginDto extends DeviceInfoDto {
+  @ApiProperty({
+    description:
+      'The `id_token` returned by the Telegram Login SDK. A JWT signed by ' +
+      '`https://oauth.telegram.org`, verified server-side against Telegram’s ' +
+      'JWKS with this bot’s id as the audience. Never send the raw OAuth `code` ' +
+      'here - the SDK completes that exchange.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  // Comfortably above a real RS256 token with the profile and phone claims, and
+  // low enough that an oversized body is rejected before any crypto runs.
+  @MaxLength(4096)
+  idToken!: string;
+
+  // No `locale` field, deliberately. The account's interface language comes from
+  // the `x-lang` header the client already sends on every request (§3.1); a second
+  // way to state it is a second way for the two to disagree. Change it later with
+  // PATCH /users/me/locale.
+}
+
 export class RefreshDto extends DeviceInfoDto {
   @ApiProperty()
   @IsString()

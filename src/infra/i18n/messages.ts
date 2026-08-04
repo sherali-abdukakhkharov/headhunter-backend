@@ -119,6 +119,30 @@ export const MESSAGES = {
     ru: 'Код уже отправлен. Подождите, прежде чем запросить новый.',
     en: 'A code was already sent. Wait before requesting another.',
   },
+  // Telegram login. One message for every verification failure - bad signature,
+  // wrong audience, expired, stale - for the same reason as the OTP message above:
+  // the distinctions describe our validation to whoever is probing it, and none of
+  // them changes what a legitimate client does next (start the login again).
+  'auth.telegram_token_invalid': {
+    'uz-Latn': 'Telegram orqali kirish tasdiqlanmadi. Qaytadan urinib koʻring.',
+    'uz-Cyrl': 'Телеграм орқали кириш тасдиқланмади. Қайтадан уриниб кўринг.',
+    ru: 'Не удалось подтвердить вход через Telegram. Попробуйте снова.',
+    en: 'Telegram sign-in could not be verified. Please try again.',
+  },
+  'auth.telegram_phone_required': {
+    'uz-Latn':
+      'Davom etish uchun Telegramda telefon raqamingizni ulashishga ruxsat ' +
+      'bering. Raqam ish beruvchilarga faqat siz ruxsat berganda koʻrsatiladi.',
+    'uz-Cyrl':
+      'Давом этиш учун Телеграмда телефон рақамингизни улашишга рухсат ' +
+      'беринг. Рақам иш берувчиларга фақат сиз рухсат берганда кўрсатилади.',
+    ru:
+      'Чтобы продолжить, разрешите Telegram передать ваш номер телефона. Номер ' +
+      'будет показан работодателям только с вашего разрешения.',
+    en:
+      'To continue, allow Telegram to share your phone number. It is shown to ' +
+      'employers only with your permission.',
+  },
   'auth.token_required': {
     'uz-Latn': 'Avtorizatsiya tokeni talab qilinadi.',
     'uz-Cyrl': 'Авторизация токени талаб қилинади.',

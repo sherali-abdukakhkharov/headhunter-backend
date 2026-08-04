@@ -10,7 +10,16 @@ import type {
 
 export interface UserProfile {
   id: string;
-  phone: string;
+  /**
+   * Null when the account signed in with Telegram and declined the `phone` scope.
+   *
+   * Possible only while `TELEGRAM_REQUIRE_PHONE` is off; the login path refuses such
+   * a token by default, precisely because BR-09 contact exposure has nothing to
+   * reveal without it.
+   */
+  phone: string | null;
+  /** `@username` without the `@`, when the account is linked to Telegram. */
+  telegramUsername: string | null;
   locale: LocaleCode;
   status: AccountStatus;
   roles: UserRole[];
@@ -24,7 +33,14 @@ export class UsersService {
   async findProfile(userId: string): Promise<UserProfile> {
     const user = await this.db
       .selectFrom('users')
-      .select(['id', 'phone', 'locale', 'status', 'created_at'])
+      .select([
+        'id',
+        'phone',
+        'telegram_username',
+        'locale',
+        'status',
+        'created_at',
+      ])
       .where('id', '=', userId)
       .executeTakeFirst();
 
@@ -43,6 +59,7 @@ export class UsersService {
     return {
       id: user.id,
       phone: user.phone,
+      telegramUsername: user.telegram_username,
       locale: user.locale,
       status: user.status,
       roles: roles.map((r) => r.role),

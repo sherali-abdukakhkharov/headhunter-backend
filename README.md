@@ -80,6 +80,25 @@ pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the l
 pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
 
+## Login
+
+**Telegram, for the MVP.** The app runs Telegram's official native SDK (OAuth2 +
+PKCE, app-to-app) and posts the resulting OpenID Connect `id_token` to
+`POST /auth/telegram`; we verify it and issue our own session. Setup for the parts
+outside this repo — BotFather, Flutter, platform manifests — is in
+[docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
+
+The check that matters is **audience = our bot id**. A genuine, correctly signed
+Telegram token issued for any other application must not sign anyone in here, and
+that check is the only thing preventing it. Signature, issuer and `iat` age are
+verified too — the age window is the replay defence, so the app must post a token
+promptly and never cache one.
+
+§4.1's **phone + OTP is built and tested but switched off** (`OTP_LOGIN_ENABLED=false`,
+routes answer 404). It was not deleted: the spec still specifies it, and one
+environment variable brings it back. A Telegram login carrying a Telegram-verified
+phone links to the account the OTP flow created rather than duplicating it.
+
 ## File storage
 
 Bytes live in **Telegram**, not in object storage. A bot posts each upload to one
@@ -145,9 +164,12 @@ src/
     api/
       decorators/                @Public, @RequireRole, @RateLimit, @XLang, @ActiveUser
       guards/                    the global stack: rate limit → auth → role → account status
-      filters/                   retry-after.filter.ts turns a 429 into Retry-After
+      filters/                   api-exception.filter.ts - the one error body, localized
+      exceptions/                LocalizedException subclasses, carrying a catalog key
     crypto/hash.ts               HMAC hashing for OTP codes and refresh tokens
+    i18n/                        the message catalog, four variants per key
     locale/locale.ts             x-lang normalization and the §3.2 fallback chain
+    files/                       Telegram-backed file storage
     phone/phone.ts               E.164 normalization, log masking
     rate-limit/                  §12.5 buckets over rate_limit_counters
     time/format.ts               the one timestamp serializer (explicit offset, never Z)
@@ -225,8 +247,9 @@ Every one of these was hit while setting the project up:
 ## Built so far
 
 - **M0** foundations: health, migrations, env validation, logging, Swagger.
-- **M1** auth: phone + OTP, refresh rotation with reuse detection, sessions,
-  multi-role with `active_role`, account status guard (BR-10), rate limiting.
+- **M1** auth: **Telegram login** (MVP), refresh rotation with reuse detection,
+  sessions, multi-role with `active_role`, account status guard (BR-10), rate
+  limiting. Phone + OTP is built and switched off behind `OTP_LOGIN_ENABLED`.
 - **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
   four-locale enforcement, the idempotent seeder, and the content — 487 items in
   four variants including all 175 districts.

@@ -74,7 +74,27 @@ needs them.
 - [x] Native enums `locale_code`, `user_role`, `account_status`, `otp_purpose` -
       kysely-codegen turns these into string-literal unions rather than `string`
 
-### Endpoints *(done)*
+### Login: Telegram *(MVP path, done - client direction 2026-08-05)*
+- [x] `POST /auth/telegram` - verifies a Telegram OIDC `id_token` against JWKS with
+      **audience = our bot id**, the check that stops a token minted for another app
+      signing someone in here
+- [x] `iat` age window as the replay defence; `nonce` verified when present
+- [x] `telegram_user_id` as the credential, `phone` nullable, CHECK requiring one
+- [x] Account linking on a **Telegram-verified** phone, with a BR-08 audit row; never
+      takes over an account another Telegram user already holds
+- [x] `TELEGRAM_REQUIRE_PHONE` (default on) - BR-09 has nothing to reveal without one
+- [x] Setup guide for BotFather + Flutter: [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md)
+- [x] 22 tests with real RSA keys and a local JWKS: forged signature, wrong audience,
+      wrong issuer, expired, stale-but-unexpired, unknown `kid`, linking, takeover
+- [ ] Bind an OIDC `nonce` - waiting on the client SDK to accept a server-issued one
+- [ ] Verify on a device **without** Telegram installed (the SDK's web-sheet fallback)
+- [ ] One real end-to-end login against the live Telegram bot; everything so far is
+      against a local key set
+
+### Endpoints *(phone + OTP - built, switched off for the MVP)*
+`OTP_LOGIN_ENABLED=false`, so these answer 404. Nothing was deleted: §4.1 still
+specifies the flow, and the service, schema and tests all still run.
+
 - [x] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
 - [x] `POST /auth/refresh` with rotation + reuse detection
 - [x] `POST /auth/logout`, `POST /auth/logout-all`

@@ -27,6 +27,69 @@ BCP-47 rules: lowercase language subtag, title-case script subtag.
   cache and every read is a permanent miss.
 - Asserted by test: emitted casing is exactly the four codes above.
 
+## 1a. Login — Telegram, MVP
+
+Client direction, 2026-08-05: **the MVP logs in with Telegram.** §4.1's phone + OTP
+is built and tested but switched off (`OTP_LOGIN_ENABLED=false`), so `/auth/otp/*`
+answers `404` — a disabled endpoint should be indistinguishable from one that was
+never built.
+
+```
+POST /auth/telegram      { idToken }  ->  AuthTokens
+```
+
+The response is the **same `AuthTokens` shape** the OTP flow returned, so
+everything after login is unchanged: `accessToken`, `refreshToken`,
+`expiresInSeconds`, `roles`, `activeRole`, `isNewUser`.
+
+### The flow
+
+1. The app calls the official Telegram Login SDK ([iOS](https://github.com/TelegramMessenger/telegram-login-ios),
+   [Android](https://github.com/TelegramMessenger/telegram-login-android); wrapped
+   for Flutter by [`telegram_login`](https://pub.dev/packages/telegram_login)).
+2. Telegram opens app-to-app — or a web sheet when Telegram is not installed — and
+   the user approves the scopes **inside Telegram**. There is no password and no
+   OTP anywhere in this flow.
+3. The SDK completes the OAuth2 authorization-code exchange with PKCE and returns a
+   signed `id_token`.
+4. The app posts that token to `POST /auth/telegram` and receives our own tokens.
+
+### What the client must send
+
+- `idToken` — the SDK's `result.idToken`, verbatim. **Never** the raw OAuth `code`;
+  the SDK owns that exchange.
+- `x-lang` — becomes the account's stored locale when this login creates it. There
+  is deliberately no `locale` body field: two ways to state the interface language
+  is two ways for them to disagree.
+- Optional device fields (`deviceName`, `platform`, `appVersion`,
+  `deviceFingerprint`), which populate the §4.2 session list.
+
+### Scopes the app must request
+
+`openid profile phone`
+
+The `phone` scope is **required** in practice: the server refuses a token without
+`phone_number_verified` while `TELEGRAM_REQUIRE_PHONE` is on, answering `401` with
+`code: "auth.telegram_phone_required"` and a localized message telling the user to
+allow it. The reason is BR-09 — contact exposure to an employer has nothing to
+reveal without a phone number, so an account created without one silently cannot
+take part in hiring.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `auth.telegram_token_invalid` | 401 | Bad signature, wrong audience, wrong issuer, expired, or older than the age window. One code for all of them on purpose. |
+| `auth.telegram_phone_required` | 401 | The `phone` scope was not granted. Re-run login and allow it. |
+| `account.blocked` | 403 | BR-10 — a blocked account cannot authenticate at all. |
+| `error.too_many_requests` | 429 | The `auth` bucket, with `Retry-After`. |
+
+### Token freshness
+
+An `id_token` is accepted for `TELEGRAM_ID_TOKEN_MAX_AGE_SECONDS` (default 300) from
+its `iat`, not merely until `exp`. **The app must post it promptly** — do not stash
+one and reuse it later; run the SDK again instead.
+
 ## 2. Timestamps — frozen format
 
 Every timestamp in every response is ISO-8601 with an **explicit numeric offset

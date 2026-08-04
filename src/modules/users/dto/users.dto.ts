@@ -35,9 +35,22 @@ export class UserProfileResponseDto {
 
   @ApiProperty({
     example: '+998901234567',
-    description: 'E.164. Returned only to the account owner (§11.1, BR-09).',
+    nullable: true,
+    description:
+      'E.164. Returned only to the account owner (§11.1, BR-09). Null when the ' +
+      'account signed in with Telegram and declined the `phone` scope - only ' +
+      'possible while the server allows that.',
   })
-  phone!: string;
+  phone!: string | null;
+
+  @ApiProperty({
+    example: 'jobseeker_uz',
+    nullable: true,
+    description:
+      'Telegram `@username` without the `@`, when the account is linked to ' +
+      'Telegram. User-changeable, so never an identity - support and display only.',
+  })
+  telegramUsername!: string | null;
 
   @ApiProperty({ enum: LOCALES })
   locale!: LocaleCode;

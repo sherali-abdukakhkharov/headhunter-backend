@@ -169,8 +169,10 @@ export interface Users {
   id: Generated<string>;
   last_login_at: Timestamp | null;
   locale: Generated<LocaleCode>;
-  phone: string;
+  phone: string | null;
   status: Generated<AccountStatus>;
+  telegram_user_id: Int8 | null;
+  telegram_username: string | null;
   updated_at: Generated<Timestamp>;
 }
 

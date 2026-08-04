@@ -51,6 +51,7 @@ export class UsersController {
     return {
       id: profile.id,
       phone: profile.phone,
+      telegramUsername: profile.telegramUsername,
       locale: profile.locale,
       status: profile.status,
       roles: profile.roles,
