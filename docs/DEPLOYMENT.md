@@ -7,27 +7,45 @@ forward, no origin certificate to manage, and no listening socket to scan.
 
 ---
 
-## 1. Create the tunnel
+## 1. The tunnel — already created
 
-Once, from this directory. Both commands need a browser and your Cloudflare account.
+Done on 2026-08-05. Recorded here so it can be rebuilt or moved.
+
+| | |
+|---|---|
+| Tunnel name | `headhunter` |
+| Tunnel id | `3d0cec91-0f40-4f1d-848a-76c4c952142b` |
+| Hostname | `hh.qitmir.uz` (CNAME to the tunnel, in Cloudflare DNS) |
+| Credentials | `docker/cloudflared/<tunnel-id>.json` — gitignored |
+| Account credential | `cert.pem`, **not in this repo**; see below |
+
+`cloudflared` is installed on this machine (`winget install Cloudflare.cloudflared`,
+2026.7.3). It lands in `C:\Program Files (x86)\cloudflared\` — **open a new terminal
+after installing**, or it will not be on `PATH`.
+
+### cert.pem deliberately lives elsewhere
+
+A tunnel needs only its credentials JSON to **run**. The account-level `cert.pem` is
+needed only for management commands (`create`, `delete`, `route dns`), and it
+authorizes those for the *entire* `qitmir.uz` zone — so it is not copied here. The one
+that already existed for the other tunnels is reused in place:
 
 ```sh
-# Authorizes cloudflared for the qitmir.uz zone and writes cert.pem.
-cloudflared tunnel login
+CERT="D:/Dev/tgbots/sahih-bot/docker/cloudflared/cert.pem"
 
-# Creates the tunnel and writes <tunnel-id>.json. Note the id it prints.
-cloudflared tunnel create --credentials-file docker/cloudflared/headhunter.json headhunter
-
-# Points hh.qitmir.uz at it - creates the CNAME in Cloudflare DNS.
-cloudflared tunnel route dns headhunter hh.qitmir.uz
+cloudflared tunnel --origincert "$CERT" list
+cloudflared tunnel --origincert "$CERT" create headhunter
+cloudflared tunnel --origincert "$CERT" route dns headhunter hh.qitmir.uz
 ```
 
-Then put the id into [`docker/cloudflared/config.yml`](../docker/cloudflared/config.yml),
-in both `tunnel:` and `credentials-file:`, and move `cert.pem` into
-`docker/cloudflared/` beside the JSON.
+Note `create` writes the credentials JSON **next to the cert it found**, ignoring
+`--credentials-file`; move it into `docker/cloudflared/` afterwards.
 
-**Both files are gitignored, and must stay that way.** The JSON is a bearer
-credential for the tunnel; `cert.pem` is account-level for the entire zone. Anyone
+Starting from nothing instead, `cloudflared tunnel login` writes a fresh `cert.pem`
+after a browser round trip.
+
+**Both credential files are gitignored and must stay that way.** The JSON is a bearer
+credential for this tunnel; `cert.pem` is account-level for the whole zone. Anyone
 holding either can serve traffic as `hh.qitmir.uz`.
 
 ## 2. Bring it up
@@ -50,6 +68,18 @@ Check it end to end:
 curl https://hh.qitmir.uz/health
 curl -H 'x-lang: ru' https://hh.qitmir.uz/dictionaries/region
 ```
+
+### Verified working, 2026-08-05
+
+Four edge connections registered (waw05 ×2, vno01, plus one more), `/health` 200 in
+0.7s, dictionaries served in Russian, ETag revalidation returning 304 through the
+proxy, and localized errors intact.
+
+The check that actually mattered: a request to `https://hh.qitmir.uz/auth/telegram`
+incremented a rate-limit counter keyed on the **real public client address**, not on
+the tunnel's loopback. That is `CLIENT_IP_HEADER=cf-connecting-ip` working end to end;
+without it that same request would have keyed on `::ffff:127.0.0.1` along with
+everyone else's.
 
 ---
 
@@ -108,6 +138,25 @@ with bearer tokens, not cookies, so a reflected origin grants nothing. Narrow it
 web build ever appears.
 
 ---
+
+## 3a. Live right now, and worth knowing
+
+`hh.qitmir.uz` is reachable with `NODE_ENV=development`. Nothing is leaking, but two
+things are true of that state:
+
+- **`/docs`, `/reference` and `/docs-json` answer 200 publicly.** Every endpoint and
+  payload is described to anyone who asks. Deliberate for now — the mobile devs are
+  working against it — but it is the first thing to put a Cloudflare Access policy on.
+- **The production guards are not being enforced**, because they key off
+  `NODE_ENV=production`. In particular `OTP_ECHO_IN_RESPONSE=true` is still set. It is
+  harmless *only* because `OTP_LOGIN_ENABLED=false` makes those routes 404 — flip OTP
+  back on while public and that flag hands any caller a login code for any phone
+  number. Set `NODE_ENV=production` before the URL carries real users and boot will
+  refuse the combination for you.
+- **Port 3001 is still bound on all interfaces.** With
+  `CLIENT_IP_HEADER=cf-connecting-ip` set, anyone who can reach the origin directly on
+  the LAN can send that header and bypass per-IP limits. Not reachable from the
+  internet — the tunnel is outbound-only — but worth closing on a shared network.
 
 ## 4. Before this carries real users
 

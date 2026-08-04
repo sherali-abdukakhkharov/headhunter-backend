@@ -1,5 +1,10 @@
 # Cloudflare tunnel for hh.qitmir.uz
 #
+# Tunnel `headhunter` (id below) was created 2026-08-05. cert.pem is deliberately NOT
+# here: a tunnel only needs its credentials JSON to *run*. Management commands
+# (create / delete / route dns) need the account-level cert, which stays where it
+# already lived rather than being copied into a third directory.
+#
 # Same shape as the sahih-bot and kirill-lotin-bot tunnels: a named tunnel with its
 # credentials JSON beside this file. Create both with the commands in
 # docs/DEPLOYMENT.md - `cloudflared tunnel create` writes the JSON and prints the id
@@ -14,8 +19,8 @@
 # is no inbound port to firewall, no origin certificate to manage, and nothing to
 # scan - cloudflared holds an outbound connection to Cloudflare instead.
 
-tunnel: REPLACE_WITH_TUNNEL_ID
-credentials-file: /home/nonroot/.cloudflared/REPLACE_WITH_TUNNEL_ID.json
+tunnel: 3d0cec91-0f40-4f1d-848a-76c4c952142b
+credentials-file: /home/nonroot/.cloudflared/3d0cec91-0f40-4f1d-848a-76c4c952142b.json
 
 ingress:
   - hostname: hh.qitmir.uz
