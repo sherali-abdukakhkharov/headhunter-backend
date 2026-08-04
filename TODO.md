@@ -48,13 +48,22 @@ needs them.
 
 ## M1 - Auth, users, roles
 
-### Schema
-- [ ] `users` (id, phone unique, locale, status, created_at, ...)
-- [ ] `user_roles` (user_id, role) - many-to-many, **not** a column on users
-- [ ] `otp_codes` (phone, code_hash, purpose, expires_at, attempts, consumed_at)
-- [ ] `sessions` (id, user_id, device fingerprint, refresh token hash, revoked_at)
-- [ ] `account_status_history` (actor, from, to, reason) - feeds UAT-14 audit
-- [ ] `deletion_requests` (user_id, requested_at, confirmed_at, purge_after)
+### Schema *(done - `20260804130000_create_auth_tables`)*
+- [x] `users` (id, phone unique, locale, status, created_at, ...)
+- [x] `user_roles` (user_id, role) - many-to-many, **not** a column on users
+- [x] `otp_codes` (phone, code_hash, purpose, expires_at, attempts, consumed_at)
+      - `phone` is deliberately not a FK: a registration OTP precedes the user row
+      - partial unique index keeps **one unconsumed code per (phone, purpose)**, so
+        a retrying client supersedes rather than accumulates
+- [x] `sessions` (id, user_id, device fingerprint, refresh token hash, revoked_at)
+      - plus `family_id` and `replaced_by_session_id`: reuse detection revokes the
+        whole rotation family in one statement instead of walking the chain
+- [x] `account_status_history` (actor, from, to, reason) - feeds UAT-14 audit
+- [x] `deletion_requests` (user_id, requested_at, confirmed_at, purge_after)
+      - partial unique index allows one open request per user
+      - `purge_after` stays nullable until BR-14 retention is answered
+- [x] Native enums `locale_code`, `user_role`, `account_status`, `otp_purpose` -
+      kysely-codegen turns these into string-literal unions rather than `string`
 
 ### Endpoints
 - [ ] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
