@@ -1,16 +1,20 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { RetryAfterFilter } from './infra/api/filters/retry-after.filter';
 import type { AppEnv } from './infra/env-schema';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
 
   // Route Nest's own logs through pino.
   app.useLogger(app.get(Logger));
@@ -18,6 +22,16 @@ async function bootstrap(): Promise<void> {
   const config = app.get<ConfigService<AppEnv, true>>(ConfigService);
   const port = config.get('HTTP_PORT', { infer: true });
   const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
+  const proxyHops = config.get('TRUSTED_PROXY_HOPS', { infer: true });
+
+  // Per-IP rate limiting is only as good as `request.ip`. Behind a proxy every
+  // request arrives from the proxy's address, so one bucket would be shared by
+  // all users; trusting `X-Forwarded-For` without a proxy in front lets a caller
+  // spoof the address instead. Neither is safe to guess, so it is configuration,
+  // and the default trusts nothing.
+  if (proxyHops > 0) {
+    app.set('trust proxy', proxyHops);
+  }
 
   app.use(helmet());
 
@@ -35,6 +49,10 @@ async function bootstrap(): Promise<void> {
       transform: true,
     }),
   );
+
+  // Turns the `retryAfterSeconds` carried by a 429 into a `Retry-After` header,
+  // wherever in the stack it was thrown.
+  app.useGlobalFilters(new RetryAfterFilter());
 
   const swaggerDoc = SwaggerModule.createDocument(
     app,

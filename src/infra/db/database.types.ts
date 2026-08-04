@@ -67,6 +67,13 @@ export interface OtpCodes {
   requested_ip: string | null;
 }
 
+export interface RateLimitCounters {
+  bucket: string;
+  hits: Generated<number>;
+  subject: string;
+  window_start: Timestamp;
+}
+
 export interface Sessions {
   app_version: string | null;
   created_at: Generated<Timestamp>;
@@ -105,6 +112,7 @@ export interface DB {
   app_meta: AppMeta;
   deletion_requests: DeletionRequests;
   otp_codes: OtpCodes;
+  rate_limit_counters: RateLimitCounters;
   sessions: Sessions;
   user_roles: UserRoles;
   users: Users;

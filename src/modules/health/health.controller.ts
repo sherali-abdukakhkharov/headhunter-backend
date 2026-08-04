@@ -1,9 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '@infra/api/decorators/public.decorator';
+
 import { HealthResponseDto } from './dto/health-response.dto';
 import { HealthService } from './health.service';
 
+// Monitoring cannot hold a token, and AuthorizationGuard is global.
+@Public()
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
