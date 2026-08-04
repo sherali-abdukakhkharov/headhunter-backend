@@ -27,6 +27,9 @@ async function bootstrap(): Promise<void> {
   const port = config.get('HTTP_PORT', { infer: true });
   const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
   const proxyHops = config.get('TRUSTED_PROXY_HOPS', { infer: true });
+  const clientIpHeader = config.get('CLIENT_IP_HEADER', { infer: true });
+  const docsEnabled = config.get('API_DOCS_ENABLED', { infer: true });
+  const publicBaseUrl = config.get('PUBLIC_BASE_URL', { infer: true });
 
   // Per-IP rate limiting is only as good as `request.ip`. Behind a proxy every
   // request arrives from the proxy's address, so one bucket would be shared by
@@ -64,18 +67,20 @@ async function bootstrap(): Promise<void> {
   // internal on an unexpected failure.
   app.useGlobalFilters(new ApiExceptionFilter());
 
-  const swaggerDoc = SwaggerModule.createDocument(
-    app,
-    new DocumentBuilder()
-      .setTitle('Headhunter API')
-      .setDescription('Job search and recruitment backend')
-      .setVersion('0.0.1')
-      .addBearerAuth()
-      .build(),
-  );
+  if (docsEnabled) {
+    const swaggerDoc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('Headhunter API')
+        .setDescription('Job search and recruitment backend')
+        .setVersion('0.0.1')
+        .addBearerAuth()
+        .build(),
+    );
 
-  SwaggerModule.setup('docs', app, swaggerDoc);
-  app.use('/reference', apiReference({ content: swaggerDoc }));
+    SwaggerModule.setup('docs', app, swaggerDoc);
+    app.use('/reference', apiReference({ content: swaggerDoc }));
+  }
 
   // Lets onApplicationShutdown hooks (e.g. closing the pg pool) actually run.
   app.enableShutdownHooks();
@@ -83,9 +88,29 @@ async function bootstrap(): Promise<void> {
   await app.listen(port);
 
   const logger = app.get(Logger);
-  logger.log(`Headhunter API listening on http://localhost:${port}`);
-  logger.log(`Swagger UI:       http://localhost:${port}/docs`);
-  logger.log(`Scalar reference: http://localhost:${port}/reference`);
+  const base = publicBaseUrl || `http://localhost:${port}`;
+
+  logger.log(`Headhunter API listening on ${base}`);
+
+  if (docsEnabled) {
+    logger.log(`Swagger UI:       ${base}/docs`);
+    logger.log(`Scalar reference: ${base}/reference`);
+  } else {
+    logger.log('API docs are disabled (API_DOCS_ENABLED=false)');
+  }
+
+  if (clientIpHeader) {
+    logger.log(`Client IP read from the ${clientIpHeader} header`);
+  } else if (proxyHops > 0) {
+    // The combination that silently breaks per-IP limits: proxy-aware Express, but
+    // nothing telling us where the caller's address actually is. Every request then
+    // keys off the proxy's address and the whole world shares one bucket.
+    logger.warn(
+      `TRUSTED_PROXY_HOPS is ${proxyHops} but CLIENT_IP_HEADER is empty, so ` +
+        'per-IP rate limits will key off the proxy address rather than the ' +
+        'caller. Behind a Cloudflare tunnel set CLIENT_IP_HEADER=cf-connecting-ip.',
+    );
+  }
 }
 
 void bootstrap();

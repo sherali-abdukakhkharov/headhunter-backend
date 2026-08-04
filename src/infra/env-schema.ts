@@ -71,12 +71,42 @@ export interface AppEnv {
   /**
    * Number of reverse proxies in front of this service.
    *
-   * `0` means `X-Forwarded-For` is ignored and `request.ip` is the socket
-   * address. Anything higher trusts that many hops, which is required for
-   * per-IP rate limiting to see the real caller behind a proxy - and, if set
-   * without a proxy actually being there, lets a caller spoof its own address.
+   * Makes Express proxy-aware, so `req.protocol`, `req.secure` and `req.hostname`
+   * reflect the original request rather than the hop from the proxy. Set to `0`
+   * when nothing is in front.
+   *
+   * **Not what per-IP rate limiting reads** - that is `CLIENT_IP_HEADER`, because
+   * `X-Forwarded-For` is the wrong answer behind Cloudflare. See
+   * `infra/api/client-ip.ts`.
    */
   TRUSTED_PROXY_HOPS: number;
+
+  /**
+   * Header carrying the real client IP, or empty to use the socket address.
+   *
+   * `cf-connecting-ip` behind a Cloudflare tunnel. Only ever read when named here:
+   * with nothing in front, any caller could send the header and mint a fresh
+   * rate-limit budget per request.
+   */
+  CLIENT_IP_HEADER: string;
+
+  /**
+   * Whether `/docs` and `/reference` are served.
+   *
+   * On by default - the OpenAPI document is the contract the Flutter client is
+   * written against (§13.2). Behind a public hostname it also describes every
+   * endpoint and payload to anyone who asks, so a public deployment should either
+   * turn it off or put an access policy in front of those two paths.
+   */
+  API_DOCS_ENABLED: boolean;
+
+  /**
+   * Public base URL, for operator-facing output only.
+   *
+   * Never used to build a client-facing link: a URL derived from configuration and
+   * baked into a response is the classic way an internal hostname escapes.
+   */
+  PUBLIC_BASE_URL: string;
 
   /** Window all §12.5 rate-limit buckets are counted over. */
   RATE_LIMIT_WINDOW_SECONDS: number;
@@ -175,6 +205,22 @@ export const envSchema = Joi.object<AppEnv, true>({
   // Defaults to not trusting any forwarded header: an over-permissive value is
   // a rate-limit bypass, while too low a value only makes the limit stricter.
   TRUSTED_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
+
+  // Empty by default - the socket address. Behind Cloudflare: cf-connecting-ip.
+  // Restricted to the two headers that are actually meaningful here so a typo
+  // becomes a boot failure rather than a silently shared rate-limit bucket.
+  CLIENT_IP_HEADER: Joi.string()
+    .allow('')
+    .lowercase()
+    .valid('', 'cf-connecting-ip', 'x-real-ip')
+    .default(''),
+
+  API_DOCS_ENABLED: Joi.boolean().default(true),
+
+  PUBLIC_BASE_URL: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .allow('')
+    .default(''),
 
   // §12.5 buckets. One shared window keeps the surface small; per-phone limits
   // are tight because each send costs an SMS, per-IP limits are loose because

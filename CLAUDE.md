@@ -16,6 +16,8 @@ Code session rooted there can edit this repo too (see that repo's
 | [TODO.md](TODO.md) | Working checklist and the open blocking decisions. |
 | [MEMORY.md](MEMORY.md) | Why decisions were made; traps already paid for. |
 | [README.md](README.md) | Stack, commands, structure, environment gotchas. |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The Cloudflare tunnel at hh.qitmir.uz, and what changes when the API is public. |
+| [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login. |
 
 Before implementing anything from the spec, check ARCHITECTURE.md first — several
 requirements have already been designed against, and the reasoning is not
@@ -48,6 +50,10 @@ re-derivable from the text.
 - **Phone + OTP is switched off, not deleted** (`OTP_LOGIN_ENABLED`). §4.1 still
   specifies it; its routes answer 404 so a disabled endpoint is indistinguishable
   from one that never existed.
+- **The caller's IP comes from `resolveClientIp`, never `req.ip` directly.** Behind
+  Cloudflare, `X-Forwarded-For` has the user first and the edge second - the opposite
+  of what Express's hop count reads - so per-IP limits must key off
+  `CF-Connecting-IP`, and only when `CLIENT_IP_HEADER` names it.
 - **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
   BR-06 is checked inside the insert transaction.
 - **Never throw from inside a transaction that already wrote something.** Kysely

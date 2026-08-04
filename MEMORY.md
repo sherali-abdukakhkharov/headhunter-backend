@@ -30,6 +30,25 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 - Behind Cloudflare, the client IP is `CF-Connecting-IP`, not `X-Forwarded-For`
+Published at hh.qitmir.uz through a named Cloudflare tunnel. Per-IP rate limiting reads
+the header named by `CLIENT_IP_HEADER` via one helper, never `req.ip` directly.
+*Why XFF is actively wrong here:* Cloudflare puts the user's address **first** and its
+own second, while Express's `trust proxy` hop count reads from the **right**. So
+`TRUSTED_PROXY_HOPS=1` makes `req.ip` the Cloudflare edge - every user on earth in one
+bucket. Cloudflare also *appends* to a client-supplied XFF rather than replacing it, and
+cloudflared has a standing bug that corrupts the result, so the header is partly
+attacker-controlled. `CF-Connecting-IP` is set and overwritten by Cloudflare.
+*Why it must be named explicitly and never inferred:* with nothing in front, any caller
+can send `CF-Connecting-IP` and mint a fresh budget per request. Trusting a header is a
+deployment fact, not something code can detect.
+*Fail-safe direction:* a missing header falls back to the socket address - too strict
+(one shared bucket) rather than absent (no limit at all).
+*The two remain separate settings:* `TRUSTED_PROXY_HOPS` still exists for Express's
+`req.protocol`/`req.secure`, and boot warns when it is set without `CLIENT_IP_HEADER`,
+because that combination silently breaks per-IP limits.
+
+
 ### 2026-08-05 - Login is Telegram OIDC; the audience check is what makes it safe
 Client direction: the MVP logs in with Telegram, not §4.1's phone + OTP. The app runs
 Telegram's official native SDK (OAuth2 + PKCE, app-to-app) and posts the resulting

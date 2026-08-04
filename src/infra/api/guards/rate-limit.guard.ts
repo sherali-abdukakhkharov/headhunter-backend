@@ -3,9 +3,11 @@ import {
   type ExecutionContext,
   Injectable,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 
+import type { AppEnv } from '@infra/env-schema';
 import { normalizePhone } from '@infra/phone/phone';
 import {
   type RateLimitBucket,
@@ -13,6 +15,7 @@ import {
   RateLimitService,
 } from '@infra/rate-limit/rate-limit.service';
 
+import { resolveClientIp } from '../client-ip';
 import { RATE_LIMIT_BUCKET_KEY } from '../decorators/rate-limit.decorator';
 import { TooManyRequestsError } from '../exceptions/localized.exception';
 
@@ -30,10 +33,18 @@ import { TooManyRequestsError } from '../exceptions/localized.exception';
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
+  private readonly clientIpHeader: string | null;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly limits: RateLimitService,
-  ) {}
+    config: ConfigService<AppEnv, true>,
+  ) {
+    // Lower-cased once: Node exposes request headers lower-cased, and a mismatch
+    // would silently fall back to the socket address.
+    this.clientIpHeader =
+      config.get('CLIENT_IP_HEADER', { infer: true }).toLowerCase() || null;
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const bucket = this.reflector.getAllAndOverride<
@@ -47,7 +58,7 @@ export class RateLimitGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
 
     for (const rule of this.limits.rulesFor(bucket)) {
-      const value = subjectValue(rule.key, request);
+      const value = subjectValue(rule.key, request, this.clientIpHeader);
 
       // A rule whose key is absent from this request is skipped rather than
       // failing the request: `POST /auth/refresh` carries no phone, and the IP
@@ -78,12 +89,16 @@ export class RateLimitGuard implements CanActivate {
   }
 }
 
-function subjectValue(key: RateLimitKey, request: Request): string | null {
+function subjectValue(
+  key: RateLimitKey,
+  request: Request,
+  clientIpHeader: string | null,
+): string | null {
   if (key === 'ip') {
-    // `request.ip` honours `trust proxy`, which is off unless TRUSTED_PROXY_HOPS
-    // says otherwise - see main.ts. Trusting a forwarded header by default would
-    // let any caller spoof its address and empty this bucket at will.
-    return request.ip ?? null;
+    // Behind a Cloudflare tunnel this must read `CF-Connecting-IP`, and the reason
+    // `X-Forwarded-For` is the wrong answer there is worth reading once: see
+    // `infra/api/client-ip.ts`.
+    return resolveClientIp(request, clientIpHeader);
   }
 
   // Guards run before the global ValidationPipe, so the body here is unvalidated

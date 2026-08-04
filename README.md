@@ -80,6 +80,22 @@ pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the l
 pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
 
+## Public URL
+
+Published at **https://hh.qitmir.uz** through a named Cloudflare tunnel — the same
+arrangement as the other bots on this machine. Nothing is exposed inbound. Setup,
+the production environment and the failure table are in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+One setting decides whether rate limiting works at all there:
+`CLIENT_IP_HEADER=cf-connecting-ip`. Without it every caller arrives as `127.0.0.1`
+and shares one bucket; with `X-Forwarded-For` instead, the value is the Cloudflare
+edge and is partly attacker-controlled. Boot warns if the combination is wrong.
+
+```sh
+pnpm tunnel:up / tunnel:logs / tunnel:down
+```
+
 ## Login
 
 **Telegram, for the MVP.** The app runs Telegram's official native SDK (OAuth2 +

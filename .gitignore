@@ -56,3 +56,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Cloudflare tunnel credentials. The JSON is a bearer credential for the tunnel and
+# cert.pem is an account-level credential for the whole Cloudflare zone - anyone
+# holding either can serve traffic as hh.qitmir.uz. config.yml is safe to commit.
+docker/cloudflared/*.json
+docker/cloudflared/cert.pem
