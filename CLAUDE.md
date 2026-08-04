@@ -1,11 +1,47 @@
 # headhunter-backend — working notes
 
-NestJS API for the Headhunter platform. The Flutter client lives at
-`d:\Dev\tgbots\headhunter-app`; a Claude Code session rooted there can edit this
-repo too (see that repo's `.claude/settings.json`).
+NestJS API for **Universal HeadHunter**, a mobile-only recruitment platform for
+Uzbekistan. The Flutter client lives at `d:\Dev\tgbots\headhunter-app`; a Claude
+Code session rooted there can edit this repo too (see that repo's
+`.claude/settings.json`).
 
-Read `README.md` first for stack, commands, structure and the list of
-environment gotchas. This file covers how to work in the codebase.
+## Which document to read
+
+| File | Contents |
+|---|---|
+| [docs/SPEC.md](docs/SPEC.md) | The client specification. **Cite it** as §n, BR-nn, UAT-nn. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Design decisions and the data model. Read before adding a module. |
+| [PLAN.md](PLAN.md) | Milestones in dependency order, mapped to BR/UAT. |
+| [TODO.md](TODO.md) | Working checklist and the open blocking decisions. |
+| [MEMORY.md](MEMORY.md) | Why decisions were made; traps already paid for. |
+| [README.md](README.md) | Stack, commands, structure, environment gotchas. |
+
+Before implementing anything from the spec, check ARCHITECTURE.md first — several
+requirements have already been designed against, and the reasoning is not
+re-derivable from the text.
+
+## Domain rules that are easy to get wrong
+
+- **Filters take dictionary IDs, never labels.** BR-13: one stable ID, four
+  localized labels. If you find yourself comparing translated text, stop.
+- **Structured fields are authoritative for search; the CV is an attachment.**
+  There is no CV parsing in this product (§1, §5.4).
+- **A user may hold several roles.** Ask "may this user, acting as `active_role`,
+  do this to this resource" — never "what role is this user" (§2.3).
+- **Administration is a mobile role, not a web panel.** Admin endpoints are
+  normal routes with strict guards (§10).
+- **Every status change writes an audit row in the same transaction** (BR-08).
+  Status update without history is a bug.
+- **Blocked accounts are refused every mutation** (BR-10) — enforced by a guard on
+  all mutating routes, not per module.
+- **Contact details go through the one BR-09 helper.** Never inline the rule.
+- **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
+  BR-06 is checked inside the insert transaction.
+- **Never hard-delete a dictionary item** — deactivate, and use `merged_into_id`
+  for merges, so historical references still resolve.
+
+Read `README.md` for stack, commands, structure and the list of environment
+gotchas. The rest of this file covers how to work in the codebase.
 
 ## Coding principles, in priority order
 
