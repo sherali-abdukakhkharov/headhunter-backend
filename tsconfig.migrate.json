@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Migrations run through ts-node as plain CommonJS scripts, so nodenext
+    // module resolution (which the Nest build uses) is overridden here.
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": true
+  },
+  "include": ["src/infra/db/**/*.ts", "migrations/**/*.ts"]
+}

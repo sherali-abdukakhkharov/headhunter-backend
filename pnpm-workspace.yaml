@@ -1,0 +1,7 @@
+# pnpm 10 blocks dependency build scripts unless explicitly allowed.
+# These are the ones this project needs to run postinstall builds.
+allowBuilds:
+  '@biomejs/biome': true
+  '@swc/core': true
+  esbuild: true
+  unrs-resolver: true
