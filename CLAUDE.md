@@ -10,6 +10,7 @@ Code session rooted there can edit this repo too (see that repo's
 | File | Contents |
 |---|---|
 | [docs/SPEC.md](docs/SPEC.md) | The client specification. **Cite it** as §n, BR-nn, UAT-nn. |
+| [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) | Frozen client-facing contracts. Read before touching a client-visible response. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design decisions and the data model. Read before adding a module. |
 | [PLAN.md](PLAN.md) | Milestones in dependency order, mapped to BR/UAT. |
 | [TODO.md](TODO.md) | Working checklist and the open blocking decisions. |

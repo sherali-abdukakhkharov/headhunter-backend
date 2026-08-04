@@ -16,10 +16,13 @@ needs them.
 - [?] **File service** - reuse `d:\Dev\secure-file-router` or implement in-repo?
       Review `secure-file-router` first; authorized short-lived access is exactly
       its purpose. *Blocks M3.*
-- [?] **Push provider** - FCM for both platforms, or FCM + APNs directly?
-      *Blocks M9.*
-- [?] **Time zone policy** - single platform zone (Asia/Tashkent) or per-user?
-      §8.3 only says "the configured local time zone". *Blocks M8 interviews.*
+- [x] ~~**Push provider**~~ - deferred with M9 to after M10 (client direction
+      2026-08-04). Recommendation stands: FCM only, APNs key uploaded to Firebase.
+      Not an MVP blocker.
+- [x] ~~**Time zone policy**~~ - single platform zone `Asia/Tashkent`, decided
+      2026-08-04 and agreed with the client. `timestamptz` storage, responses carry
+      offset + explicit `timeZone`. Per-user later is additive (`users.time_zone`)
+      and changes no wire format. See [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §2.
 - [?] **Retention periods** for deleted accounts and audit logs (BR-14 defers to
       an approved privacy policy we do not have). *Blocks M1 deletion flow and
       M10 audit.*
@@ -76,32 +79,52 @@ needs them.
 
 ## M2 - Dictionaries
 
+Wire shapes are frozen in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §3.
+
 ### Schema
 - [ ] `dictionary_types` (code)
 - [ ] `dictionary_items` (id, type_code, code, category, parent_id, sort_order,
-      is_active, merged_into_id)
-- [ ] `dictionary_item_translations` (item_id, locale, label) - unique per pair
+      `rank`, is_active, merged_into_id, `revision`)
+- [ ] `dictionary_item_translations` (item_id, locale, label, `revision`) - unique
+      per pair
 - [ ] Index `dictionary_item_translations(item_id, locale)`
+- [ ] Monotonic global `revision` sequence; bumped on every item **and**
+      translation write. Type version = max revision across its rows, which is what
+      makes `?since=` a real delta.
+- [ ] A merge bumps the revision of **both** rows, so one delta carries the loser
+      in `removed` (with `mergedIntoId`) and the survivor in `items`
 
 ### Endpoints
-- [ ] `GET /dictionaries/:type` with locale resolution + ETag/version
-- [ ] `GET /dictionaries/regions` returning the region→district tree
-- [ ] `GET /dictionaries/version` so the client knows when to refetch
+- [ ] `GET /dictionaries/manifest` - per-type versions **and** the 10 schema
+      versions, so a cold client revalidates in one request
+- [ ] `GET /dictionaries/{type}?since=<version>` with locale resolution, ETag,
+      `Vary: x-lang`, 304 on `If-None-Match`
+- [ ] `GET /dictionaries/items?ids=` resolving inactive and merged ids, for
+      historical records
+- [ ] Regions come from `type=region` via `parentId`, not a bespoke tree endpoint
 
 ### Cross-cutting
 - [ ] `x-lang` normalization to `uz-Latn | uz-Cyrl | ru | en`, accepting `uz`/`oz`
       aliases (ARCHITECTURE.md §3.1) - strict allow-list, unknown → default
+- [ ] Responses always **emit** canonical casing, in `locale` and in the ETag; the
+      client keys its cache off the response, so a casing slip is a permanent miss
 - [ ] Fallback chain `uz-Cyrl→uz-Latn`, any→`en`, **with a warning log**
 - [ ] Reject activation of an item missing any of the four locales
 - [ ] Test: no dictionary endpoint can ever return a bare code as a label
 - [ ] Test: same occupation selected via each locale resolves to one ID (UAT-13)
+- [ ] Test: emitted locale casing is exactly the four canonical codes
 
 ### Seed content *(large; needs client input)*
 - [ ] Occupations / work types across all five §2.1 categories, with `category`
 - [ ] Skills, industries
 - [ ] Regions + districts/cities of Uzbekistan
-- [ ] Languages + CEFR levels `A1..C2` + `native` as an **ordered** enum
+- [ ] Languages, plus `language_level` `A1..C2` + `native` carrying `rank`
+- [ ] `skill_level` scale carrying `rank`
 - [ ] Employment types, work formats, shift values
+- [ ] `payment_period`: monthly / daily / per-task (§6.3)
+- [ ] `education_level`
+- [ ] `file_purpose`: cv / certificate / evidence - drives the schema
+      `attachments[]` block, so a new evidence type stays data
 - [ ] Tool / transport / physical attributes
 
 ## M3 - Candidate profile + files
@@ -175,12 +198,16 @@ needs them.
 - [ ] Interviews with type-dependent required fields + candidate response
 - [ ] `Idempotency-Key` on message send
 
-## M9 - Notifications
+## M9 - Notifications *(deferred: last feature milestone, after M10)*
+
+Client direction 2026-08-04: MVP first, notifications last to build and test.
 
 - [ ] `notifications` rows for all nine §9.2 events with correct recipients
 - [ ] Unread count, mark read, preferences
 - [ ] Security/account notices not disableable
 - [ ] Device token registration + push dispatch, independent of the stored row
+- [?] Push provider - FCM only (recommended) vs FCM + APNs. No longer urgent;
+      needed before this milestone opens, not before the MVP.
 
 ## M10 - Admin + audit
 

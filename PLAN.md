@@ -25,9 +25,33 @@ a profile contract.
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
 | M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
 | M8 | Chat + interviews | - | after M6+M7 |
-| M9 | Notifications + push | - | after M6 (events exist) |
 | M10 | Admin module + audit | - | after M4+M5 |
+| M9 | Notifications + push | - | **last feature milestone**, after M10 |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
+
+---
+
+## MVP scope
+
+Client direction, 2026-08-04: **MVP first, notifications last to build and test.**
+M9 therefore moves behind M10 despite its events existing from M6.
+
+MVP is the core loop — employer posts, candidate applies: **M1 · M2 · M3 · M4 ·
+M5 · M6**. Outside it: M7, M8, M9, M10.
+
+Two consequences worth holding onto:
+
+- **BR-04 has no enforcer inside the MVP.** "A vacancy requiring moderation is
+  not visible until approved" needs the admin moderation screen, which is M10.
+  Without it a submitted vacancy parks in `under_moderation` forever and the loop
+  never closes. Resolved by `MODERATION_ENABLED` (see M5) rather than by pulling
+  M10 forward.
+- **Dropping M7 costs the spec's flagship scenario.** §7.4 / UAT-06 - "20 Russian
+  C1 operators" - is employer-side candidate search, and §1 frames
+  discovery-without-a-CV as the product's differentiator. A demo without M7 cannot
+  walk the client's own controlled example. Recommendation on record: keep a
+  reduced M7 (filters + result list + count-before-open) in the MVP and defer
+  saved searches and shortlists.
 
 ---
 
@@ -125,6 +149,15 @@ and visible, and its CV is reachable only by an authorized employer.
   (BR-12).
 - Seasonal/agricultural shape verified explicitly: work type, date range, worker
   count, hours, transport, payment method (§7.5, UAT-10).
+- **`MODERATION_ENABLED` env flag.** With the admin module out of the MVP there is
+  nothing that can approve a vacancy, so submit would strand every vacancy in
+  `under_moderation` and BR-04 would silently block the whole loop. When the flag
+  is off, submit transitions `draft → active` directly. The status enum,
+  `under_moderation`, `rejected` and the BR-04 visibility rule all stay
+  implemented; only the queue is absent. The transition **still writes its audit
+  row** (BR-08) with a system actor and an `auto_approved_no_moderator` reason, so
+  the history never claims a human approved it. Flipping the flag on when M10
+  lands needs no client change.
 
 ## M6 - Discovery + applications
 
