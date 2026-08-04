@@ -143,6 +143,21 @@ export interface Sessions {
   user_id: string;
 }
 
+export interface StoredFiles {
+  created_at: Generated<Timestamp>;
+  deleted_at: Timestamp | null;
+  file_name: string;
+  id: Generated<string>;
+  mime_type: string;
+  owner_user_id: string;
+  purpose_id: string;
+  sha256: string;
+  size_bytes: number;
+  telegram_file_id: string;
+  telegram_file_unique_id: string;
+  telegram_message_id: Int8;
+}
+
 export interface UserRoles {
   granted_at: Generated<Timestamp>;
   role: UserRole;
@@ -170,6 +185,7 @@ export interface DB {
   rate_limit_counters: RateLimitCounters;
   schema_versions: SchemaVersions;
   sessions: Sessions;
+  stored_files: StoredFiles;
   user_roles: UserRoles;
   users: Users;
 }

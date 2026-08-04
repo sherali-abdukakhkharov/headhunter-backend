@@ -6,8 +6,8 @@ import { hashSecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AppEnv } from '@infra/env-schema';
 
-/** The §12.5 buckets that exist today. Search, messaging and files join at M11. */
-export type RateLimitBucket = 'otp' | 'auth';
+/** The §12.5 buckets that exist today. Search and messaging join with M7 and M8. */
+export type RateLimitBucket = 'otp' | 'auth' | 'files';
 
 /** What a bucket is counted by. A request missing the value skips that rule. */
 export type RateLimitKey = 'ip' | 'phone';
@@ -61,6 +61,15 @@ export class RateLimitService {
         {
           key: 'ip',
           limit: config.get('RATE_LIMIT_AUTH_PER_IP', { infer: true }),
+        },
+      ],
+      // No phone key: file routes are authenticated and carry no phone number.
+      // Keying by user would be better and is why RateLimitGuard notes what
+      // moving it after authentication would buy.
+      files: [
+        {
+          key: 'ip',
+          limit: config.get('RATE_LIMIT_FILES_PER_IP', { infer: true }),
         },
       ],
     };

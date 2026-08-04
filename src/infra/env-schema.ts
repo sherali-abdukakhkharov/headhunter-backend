@@ -51,6 +51,25 @@ export interface AppEnv {
   RATE_LIMIT_OTP_PER_IP: number;
   RATE_LIMIT_AUTH_PER_PHONE: number;
   RATE_LIMIT_AUTH_PER_IP: number;
+  RATE_LIMIT_FILES_PER_IP: number;
+
+  /**
+   * Bot token for the file store. Also the download credential: Telegram's
+   * `file_id` values are per-bot, so replacing this token orphans every stored
+   * file rather than merely re-authenticating.
+   */
+  TELEGRAM_BOT_TOKEN: string;
+  /** The chat every uploaded file is sent to. */
+  TELEGRAM_STORAGE_CHAT_ID: string;
+  TELEGRAM_API_BASE_URL: string;
+  TELEGRAM_TIMEOUT_MS: number;
+
+  /**
+   * Upload ceiling. Bounded above by Telegram's **download** limit of 20 MB, not
+   * its 50 MB send limit: a larger file would upload successfully and then be
+   * permanently unreadable.
+   */
+  FILE_MAX_SIZE_BYTES: number;
 }
 
 /**
@@ -128,6 +147,33 @@ export const envSchema = Joi.object<AppEnv, true>({
   RATE_LIMIT_OTP_PER_IP: Joi.number().integer().min(1).default(30),
   RATE_LIMIT_AUTH_PER_PHONE: Joi.number().integer().min(1).default(20),
   RATE_LIMIT_AUTH_PER_IP: Joi.number().integer().min(1).default(120),
+  RATE_LIMIT_FILES_PER_IP: Joi.number().integer().min(1).default(120),
+
+  // Telegram-backed file storage (ARCHITECTURE.md §9).
+  TELEGRAM_BOT_TOKEN: Joi.string().required(),
+  // Accepts a numeric id (`-1001234567890` for a channel or group) or an @name.
+  // Not validated as a number: channel ids are negative and beyond 32 bits, and
+  // a supergroup id changes shape when a group is upgraded.
+  TELEGRAM_STORAGE_CHAT_ID: Joi.string().required(),
+  TELEGRAM_API_BASE_URL: Joi.string()
+    .uri({ scheme: ['https', 'http'] })
+    .default('https://api.telegram.org'),
+  TELEGRAM_TIMEOUT_MS: Joi.number().integer().min(1_000).default(30_000),
+
+  // 10 MB by default, matching the client contract's `maxSizeBytes` (§4.1). The
+  // 20 MB ceiling is Telegram's getFile download limit - anything above it can be
+  // stored and never retrieved, so it is refused at boot rather than at upload.
+  FILE_MAX_SIZE_BYTES: Joi.number()
+    .integer()
+    .min(1024)
+    .max(20 * 1024 * 1024)
+    .default(10 * 1024 * 1024)
+    .messages({
+      'number.max':
+        'FILE_MAX_SIZE_BYTES cannot exceed 20971520: the Telegram Bot API ' +
+        'refuses to download files larger than 20 MB, so a bigger file could ' +
+        'be uploaded but never read back.',
+    }),
 })
   // DATABASE_URL is consumed by kysely-codegen and the migration runner, not
   // by the app, so it is permitted but not required here.

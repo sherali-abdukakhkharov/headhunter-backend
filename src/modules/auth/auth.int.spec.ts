@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as dotenv from 'dotenv';
-import { Kysely, PostgresDialect } from 'kysely';
+import { Kysely, PostgresDialect, sql } from 'kysely';
 import { Pool } from 'pg';
 
 import { TooManyRequestsError } from '@infra/api/exceptions/localized.exception';
@@ -166,11 +166,12 @@ describe('OtpService', () => {
 
     const sent = await otp.send(phone, 'login', null);
 
-    // Age the row rather than waiting: the boundary is what matters, not the
-    // clock.
+    // Age the row rather than waiting, and with the database clock: `verify`
+    // compares against `now()`, so a `Date.now()` value only holds while the two
+    // clocks agree.
     await db
       .updateTable('otp_codes')
-      .set({ expires_at: new Date(Date.now() - 1000) })
+      .set({ expires_at: sql<Date>`now() - interval '1 minute'` })
       .where('phone', '=', phone)
       .execute();
 
@@ -495,7 +496,11 @@ describe('SessionService refresh rotation', () => {
     const session = await sessions.issue(userId, {});
     await db
       .updateTable('sessions')
-      .set({ expires_at: new Date(Date.now() - 1000) })
+      // Aged with the *database* clock, deliberately. `rotate` decides expiry
+      // with `now()`, so a value derived from `Date.now()` only works while the
+      // two clocks agree - and this is a container, so they drift. A one-second
+      // margin against the wrong clock is a test that fails on a slow morning.
+      .set({ expires_at: sql<Date>`now() - interval '1 minute'` })
       .where('id', '=', session.sessionId)
       .execute();
 
