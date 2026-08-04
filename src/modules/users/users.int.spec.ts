@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { NotFoundException } from '@nestjs/common';
-
+import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
 
@@ -61,7 +60,7 @@ describe('UsersService', () => {
 
   it('reports a missing account as not found rather than returning nothing', async () => {
     await expect(users.findProfile(randomUUID())).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
@@ -83,7 +82,7 @@ describe('UsersService', () => {
 
   it('refuses a locale change for an account that no longer exists', async () => {
     await expect(users.updateLocale(randomUUID(), 'ru')).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 

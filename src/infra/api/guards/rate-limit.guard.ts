@@ -14,7 +14,7 @@ import {
 } from '@infra/rate-limit/rate-limit.service';
 
 import { RATE_LIMIT_BUCKET_KEY } from '../decorators/rate-limit.decorator';
-import { TooManyRequestsException } from '../exceptions/too-many-requests.exception';
+import { TooManyRequestsError } from '../exceptions/localized.exception';
 
 /**
  * Enforces the §12.5 buckets on routes carrying `@RateLimit`.
@@ -67,8 +67,8 @@ export class RateLimitGuard implements CanActivate {
         // Returning on the first denial leaves the remaining counters
         // un-incremented, which is intended: a request already refused should
         // not also consume the caller's budget in another bucket.
-        throw new TooManyRequestsException(
-          'Too many requests. Try again later.',
+        throw new TooManyRequestsError(
+          'error.too_many_requests',
           verdict.retryAfterSeconds,
         );
       }

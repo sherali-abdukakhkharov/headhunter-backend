@@ -1,13 +1,13 @@
 import {
   type CanActivate,
   type ExecutionContext,
-  ForbiddenException,
   Inject,
   Injectable,
 } from '@nestjs/common';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
 
+import { ForbiddenError } from '../exceptions/localized.exception';
 import type { AuthenticatedRequest } from '../decorators/current-user.decorator';
 
 /** Methods that change state, and therefore fall under BR-10. */
@@ -48,19 +48,15 @@ export class AccountStatusGuard implements CanActivate {
       .executeTakeFirst();
 
     if (!row) {
-      throw new ForbiddenException('Account no longer exists');
+      throw new ForbiddenError('account.gone');
     }
 
     if (row.status === 'blocked') {
-      throw new ForbiddenException(
-        'This account is blocked and cannot perform this action',
-      );
+      throw new ForbiddenError('account.blocked_action');
     }
 
     if (row.status === 'restricted') {
-      throw new ForbiddenException(
-        'This account is restricted and cannot perform this action',
-      );
+      throw new ForbiddenError('account.restricted_action');
     }
 
     return true;

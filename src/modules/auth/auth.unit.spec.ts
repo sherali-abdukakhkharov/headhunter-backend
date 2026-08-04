@@ -1,5 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
-
+import { BadRequestError } from '@infra/api/exceptions/localized.exception';
 import { maskPhone, normalizePhone } from '@infra/phone/phone';
 
 import { defaultActiveRole } from './auth.service';
@@ -16,10 +15,8 @@ describe('normalizePhone', () => {
   });
 
   it('rejects lengths that cannot be a phone number', () => {
-    expect(() => normalizePhone('12345')).toThrow(BadRequestException);
-    expect(() => normalizePhone('1234567890123456')).toThrow(
-      BadRequestException,
-    );
+    expect(() => normalizePhone('12345')).toThrow(BadRequestError);
+    expect(() => normalizePhone('1234567890123456')).toThrow(BadRequestError);
   });
 });
 

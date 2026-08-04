@@ -6,7 +6,7 @@ import * as dotenv from 'dotenv';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 
-import { TooManyRequestsException } from '@infra/api/exceptions/too-many-requests.exception';
+import { TooManyRequestsError } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
@@ -104,7 +104,7 @@ describe('OtpService', () => {
     // Consumed: replaying the same code must fail.
     await expect(
       otp.verify(phone, 'login', sent.devCode as string),
-    ).rejects.toThrow(/Invalid or expired code/);
+    ).rejects.toMatchObject({ messageKey: 'auth.otp_invalid' });
   });
 
   it('supersedes the previous code so only one is ever valid', async () => {
@@ -118,7 +118,7 @@ describe('OtpService', () => {
     // so the first must be dead even though it has not expired.
     await expect(
       otp.verify(phone, 'login', first.devCode as string),
-    ).rejects.toThrow(/Invalid or expired code/);
+    ).rejects.toMatchObject({ messageKey: 'auth.otp_invalid' });
 
     await expect(
       otp.verify(phone, 'login', second.devCode as string),
@@ -131,7 +131,7 @@ describe('OtpService', () => {
 
     await otp.send(phone, 'login', null);
     await expect(otp.send(phone, 'login', null)).rejects.toThrow(
-      TooManyRequestsException,
+      TooManyRequestsError,
     );
   });
 
@@ -144,13 +144,13 @@ describe('OtpService', () => {
 
     // OTP_MAX_ATTEMPTS is 3 here.
     for (let i = 0; i < 3; i += 1) {
-      await expect(otp.verify(phone, 'login', wrong)).rejects.toThrow(
-        /Invalid or expired code/,
-      );
+      await expect(otp.verify(phone, 'login', wrong)).rejects.toMatchObject({
+        messageKey: 'auth.otp_invalid',
+      });
     }
 
     await expect(otp.verify(phone, 'login', wrong)).rejects.toThrow(
-      TooManyRequestsException,
+      TooManyRequestsError,
     );
 
     // Locked out means the *correct* code is dead too - otherwise the limit only
@@ -176,7 +176,7 @@ describe('OtpService', () => {
 
     await expect(
       otp.verify(phone, 'login', sent.devCode as string),
-    ).rejects.toThrow(/Invalid or expired code/);
+    ).rejects.toMatchObject({ messageKey: 'auth.otp_invalid' });
   });
 
   it('never stores the code itself', async () => {
@@ -254,7 +254,7 @@ describe('AuthService registration and login', () => {
 
     await expect(
       auth.completePhoneVerification(phone, 'en', {}),
-    ).rejects.toThrow(/blocked/);
+    ).rejects.toMatchObject({ messageKey: 'account.blocked' });
   });
 
   it('refuses to self-assign the admin role', async () => {
@@ -270,9 +270,9 @@ describe('AuthService registration and login', () => {
 
     void tokens;
 
-    await expect(auth.selectRoles(user.id, ['admin'])).rejects.toThrow(
-      /cannot be self-assigned/,
-    );
+    await expect(auth.selectRoles(user.id, ['admin'])).rejects.toMatchObject({
+      messageKey: 'role.admin_not_self_assignable',
+    });
 
     const roles = await db
       .selectFrom('user_roles')
@@ -316,7 +316,7 @@ describe('AuthService registration and login', () => {
 
     await expect(
       auth.switchActiveRole(user.id, session.sessionId, 'employer'),
-    ).rejects.toThrow(/not granted/);
+    ).rejects.toMatchObject({ messageKey: 'role.not_granted' });
 
     await expect(
       auth.switchActiveRole(user.id, session.sessionId, 'candidate'),
@@ -445,8 +445,8 @@ describe('SessionService refresh rotation', () => {
 
     // Replay of the first token: either a stolen token or a client without
     // single-flight refresh. Both must invalidate the family.
-    await expect(sessions.rotate(first.refreshToken, {})).rejects.toThrow(
-      /already used/,
+    await expect(sessions.rotate(first.refreshToken, {})).rejects.toMatchObject(
+      { messageKey: 'auth.refresh_reused' },
     );
 
     const live = await db
@@ -488,8 +488,8 @@ describe('SessionService refresh rotation', () => {
     const { sessions } = services();
     const userId = await newUser();
 
-    await expect(sessions.rotate('not-a-real-token', {})).rejects.toThrow(
-      /Invalid refresh token/,
+    await expect(sessions.rotate('not-a-real-token', {})).rejects.toMatchObject(
+      { messageKey: 'auth.refresh_invalid' },
     );
 
     const session = await sessions.issue(userId, {});
@@ -499,9 +499,9 @@ describe('SessionService refresh rotation', () => {
       .where('id', '=', session.sessionId)
       .execute();
 
-    await expect(sessions.rotate(session.refreshToken, {})).rejects.toThrow(
-      /expired/,
-    );
+    await expect(
+      sessions.rotate(session.refreshToken, {}),
+    ).rejects.toMatchObject({ messageKey: 'auth.refresh_expired' });
   });
 
   it('never stores the refresh token itself', async () => {
@@ -625,9 +625,9 @@ describe('TokenService', () => {
       sid: 'session-1',
     });
 
-    await expect(mine.verifyAccessToken(forged)).rejects.toThrow(
-      /Invalid or expired access token/,
-    );
+    await expect(mine.verifyAccessToken(forged)).rejects.toMatchObject({
+      messageKey: 'auth.token_invalid',
+    });
   });
 
   it('rejects an expired token', async () => {

@@ -1,6 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+
+import { UnauthorizedError } from '@infra/api/exceptions/localized.exception';
 
 import type { UserRole } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
@@ -66,7 +68,7 @@ export class TokenService {
       // Deliberately not echoing the underlying reason: "expired" versus
       // "signature invalid" is useful to an attacker and useless to a client
       // that must refresh either way.
-      throw new UnauthorizedException('Invalid or expired access token');
+      throw new UnauthorizedError('auth.token_invalid');
     }
   }
 }

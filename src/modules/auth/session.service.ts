@@ -1,14 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  Inject,
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
+import { UnauthorizedError } from '@infra/api/exceptions/localized.exception';
 import { generateRefreshToken, hashSecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { UserRole } from '@infra/db/database.types';
@@ -177,13 +173,13 @@ export class SessionService {
         this.logger.warn(
           `Refresh token reuse detected; revoked session family ${outcome.familyId}`,
         );
-        throw new UnauthorizedException('Refresh token already used');
+        throw new UnauthorizedError('auth.refresh_reused');
 
       case 'expired':
-        throw new UnauthorizedException('Refresh token expired');
+        throw new UnauthorizedError('auth.refresh_expired');
 
       default:
-        throw new UnauthorizedException('Invalid refresh token');
+        throw new UnauthorizedError('auth.refresh_invalid');
     }
   }
 

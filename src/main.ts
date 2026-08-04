@@ -8,7 +8,11 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
-import { RetryAfterFilter } from './infra/api/filters/retry-after.filter';
+import {
+  ValidationFailedException,
+  toViolations,
+} from './infra/api/exceptions/validation-failed.exception';
+import { ApiExceptionFilter } from './infra/api/filters/api-exception.filter';
 import type { AppEnv } from './infra/env-schema';
 
 async function bootstrap(): Promise<void> {
@@ -47,12 +51,18 @@ async function bootstrap(): Promise<void> {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      // §3.2 requires localized validation messages, and this factory cannot see
+      // the request. It emits structured violations instead; ApiExceptionFilter
+      // renders them once the locale is known.
+      exceptionFactory: (errors) =>
+        new ValidationFailedException(toViolations(errors)),
     }),
   );
 
-  // Turns the `retryAfterSeconds` carried by a 429 into a `Retry-After` header,
-  // wherever in the stack it was thrown.
-  app.useGlobalFilters(new RetryAfterFilter());
+  // Every error body in the product is produced here: localized message, stable
+  // machine-readable code, `Retry-After` where there is one, and nothing
+  // internal on an unexpected failure.
+  app.useGlobalFilters(new ApiExceptionFilter());
 
   const swaggerDoc = SwaggerModule.createDocument(
     app,

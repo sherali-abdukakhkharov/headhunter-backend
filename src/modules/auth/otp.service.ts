@@ -1,13 +1,11 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
-import { TooManyRequestsException } from '@infra/api/exceptions/too-many-requests.exception';
+import {
+  TooManyRequestsError,
+  UnauthorizedError,
+} from '@infra/api/exceptions/localized.exception';
 import { generateOtpCode, hashSecret, verifySecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { OtpPurpose } from '@infra/db/database.types';
@@ -82,8 +80,8 @@ export class OtpService {
         .executeTakeFirst();
 
       if (recent) {
-        throw new TooManyRequestsException(
-          'A code was already sent. Wait before requesting another.',
+        throw new TooManyRequestsError(
+          'auth.otp_resend_too_soon',
           Math.max(recent.retry_after, 1),
         );
       }
@@ -197,15 +195,15 @@ export class OtpService {
       });
 
     if (outcome === 'locked_out') {
-      throw new TooManyRequestsException(
-        'Too many incorrect attempts. Request a new code.',
-      );
+      // No `Retry-After`: a locked-out code is not waiting for a clock, the
+      // client has to request a new one.
+      throw new TooManyRequestsError('auth.otp_too_many_attempts');
     }
 
     // One message for "no code", "expired" and "wrong code": distinguishing
     // them tells an attacker which phone numbers have a pending code.
     if (outcome === 'invalid') {
-      throw new UnauthorizedException('Invalid or expired code');
+      throw new UnauthorizedError('auth.otp_invalid');
     }
   }
 }

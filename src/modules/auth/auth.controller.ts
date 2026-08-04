@@ -5,7 +5,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -23,6 +22,7 @@ import type { Request } from 'express';
 
 import { Public } from '@infra/api/decorators/public.decorator';
 import { RateLimit } from '@infra/api/decorators/rate-limit.decorator';
+import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import {
   ActiveUser,
   type CurrentUser,
@@ -208,7 +208,7 @@ export class AuthController {
     // 404 rather than 403 for someone else's session id: confirming that an id
     // exists but belongs to another account is information we do not owe.
     if (!revoked) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundError('auth.session_not_found');
     }
   }
 

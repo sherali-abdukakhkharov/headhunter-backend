@@ -1,5 +1,6 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
+import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type {
   AccountStatus,
@@ -30,7 +31,7 @@ export class UsersService {
     if (!user) {
       // Reachable with a valid token whose account was purged; the client's
       // correct response is to log out, which a 404 gets across.
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('account.not_found');
     }
 
     const roles = await this.db
@@ -64,7 +65,7 @@ export class UsersService {
       .executeTakeFirst();
 
     if (!updated) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('account.not_found');
     }
 
     return updated.locale;
@@ -87,7 +88,7 @@ export class UsersService {
         .executeTakeFirst();
 
       if (!user) {
-        throw new NotFoundException('User not found');
+        throw new NotFoundError('account.not_found');
       }
 
       const requestedAt = new Date();

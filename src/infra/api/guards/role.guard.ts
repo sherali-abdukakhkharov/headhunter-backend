@@ -1,14 +1,16 @@
 import {
   type CanActivate,
   type ExecutionContext,
-  ForbiddenException,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import type { UserRole } from '@infra/db/database.types';
 
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from '../exceptions/localized.exception';
 import { REQUIRED_ROLES_KEY } from '../decorators/require-role.decorator';
 import type { AuthenticatedRequest } from '../decorators/current-user.decorator';
 
@@ -42,21 +44,19 @@ export class RoleGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedError('error.unauthorized');
     }
 
     if (!user.activeRole) {
       // A multi-role account that has not chosen yet. Distinguished from a plain
       // 403 because the client's fix is different: select a role, not give up.
-      throw new ForbiddenException(
-        'No active role selected. Call POST /auth/active-role first.',
-      );
+      throw new ForbiddenError('role.none_active');
     }
 
     if (!required.includes(user.activeRole)) {
-      throw new ForbiddenException(
-        `This action requires one of: ${required.join(', ')}`,
-      );
+      throw new ForbiddenError('role.not_allowed', {
+        roles: required.join(', '),
+      });
     }
 
     return true;

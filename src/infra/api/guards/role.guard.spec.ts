@@ -1,13 +1,13 @@
-import {
-  ExecutionContext,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import type { UserRole } from '@infra/db/database.types';
 
 import type { CurrentUser } from '../decorators/current-user.decorator';
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from '../exceptions/localized.exception';
 import { RoleGuard } from './role.guard';
 
 function contextWith(user: CurrentUser | undefined): ExecutionContext {
@@ -51,7 +51,7 @@ describe('RoleGuard', () => {
   it('refuses when the active role is not required', () => {
     expect(() =>
       guardRequiring(['employer']).canActivate(contextWith(candidate)),
-    ).toThrow(ForbiddenException);
+    ).toThrow(ForbiddenError);
   });
 
   it('refuses a role the account holds but is not acting as', () => {
@@ -66,7 +66,7 @@ describe('RoleGuard', () => {
 
     expect(() =>
       guardRequiring(['employer']).canActivate(contextWith(both)),
-    ).toThrow(ForbiddenException);
+    ).toThrow(ForbiddenError);
   });
 
   it('tells a multi-role caller with no active role what to do', () => {
@@ -76,14 +76,18 @@ describe('RoleGuard', () => {
       activeRole: null,
     };
 
-    expect(() =>
-      guardRequiring(['employer']).canActivate(contextWith(undecided)),
-    ).toThrow(/active-role/);
+    expect(
+      () => guardRequiring(['employer']).canActivate(contextWith(undecided)),
+      // The message is chosen by the request locale, so the assertion is on the
+      // catalog key rather than on prose that changes per language.
+    ).toThrow(
+      expect.objectContaining({ messageKey: 'role.none_active' }) as Error,
+    );
   });
 
   it('refuses an unauthenticated request on a role-guarded route', () => {
     expect(() =>
       guardRequiring(['candidate']).canActivate(contextWith(undefined)),
-    ).toThrow(UnauthorizedException);
+    ).toThrow(UnauthorizedError);
   });
 });

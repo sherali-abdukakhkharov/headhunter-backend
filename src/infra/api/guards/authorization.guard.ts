@@ -2,13 +2,13 @@ import {
   type CanActivate,
   type ExecutionContext,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { SessionService } from '@modules/auth/session.service';
 import { TokenService } from '@modules/auth/token.service';
 
+import { UnauthorizedError } from '../exceptions/localized.exception';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { AuthenticatedRequest } from '../decorators/current-user.decorator';
 
@@ -45,7 +45,7 @@ export class AuthorizationGuard implements CanActivate {
     const token = extractBearerToken(request.headers.authorization);
 
     if (!token) {
-      throw new UnauthorizedException('Authorization token is required');
+      throw new UnauthorizedError('auth.token_required');
     }
 
     const claims = await this.tokens.verifyAccessToken(token);
@@ -55,7 +55,7 @@ export class AuthorizationGuard implements CanActivate {
     // revoked device working for up to the full access-token TTL, which is not
     // what a user pressing that button believes it means.
     if (!(await this.sessions.isActive(claims.sid))) {
-      throw new UnauthorizedException('Session has been revoked');
+      throw new UnauthorizedError('auth.session_revoked');
     }
 
     request.user = {

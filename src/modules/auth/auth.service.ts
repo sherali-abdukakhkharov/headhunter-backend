@@ -1,10 +1,9 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
+import {
+  BadRequestError,
+  ForbiddenError,
+} from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { LocaleCode, UserRole } from '@infra/db/database.types';
 
@@ -57,7 +56,7 @@ export class AuthService {
           // BR-10: a blocked account cannot authenticate at all, not merely fail
           // its mutations.
           if (existing.status === 'blocked') {
-            throw new ForbiddenException('This account is blocked');
+            throw new ForbiddenError('account.blocked');
           }
 
           await trx
@@ -139,11 +138,11 @@ export class AuthService {
    */
   async selectRoles(userId: string, roles: UserRole[]): Promise<UserRole[]> {
     if (roles.length === 0) {
-      throw new BadRequestException('At least one role is required');
+      throw new BadRequestError('role.at_least_one_required');
     }
 
     if (roles.includes('admin')) {
-      throw new ForbiddenException('The admin role cannot be self-assigned');
+      throw new ForbiddenError('role.admin_not_self_assignable');
     }
 
     const unique = [...new Set(roles)];
@@ -173,7 +172,7 @@ export class AuthService {
     const roles = await this.sessions.rolesFor(userId);
 
     if (!roles.includes(role)) {
-      throw new ForbiddenException('That role is not granted to this account');
+      throw new ForbiddenError('role.not_granted');
     }
 
     const accessToken = await this.tokens.signAccessToken({

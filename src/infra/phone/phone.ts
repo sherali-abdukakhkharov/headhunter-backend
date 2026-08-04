@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestError } from '@infra/api/exceptions/localized.exception';
 
 /**
  * Phone-number handling.
@@ -20,7 +20,7 @@ export function normalizePhone(raw: string): string {
   const digits = raw.replace(/[^\d]/g, '');
 
   if (digits.length < 9 || digits.length > 15) {
-    throw new BadRequestException('phone must contain 9 to 15 digits');
+    throw new BadRequestError('auth.phone_invalid');
   }
 
   return `+${digits}`;

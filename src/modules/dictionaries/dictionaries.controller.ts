@@ -3,7 +3,6 @@ import {
   Get,
   Header,
   HttpStatus,
-  NotFoundException,
   Param,
   Query,
   Req,
@@ -21,6 +20,7 @@ import type { Request, Response } from 'express';
 
 import { Public } from '@infra/api/decorators/public.decorator';
 import { XLang } from '@infra/api/decorators/x-lang.decorator';
+import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import type { LocaleCode } from '@infra/db/database.types';
 
 import { DictionariesService } from './dictionaries.service';
@@ -120,7 +120,7 @@ export class DictionariesController {
     // An unknown type is a 404 rather than an empty set: a client that
     // misspelled a type must find out, not silently render no options.
     if (!known.includes(type)) {
-      throw new NotFoundException(`Unknown dictionary type: ${type}`);
+      throw new NotFoundError('dictionary.unknown_type', { type });
     }
 
     const version = await this.dictionaries.typeVersion(type);
