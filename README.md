@@ -1,98 +1,148 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# headhunter-backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS API for the Headhunter job search and recruitment platform.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Companion app: `headhunter-app` — `d:\Dev\tgbots\headhunter-app`.
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Concern | Choice |
+|---|---|
+| Framework | NestJS 11 |
+| Language | TypeScript 5.9.3 (pinned — see Gotchas) |
+| Compiler | SWC (`nest build` with `builder: swc`) |
+| Database | PostgreSQL 18 via Kysely 0.29 (query builder, not an ORM) |
+| Migrations | Kysely migrator, run with `tsx` |
+| Validation | Joi for env, class-validator for DTOs |
+| Logging | pino via nestjs-pino |
+| Docs | Swagger at `/docs`, Scalar at `/reference` |
+| Formatting | Biome (formatter only) |
+| Linting | ESLint 10 flat config + typescript-eslint (type-aware) |
+| Tests | Jest + `@swc/jest` |
+| Package manager | pnpm 10.30.3 |
 
-## Project setup
+Formatting and linting are deliberately split: **Biome formats, ESLint lints.**
+Biome's linter is off (`biome.json`) and `eslint-config-prettier` is last in the
+ESLint config, so the two never fight.
 
-```bash
-$ pnpm install
+## Local ports
+
+Neither is the default, and the reason matters:
+
+| Service | Port | Why |
+|---|---|---|
+| API | **3001** | The `sahih-bot` container permanently publishes host port 3000 |
+| Postgres | **5435** | This machine already runs Postgres on 5432/5433/5434 |
+
+## Getting started
+
+```sh
+cp .env.example .env      # already done for local dev
+pnpm install
+pnpm db:up                # Postgres 18 in Docker
+pnpm migrate:latest       # apply migrations
+pnpm start:dev            # http://localhost:3001
 ```
 
-## Compile and run the project
+Check it:
 
-```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+```sh
+curl http://localhost:3001/health
+# {"status":"ok","database":"up","version":"0.0.1","timestamp":"..."}
 ```
 
-## Run tests
+## Commands
 
-```bash
-# unit tests
-$ pnpm run test
+```sh
+pnpm start:dev            # watch mode
+pnpm build                # SWC build + full type check
+pnpm typecheck            # tsc --noEmit
+pnpm lint                 # eslint --fix
+pnpm format               # biome format --write
+pnpm test                 # jest
+pnpm test:cov             # coverage
 
-# e2e tests
-$ pnpm run test:e2e
+pnpm db:up / db:down      # Postgres container up/down
+pnpm db:logs              # follow Postgres logs
 
-# test coverage
-$ pnpm run test:cov
+pnpm migrate:latest       # apply all pending migrations
+pnpm migrate:up           # apply the next one
+pnpm migrate:down         # roll back the most recent
+pnpm migrate:status        # what is applied and what is pending
+pnpm migrate:typecheck    # type-check migrations without running them
+
+pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the live DB
 ```
 
-## Deployment
+## Structure
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+```
+src/
+  main.ts                        bootstrap: helmet, CORS, validation, Swagger, shutdown hooks
+  app.module.ts                  config + logging + database + feature modules
+  infra/
+    env-schema.ts                Joi schema; a bad env var fails the boot, not a request
+    db/
+      database.module.ts         global Kysely provider (KYSELY token), closes the pool on shutdown
+      database.types.ts          Kysely schema types (regenerate with kysely:generate)
+      migrate.ts                 standalone migration runner
+  modules/<feature>/
+    <feature>.controller.ts      HTTP layer, Swagger decorators
+    <feature>.service.ts         business logic
+    dto/                         request/response DTOs
+migrations/                      timestamped Kysely migrations
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Architecture is **lean modular**: Controller → Service → (Repository, once a
+module's data access earns one). No CQRS buses or DDD entities; add them
+per-module only where they actually pay for themselves.
 
-## Resources
+Path aliases live in three places that must stay in sync — `tsconfig.json`,
+`.swcrc`, and Jest's `moduleNameMapper`: `src/*`, `@core/*`, `@infra/*`,
+`@modules/*`, `@shared/*`, `@utils/*`.
 
-Check out a few resources that may come in handy when working with NestJS:
+## Adding a migration
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Create `migrations/<YYYYMMDDHHMMSS>_<name>.ts` exporting `up` and `down`:
 
-## Support
+```ts
+import { type Kysely, sql } from 'kysely';
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+export async function up(db: Kysely<any>): Promise<void> { /* ... */ }
+export async function down(db: Kysely<any>): Promise<void> { /* ... */ }
+```
 
-## Stay in touch
+`Kysely<any>` is required — each migration runs against a different schema
+version, so the generated `DB` type does not apply. ESLint allows `any` under
+`migrations/` for exactly this reason.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Then `pnpm migrate:latest && pnpm kysely:generate`.
 
-## License
+## Gotchas worth knowing
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Every one of these was hit while setting the project up:
+
+- **Kysely 0.29 is pure ESM** (`"type": "module"`, no CJS build). Node 24 can
+  `require()` an ESM graph so the compiled CJS app runs fine, but Jest cannot —
+  hence `transformIgnorePatterns` in `package.json`, which lets `@swc/jest`
+  transform it.
+- **The migrator moved.** Import `Migrator` from `kysely/migration`, not the
+  package root.
+- **Kysely's `FileMigrationProvider` is broken on Windows** — it `import()`s a
+  bare `D:\...` path, which Node's ESM loader rejects with
+  `ERR_UNSUPPORTED_ESM_URL_SCHEME` (it reads `D:` as a URL scheme). `migrate.ts`
+  uses a small custom provider that converts paths with `pathToFileURL` first.
+- **TypeScript is pinned to 5.9.3, not `latest`.** npm's `typescript@latest` is
+  now 7.x, but `typescript-eslint` declares `typescript: >=4.8.4 <6.1.0`, so
+  TS 7 silently breaks the lint stack.
+- **Postgres 18 changed its volume layout.** The mount must be at
+  `/var/lib/postgresql`, *not* `/var/lib/postgresql/data`; the old path makes the
+  container refuse to start.
+- **pnpm needs `CI=true`** to remove `node_modules` non-interactively, plus
+  `--no-frozen-lockfile` alongside it when `package.json` has changed.
+
+## Not built yet
+
+Auth (JWT), domain modules (users, vacancies, applications), rate limiting,
+e2e tests, Dockerfile, CI. The `/health` module is scaffolding that proves the
+API ↔ Postgres wiring — replace it with real features rather than building on it.

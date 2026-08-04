@@ -60,6 +60,19 @@ export default tseslint.config(
     },
   },
   {
+    // Kysely migrations must be typed `Kysely<any>`: each migration runs
+    // against a different schema version, so the generated DB type does not
+    // apply. This is Kysely's documented signature, not laziness.
+    files: ['migrations/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+    },
+  },
+  {
     // Tests are allowed to be loose about types when building fixtures.
     files: ['**/*.spec.ts', 'test/**/*.ts'],
     rules: {

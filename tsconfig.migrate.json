@@ -1,10 +1,13 @@
 {
+  // Typecheck-only config for the migration runner and migration files
+  // (`pnpm migrate:typecheck`). Migrations are *executed* by tsx, not tsc.
+  //
+  // Inherits `module`/`moduleResolution: nodenext` from the base config on
+  // purpose: Kysely 0.29 is ESM-only, and only nodenext models Node 22+'s
+  // ability to require() an ESM graph. Forcing commonjs/node16 here makes
+  // TypeScript reject `import ... from 'kysely/migration'` with TS1479.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    // Migrations run through ts-node as plain CommonJS scripts, so nodenext
-    // module resolution (which the Nest build uses) is overridden here.
-    "module": "commonjs",
-    "moduleResolution": "node",
     "noEmit": true
   },
   "include": ["src/infra/db/**/*.ts", "migrations/**/*.ts"]

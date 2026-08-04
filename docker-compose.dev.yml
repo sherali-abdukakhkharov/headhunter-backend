@@ -10,9 +10,15 @@ services:
       POSTGRES_USER: headhunter
       POSTGRES_PASSWORD: local_dev_password
     ports:
-      - '5432:5432'
+      # Host port 5435, not 5432: this machine already runs Postgres for other
+      # projects (sahih-db on 5433, kirill-lotin-bot on 5434). Staying off the
+      # default port keeps headhunter from colliding with them.
+      - '5435:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18+ images store data in a major-version-specific subdirectory
+      # and require the mount at /var/lib/postgresql, NOT /var/lib/postgresql/data.
+      # Mounting the old path makes the container refuse to start.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U headhunter -d headhunter']
       interval: 5s
