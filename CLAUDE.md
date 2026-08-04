@@ -36,6 +36,12 @@ re-derivable from the text.
 - **Blocked accounts are refused every mutation** (BR-10) — enforced by a guard on
   all mutating routes, not per module.
 - **Contact details go through the one BR-09 helper.** Never inline the rule.
+- **User-facing text is never written at a throw site.** Add a key to
+  `src/infra/i18n/messages.ts` with all four labels and throw a
+  `LocalizedException` subclass carrying it; only `ApiExceptionFilter` knows the
+  request's `x-lang`. The key is also the client-visible error `code`.
+- **Never give a client a Telegram file URL.** It embeds the bot token. File bytes
+  are proxied through this API after an ownership check (ARCHITECTURE.md §9).
 - **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
   BR-06 is checked inside the insert transaction.
 - **Never throw from inside a transaction that already wrote something.** Kysely

@@ -66,8 +66,21 @@ export async function seedDictionaries(
           .execute();
       }
 
+      // Ids of this type's items by code, so a child can reference its parent
+      // without the data file knowing any uuid. Filled as we go, which is why a
+      // parent must appear before its children in the array.
+      const idsByCode = new Map<string, string>();
+
       for (const [index, item] of type.items.entries()) {
-        await seedItem(trx, type, item, index * 10, report);
+        const id = await seedItem(
+          trx,
+          type,
+          item,
+          index * 10,
+          idsByCode,
+          report,
+        );
+        idsByCode.set(item.code, id);
       }
     }
 
@@ -80,13 +93,24 @@ async function seedItem(
   type: SeedType,
   item: SeedItem,
   sortOrder: number,
+  idsByCode: Map<string, string>,
   report: SeedReport,
-): Promise<void> {
+): Promise<string> {
   assertAllLocales(type.code, item);
+
+  const parentId = resolveParent(type, item, idsByCode);
 
   const existing = await trx
     .selectFrom('dictionary_items')
-    .select(['id', 'category', 'item_group', 'rank', 'sort_order', 'is_active'])
+    .select([
+      'id',
+      'category',
+      'item_group',
+      'rank',
+      'sort_order',
+      'parent_id',
+      'is_active',
+    ])
     .where('type_code', '=', type.code)
     .where('code', '=', item.code)
     .executeTakeFirst();
@@ -102,6 +126,7 @@ async function seedItem(
         category: item.category ?? null,
         item_group: item.group ?? null,
         rank: item.rank ?? null,
+        parent_id: parentId,
         sort_order: sortOrder,
         // Activated at the end of this function, once the labels are in place.
         // The constraint is deferred, so this is about intent rather than
@@ -120,6 +145,7 @@ async function seedItem(
       existing.category !== (item.category ?? null) ||
       existing.item_group !== (item.group ?? null) ||
       existing.rank !== (item.rank ?? null) ||
+      existing.parent_id !== parentId ||
       existing.sort_order !== sortOrder;
 
     if (changed) {
@@ -129,6 +155,7 @@ async function seedItem(
           category: item.category ?? null,
           item_group: item.group ?? null,
           rank: item.rank ?? null,
+          parent_id: parentId,
           sort_order: sortOrder,
           updated_at: new Date(),
         })
@@ -152,6 +179,37 @@ async function seedItem(
 
     report.itemsActivated += 1;
   }
+
+  return itemId;
+}
+
+/**
+ * Turns a `parentCode` into the parent's id.
+ *
+ * Fails loudly on an unknown code. The alternative - silently seeding a null
+ * parent - produces a district that belongs to no region: it disappears from the
+ * client's region→district picker while still looking present in the flat list,
+ * which is a far harder thing to notice than a failed seed.
+ */
+function resolveParent(
+  type: SeedType,
+  item: SeedItem,
+  idsByCode: Map<string, string>,
+): string | null {
+  if (!item.parentCode) {
+    return null;
+  }
+
+  const parentId = idsByCode.get(item.parentCode);
+
+  if (!parentId) {
+    throw new Error(
+      `Dictionary seed ${type.code}/${item.code} references parent ` +
+        `"${item.parentCode}", which is not defined earlier in the same type.`,
+    );
+  }
+
+  return parentId;
 }
 
 async function seedLabels(

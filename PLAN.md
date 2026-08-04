@@ -19,7 +19,7 @@ a profile contract.
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
 | M1 | Auth, users, roles, sessions | all authenticated work | **done** (localized error messages open) |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
-| M3 | Candidate profile + files | M6, M7 | next - resolve the file-service decision first |
+| M3 | Candidate profile + files | M6, M7 | next - file storage already done |
 | M4 | Employer profile + verification | M5, M7 | after M1 |
 | M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
@@ -125,9 +125,12 @@ default that still needs sign-off.
   list for the client's prompts.
 - `visibility` enum; BR-02 gate on searchability.
 - `last_meaningful_update_at` distinct from `updated_at`.
-- File upload/replace/download/delete with type and size validation, authorized
-  access via short-lived signed URLs. **Resolve the file-service decision first**
-  (ARCHITECTURE.md §9).
+- ~~File upload/replace/download/delete with type and size validation~~ **done**,
+  on the Telegram Bot API (ARCHITECTURE.md §9). Note the shape differs from the
+  original plan: **no signed URLs**, because Telegram's file URL carries the bot
+  token. Bytes are proxied through this API after an ownership check, which is a
+  stricter reading of §11.1. What M3 adds is attaching a file to a profile and
+  BR-09's rule for employer access.
 
 **Done when:** a profile with occupation, experience, Russian C1, location and
 preferences saves, reports completeness, becomes searchable only when complete

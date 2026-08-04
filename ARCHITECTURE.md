@@ -294,16 +294,46 @@ confirmation. Sessions are listed and individually revocable, plus
 with progress and retry; §12.5 requires type/size validation and malware scanning
 where infrastructure permits.
 
-Design: metadata row in `candidate_files` owned by this service; bytes in object
-storage; downloads via **short-lived signed URLs** issued only after an
-authorization check. Never store a durable public URL.
+**Decided 2026-08-04: storage is the Telegram Bot API.** Bytes are sent with
+`sendDocument` to one fixed chat; a `stored_files` row owned by this service holds
+the metadata; retrieval is `getFile` followed by a download. Client direction, and
+it removes an object-storage dependency from the deployment entirely.
 
-**Open decision (needs a call before M3):** this machine already hosts four
-candidate services - `d:\Dev\file-storage-service`,
-`d:\Dev\new-file-storage-service`, `d:\Dev\secure-file-router`,
-`d:\Dev\file-router`. Evaluate `secure-file-router` first, since authorized
-access is exactly the requirement. Do not build a fifth uploader before that
-review.
+What that choice forces, and why the code looks the way it does:
+
+- **Downloads are proxied, not redirected.** Telegram's file URL is
+  `api.telegram.org/file/bot<token>/<path>` — unauthenticated, and it contains the
+  bot token. It can never reach a client, so `GET /files/:id/content` streams the
+  bytes after an ownership check. This satisfies §11.1 more strictly than signed
+  URLs would: there is no URL to leak.
+- **The ceiling is 20 MB, not 50.** A bot may *send* 50 MB but `getFile` refuses to
+  *download* above 20 MB, so the upload limit is validated against the download
+  ceiling at boot. Above it, a file would store successfully and be permanently
+  unreadable. The client contract's 10 MB (§4.1) sits comfortably under.
+- **No path is ever persisted.** It expires in about an hour, so it is fetched per
+  download.
+- **`file_id` is per-bot.** Replacing `TELEGRAM_BOT_TOKEN` orphans every stored
+  file rather than merely re-authenticating, which makes the token part of the data
+  layer. `file_unique_id` is stored alongside because it is stable across bots and
+  is what a future migration would reconcile against.
+- **A SHA-256 of the uploaded bytes is stored and verified on read.** Serving an
+  employer a document that is not the one the candidate uploaded is worse than
+  serving none.
+- **Deletes are soft**, and Telegram's message deletion is best effort — it refuses
+  messages older than 48 hours. The metadata row is what every read goes through,
+  so a deleted row is unreachable regardless of the residue in the chat.
+
+Two consequences worth stating plainly, since they are properties of the storage
+choice rather than of the code: uploaded documents live in a Telegram chat, so that
+chat's membership is part of this product's privacy surface and it should be a
+private channel whose only other member is the bot; and file retention is bounded
+by that chat's existence, not by our database.
+
+Validation is content-based (§12.5): extension, declared MIME type and magic bytes
+must agree, which is what stops a renamed executable being accepted as a CV. A
+generic `application/octet-stream` is tolerated because mobile pickers send it.
+This is not malware scanning; §12.5 asks for that "where infrastructure permits",
+and Telegram performs none on a bot upload.
 
 ---
 
@@ -364,9 +394,12 @@ Answers change the schema, so raise them before the affected milestone:
    "the approved privacy policy", which we do not have yet.
 2. **Verification evidence** required for individual (non-company) employers
    (§6.1 says "if required by policy").
-3. **Time zone policy** - §8.3 says "the configured local time zone". Single
-   platform zone (Asia/Tashkent) or per-user?
-4. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
+3. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
    age/gender filtering need to be enumerated, since moderation must check them.
-5. **Push provider** - FCM for both platforms, or FCM + APNs directly.
-6. **File service** - reuse `secure-file-router` or build in-repo (§9).
+4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and
+   working, but four of them carry a conventional default rather than an approved
+   list, and the occupation set is a starting point rather than a classifier. See
+   `src/modules/dictionaries/seed/` - each type states its provenance.
+
+*Answered:* time zone (single platform zone `Asia/Tashkent`), push provider
+(deferred with M9), file service (Telegram Bot API, §9 above).

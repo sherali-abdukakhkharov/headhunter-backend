@@ -30,6 +30,50 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-04 - Files live in Telegram, and are always proxied, never redirected
+Client direction: the file store is a Telegram bot posting to one fixed chat.
+*The consequence that shapes the code:* Telegram's download URL is
+`api.telegram.org/file/bot<token>/<path>` - unauthenticated, and it contains the
+bot token. It can never be given to a client, not even briefly, so
+`GET /files/:id/content` streams the bytes after an ownership check. This is a
+**stronger** reading of §11.1 than the signed URLs originally planned: there is no
+URL to leak in the first place.
+*The limit is 20 MB, not 50.* A bot may send 50 MB but `getFile` refuses to
+download above 20 MB, so the upload cap is validated against the download ceiling
+at boot - above it a file stores fine and is permanently unreadable.
+*`file_id` is per-bot,* so `TELEGRAM_BOT_TOKEN` is part of the data layer:
+replacing it orphans every stored file rather than merely re-authenticating. Never
+"rotate it like a secret".
+*Two properties of the choice, not of the code:* uploaded documents live in a
+Telegram chat, so that chat's membership is part of the privacy surface; and file
+retention is bounded by that chat's existence rather than by our database.
+
+### 2026-08-04 - Only the exception filter knows the request language
+User-facing strings live in exactly one catalog; exceptions carry a **key plus
+parameters**, and `ApiExceptionFilter` renders them once it has resolved `x-lang`.
+*Why not render at the throw site:* a service deep in the stack has no business
+knowing the request locale, and threading one through every method signature is
+worse than the English-only strings this replaced. `ValidationPipe`'s
+`exceptionFactory` settles it - it never sees the request, so localized validation
+messages (which §3.2 names explicitly) are only possible in a filter.
+*Side benefit worth keeping:* the catalog key doubles as a stable machine-readable
+`code` in the error body, so a client branches on the cause instead of matching
+translated prose - and an unexpected error is now logged with its stack and
+answered generically, rather than returning Nest's default body.
+
+### 2026-08-04 - Dictionary content states its own provenance
+Every seeded type is tagged `spec`, `default` or `awaiting`, in the data file next
+to the values.
+*Why:* the distinction decides **who may change a value**. A `spec` list is a
+specification change; a `default` is a conventional list we compiled so the
+dependent milestones could be built, and the client still has to approve it. Losing
+that distinction means nobody can tell which lists are load-bearing agreements and
+which are placeholders that shipped.
+*Cyrillic-in-a-Latin-slot is caught by a test.* The large content files use
+positional label helpers - `place(code, uzLatn, uzCyrl, ru, en)` - because 175
+districts have to stay reviewable, which makes a swapped column easy to write. A
+script assertion over the whole seed catches it.
+
 ### 2026-08-04 - A side effect and the throw that reports it cannot share a transaction
 Two M1 security bugs had one shape: code wrote a row inside
 `db.transaction().execute()` and then threw to report the failure. Kysely rolls
@@ -203,8 +247,15 @@ ones most likely to bite again:
 
 ## Open questions with the client
 
-Tracked as `[?]` items at the top of [TODO.md](TODO.md). Summary: data-retention
-periods (BR-14), individual-employer verification evidence, time-zone policy,
-permitted age/gender justifications (BR-12), push provider, and the approved
-dictionary value lists - the last is the largest content dependency in the
-project and should be requested immediately.
+Tracked as `[?]` items at the top of [TODO.md](TODO.md). Still open and still
+blocking: **data-retention periods** (BR-14, blocks the deletion purge and audit
+retention), **individual-employer verification evidence** (§6.1, blocks M4), and
+the **permitted age/gender justifications** (BR-12, blocks M5 moderation).
+
+Answered: time-zone policy (single platform zone), push provider (deferred with
+M9), file service (Telegram Bot API).
+
+The dictionary value lists are no longer a blocker - all 14 types are seeded and
+working - but four of them and the occupation set are compiled starting points
+awaiting client review, and each says so in its data file. Getting that review is
+now a quality task, not a dependency.

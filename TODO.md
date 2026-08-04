@@ -13,9 +13,12 @@ decision (see the bottom section).
 These change schema or dependencies, so settle them before the milestone that
 needs them.
 
-- [?] **File service** - reuse `d:\Dev\secure-file-router` or implement in-repo?
-      Review `secure-file-router` first; authorized short-lived access is exactly
-      its purpose. *Blocks M3.*
+- [x] ~~**File service**~~ - **Telegram Bot API**, decided 2026-08-04 (client
+      direction). Bytes go to one fixed chat with `sendDocument`; `stored_files`
+      holds the metadata; downloads are proxied through this API because the
+      Telegram file URL carries the bot token. Ceiling is 20 MB - `getFile`'s
+      download limit, not the 50 MB send limit. See ARCHITECTURE.md §9. *No longer
+      blocks M3.*
 - [x] ~~**Push provider**~~ - deferred with M9 to after M10 (client direction
       2026-08-04). Recommendation stands: FCM only, APNs key uploaded to Firebase.
       Not an MVP blocker.
@@ -30,13 +33,14 @@ needs them.
       (§6.1 "if required by policy")? *Blocks M4.*
 - [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
       against an enumerated list. *Blocks M5.*
-- [?] **Approved dictionary value lists** from the client (§13.2). M2 no longer
-      *blocks* on this: the schema, endpoints and seeder are done, the
-      spec-determined types are seeded, and `occupation`, `skill`, `industry` and
-      the districts serve empty sets until the lists arrive. Four types are seeded
-      with a conventional default that still needs sign-off (`language`,
-      `skill_level`, `shift`, `education_level`). *Now blocks M3/M5 having anything
-      real to select, and the UAT-06 demo. Ask now.*
+- [?] **Approved dictionary value lists** from the client (§13.2). **No longer
+      blocking anything.** All 14 types are seeded and working - 487 items, 1 950
+      labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.
+      What remains is *review*, not delivery: `occupation` (162), `skill` (118),
+      `industry` (32), `language`, `skill_level`, `shift` and `education_level` are
+      compiled starting sets rather than client-approved lists, and each states so.
+      District-vs-city status and recent redistricting need checking against the
+      official register. A correction is one edit plus `pnpm seed`.
 
 ---
 
@@ -94,8 +98,11 @@ needs them.
       *Ownership* is per-resource and arrives with the first owned resource (M3)
 - [x] **BR-10 blocked-account guard on every mutating route**, by HTTP method in
       one global guard
-- [ ] Localized error messages, keys present in all four variants - **still
-      open**; messages are currently English-only. Needs the client's key list
+- [x] Localized error messages, keys present in all four variants -
+      `infra/i18n/messages.ts` is the only place a user-facing string is written,
+      and the type makes a missing locale a compile error. `ApiExceptionFilter`
+      renders per request `x-lang`; validation messages too (§3.2 names them
+      explicitly). The catalog key doubles as a stable machine-readable `code`
 - [x] Tests: OTP expiry, attempt lockout, code supersession, refresh reuse
       detection and family revocation, concurrent-rotation single winner, role
       switch to an ungranted role refused, blocked user refused at login
@@ -158,19 +165,41 @@ Each type is tagged `spec` (enumerated in the specification), `default` (a
 conventional list seeded so dependent milestones can be built - **client still
 has to approve it**) or `awaiting` (a large list only the client can supply).
 
-- [x] `region` - 12 regions + Karakalpakstan + Tashkent city *(spec)*
-- [ ] Districts / cities under those regions via `parent_id` - ~200 rows, must be
-      confirmed against the official register *(awaiting)*
+All 14 types are populated - **487 items, 1 950 labels**. The four large lists live
+in `seed/data/`.
+
+- [x] `region` - 14 first-level units **plus all 175 districts** by `parent_id`
+      *(spec)*
 - [x] `language_level` `A1..C2` + `native` with `rank` *(spec)*
 - [x] `employment_type`, `work_format`, `payment_period`, `file_purpose`,
       `attribute` (licence / transport / tools / readiness groups) *(spec)*
 - [x] `language`, `skill_level` with `rank`, `shift`, `education_level`
       *(default - needs client approval)*
-- [ ] Occupations / work types across all five §2.1 categories, with `category`
-      *(awaiting - the largest content item in the project)*
-- [ ] Skills, industries *(awaiting)*
+- [x] `occupation` - 162 across all five §2.1 categories, each with its `category`
+      *(default - starting set, needs client approval)*
+- [x] `skill` - 118, grouped by family; `industry` - 32 *(default)*
+- [ ] Client review of the four `default` lists, and of district-vs-city status
+      against the official register. Content review, not a build task
+
+### Seed invariants asserted by tests
+- [x] Every item has all four labels, and no active item can exist without them
+- [x] No Cyrillic in a `uz-Latn` or `en` label, and none missing from `uz-Cyrl` or
+      `ru` - the content files use positional label helpers to stay reviewable at
+      175 rows, so a swapped column has to be caught mechanically
+- [x] Codes unique per type - a duplicate would silently overwrite the first row
+- [x] Every district resolves to one of the 14 regions
+- [x] Every occupation carries one of the five §2.1 categories
 
 ## M3 - Candidate profile + files
+
+Storage is done (`infra/files`, Telegram-backed) with owner-scoped
+upload / list / download / delete at `/files`. What M3 adds is the candidate-facing
+part: attaching a file to a profile, the `attachments[]` schema block, and BR-09's
+rule for when an employer may read a candidate's CV.
+
+- [x] File upload / download / delete with type and size validation
+- [x] Authorized access without a public link - proxied, ownership-checked
+- [ ] BR-09 employer access to a candidate CV, via the one contact-exposure helper
 
 - [ ] `candidate_profiles` with `visibility`, `completeness_percent`,
       `is_complete`, `last_meaningful_update_at`
@@ -182,8 +211,11 @@ has to approve it**) or `awaiting` (a large list only the client can supply).
 - [ ] Recompute completeness on write; expose the missing-field list
 - [ ] BR-02: searchable only when `is_complete AND visibility='searchable'`
 - [ ] `last_meaningful_update_at` must **not** move on a privacy-toggle-only change
-- [ ] `candidate_files`: upload, replace, download, delete; PDF/DOC/DOCX for CV
-- [ ] Type + size validation; short-lived signed download URLs; no public links
+- [ ] Attach a stored file to the profile as its CV; replace supersedes the old one
+- [x] ~~Type + size validation; no public links~~ - done in `infra/files`. Note the
+      shape changed from the original plan: **no signed URLs**. The Telegram file
+      URL carries the bot token, so downloads are proxied through this API instead,
+      which is a stronger reading of §11.1 than a short-lived URL
 - [ ] Tests: completeness maths, BR-02 gate, privacy toggle does not refresh
       the update timestamp, unauthorized file access refused
 

@@ -1,4 +1,9 @@
-import type { DictionaryCategory, LocaleCode } from '@infra/db/database.types';
+import { INDUSTRY_SEED, SKILL_SEED } from './data/skills.data';
+import { OCCUPATION_SEED } from './data/occupations.data';
+import { REGION_SEED } from './data/locations.data';
+import type { SeedType } from './seed-types';
+
+export type { SeedItem, SeedProvenance, SeedType } from './seed-types';
 
 /**
  * Initial dictionary content (§13.2 "Initial dictionaries", BR-13).
@@ -18,188 +23,21 @@ import type { DictionaryCategory, LocaleCode } from '@infra/db/database.types';
  *   decision "approved dictionary value lists").
  * - `awaiting` - a large content list only the client can supply. The type is
  *   registered and its endpoint works, returning an empty set until the list
- *   arrives. This is the project's largest content dependency, not a coding task.
+ *   arrives.
+ *
+ * The four largest lists live in their own files under `data/`, because a dictionary
+ * of 175 districts or 160 occupations is content to be reviewed rather than code to
+ * be read, and mixing it in here buries the small scales that everything else
+ * depends on.
  */
-
-export type SeedProvenance = 'spec' | 'default' | 'awaiting';
-
-export interface SeedItem {
-  code: string;
-  labels: Record<LocaleCode, string>;
-  category?: DictionaryCategory;
-  group?: string;
-  /** Ordered scales only, and uniform per type (API_CONTRACTS.md §3.4). */
-  rank?: number;
-}
-
-export interface SeedType {
-  code: string;
-  provenance: SeedProvenance;
-  /** True for the ordered scales, where `>= C1` is a range comparison. */
-  hasRank?: boolean;
-  /** Why the values are what they are - kept next to them, not in a commit. */
-  note?: string;
-  items: SeedItem[];
-}
 
 /** The 14 frozen types of docs/API_CONTRACTS.md §3.1, in that order. */
 export const DICTIONARY_SEED: SeedType[] = [
-  {
-    code: 'occupation',
-    provenance: 'awaiting',
-    note:
-      'Occupations and work types across all five §2.1 categories, each with ' +
-      'a category. The single largest content item in the project.',
-    items: [],
-  },
-  {
-    code: 'skill',
-    provenance: 'awaiting',
-    note: 'Skill list per occupation family; merging is supported (§10.3).',
-    items: [],
-  },
-  {
-    code: 'industry',
-    provenance: 'awaiting',
-    note: 'Industry / company sector list (§7.1 "industry/category").',
-    items: [],
-  },
-  {
-    code: 'region',
-    provenance: 'spec',
-    note:
-      'The twelve regions, Karakalpakstan and Tashkent city. Districts and ' +
-      'cities hang off these by parent_id and are still awaited - roughly 200 ' +
-      'rows the client must confirm against the official register.',
-    items: [
-      {
-        code: 'tashkent_city',
-        labels: {
-          'uz-Latn': 'Toshkent shahri',
-          'uz-Cyrl': 'Тошкент шаҳри',
-          ru: 'город Ташкент',
-          en: 'Tashkent City',
-        },
-      },
-      {
-        code: 'tashkent_region',
-        labels: {
-          'uz-Latn': 'Toshkent viloyati',
-          'uz-Cyrl': 'Тошкент вилояти',
-          ru: 'Ташкентская область',
-          en: 'Tashkent Region',
-        },
-      },
-      {
-        code: 'andijan',
-        labels: {
-          'uz-Latn': 'Andijon viloyati',
-          'uz-Cyrl': 'Андижон вилояти',
-          ru: 'Андижанская область',
-          en: 'Andijan Region',
-        },
-      },
-      {
-        code: 'bukhara',
-        labels: {
-          'uz-Latn': 'Buxoro viloyati',
-          'uz-Cyrl': 'Бухоро вилояти',
-          ru: 'Бухарская область',
-          en: 'Bukhara Region',
-        },
-      },
-      {
-        code: 'fergana',
-        labels: {
-          'uz-Latn': 'Farg‘ona viloyati',
-          'uz-Cyrl': 'Фарғона вилояти',
-          ru: 'Ферганская область',
-          en: 'Fergana Region',
-        },
-      },
-      {
-        code: 'jizzakh',
-        labels: {
-          'uz-Latn': 'Jizzax viloyati',
-          'uz-Cyrl': 'Жиззах вилояти',
-          ru: 'Джизакская область',
-          en: 'Jizzakh Region',
-        },
-      },
-      {
-        code: 'kashkadarya',
-        labels: {
-          'uz-Latn': 'Qashqadaryo viloyati',
-          'uz-Cyrl': 'Қашқадарё вилояти',
-          ru: 'Кашкадарьинская область',
-          en: 'Kashkadarya Region',
-        },
-      },
-      {
-        code: 'navoiy',
-        labels: {
-          'uz-Latn': 'Navoiy viloyati',
-          'uz-Cyrl': 'Навоий вилояти',
-          ru: 'Навоийская область',
-          en: 'Navoiy Region',
-        },
-      },
-      {
-        code: 'namangan',
-        labels: {
-          'uz-Latn': 'Namangan viloyati',
-          'uz-Cyrl': 'Наманган вилояти',
-          ru: 'Наманганская область',
-          en: 'Namangan Region',
-        },
-      },
-      {
-        code: 'samarkand',
-        labels: {
-          'uz-Latn': 'Samarqand viloyati',
-          'uz-Cyrl': 'Самарқанд вилояти',
-          ru: 'Самаркандская область',
-          en: 'Samarkand Region',
-        },
-      },
-      {
-        code: 'syrdarya',
-        labels: {
-          'uz-Latn': 'Sirdaryo viloyati',
-          'uz-Cyrl': 'Сирдарё вилояти',
-          ru: 'Сырдарьинская область',
-          en: 'Syrdarya Region',
-        },
-      },
-      {
-        code: 'surkhandarya',
-        labels: {
-          'uz-Latn': 'Surxondaryo viloyati',
-          'uz-Cyrl': 'Сурхондарё вилояти',
-          ru: 'Сурхандарьинская область',
-          en: 'Surkhandarya Region',
-        },
-      },
-      {
-        code: 'khorezm',
-        labels: {
-          'uz-Latn': 'Xorazm viloyati',
-          'uz-Cyrl': 'Хоразм вилояти',
-          ru: 'Хорезмская область',
-          en: 'Khorezm Region',
-        },
-      },
-      {
-        code: 'karakalpakstan',
-        labels: {
-          'uz-Latn': 'Qoraqalpog‘iston Respublikasi',
-          'uz-Cyrl': 'Қорақалпоғистон Республикаси',
-          ru: 'Республика Каракалпакстан',
-          en: 'Republic of Karakalpakstan',
-        },
-      },
-    ],
-  },
+  // Large content lists, in data/. See each file's header for provenance.
+  OCCUPATION_SEED,
+  SKILL_SEED,
+  INDUSTRY_SEED,
+  REGION_SEED,
   {
     code: 'language',
     provenance: 'default',

@@ -481,6 +481,99 @@ describe('seeding', () => {
     expect(leftovers).toEqual([]);
   });
 
+  it('never puts a Cyrillic label in a Latin-script slot, or the reverse', () => {
+    // The content files use positional label helpers - `place(code, uzLatn,
+    // uzCyrl, ru, en)` - which keeps 175 districts reviewable but makes a swapped
+    // column easy to write. This is what catches one.
+    //
+    // Two rules, both crisp:
+    //   1. `uz-Latn` and `en` may never contain Cyrillic.
+    //   2. `uz-Cyrl` and `ru` must contain Cyrillic, *unless* the label is
+    //      deliberately untransliterated - a product or brand name, marked by
+    //      being byte-identical to its Latin counterpart ("PostgreSQL", "1C").
+    const CYRILLIC = /[Ѐ-ӿ]/;
+    const problems: string[] = [];
+
+    for (const type of DICTIONARY_SEED) {
+      for (const item of type.items) {
+        const l = item.labels;
+
+        if (CYRILLIC.test(l['uz-Latn'])) {
+          problems.push(`${type.code}/${item.code}: Cyrillic in uz-Latn`);
+        }
+
+        if (CYRILLIC.test(l.en)) {
+          problems.push(`${type.code}/${item.code}: Cyrillic in en`);
+        }
+
+        if (l['uz-Cyrl'] !== l['uz-Latn'] && !CYRILLIC.test(l['uz-Cyrl'])) {
+          problems.push(`${type.code}/${item.code}: no Cyrillic in uz-Cyrl`);
+        }
+
+        if (l.ru !== l.en && !CYRILLIC.test(l.ru)) {
+          problems.push(`${type.code}/${item.code}: no Cyrillic in ru`);
+        }
+      }
+    }
+
+    expect(problems).toEqual([]);
+  });
+
+  it('uses a unique code within each type', () => {
+    // A duplicate code is not a database error - the seeder would find the first
+    // row and quietly update it with the second row's labels, so the item count
+    // would be short by one and nobody would know which.
+    const duplicates: string[] = [];
+
+    for (const type of DICTIONARY_SEED) {
+      const seen = new Set<string>();
+
+      for (const item of type.items) {
+        if (seen.has(item.code)) {
+          duplicates.push(`${type.code}/${item.code}`);
+        }
+        seen.add(item.code);
+      }
+    }
+
+    expect(duplicates).toEqual([]);
+  });
+
+  it('resolves every district to its region', async () => {
+    const regions = await service.delta('region', 'ru', null);
+
+    const parents = new Set(
+      regions.items.filter((i) => i.parentId === null).map((i) => i.id),
+    );
+    const children = regions.items.filter((i) => i.parentId !== null);
+
+    // 14 first-level units, and every other row hangs off one of them - which is
+    // what makes the client's region → district picker work off `parentId` alone.
+    expect(parents.size).toBe(14);
+    expect(children.length).toBeGreaterThan(150);
+
+    for (const child of children) {
+      expect(parents.has(child.parentId as string)).toBe(true);
+    }
+  });
+
+  it('gives every occupation one of the five §2.1 categories', async () => {
+    const occupations = await service.delta('occupation', 'en', null);
+
+    // §5.2 drives the profile and vacancy field sets from this, so an occupation
+    // without a category produces a form with no category section at all.
+    const categories = new Set(occupations.items.map((i) => i.category));
+
+    expect(occupations.items.every((i) => i.category !== null)).toBe(true);
+    expect([...categories].sort()).toEqual([
+      'physical_industrial',
+      'professional',
+      'seasonal_agricultural',
+      'service_operations',
+      'temporary_shift',
+    ]);
+  });
+
   it('gives every seeded item all four labels', async () => {
     // Scoped to the real seeded types: the fallback fixtures above delete a
     // translation from an already-active item on purpose, which the activation

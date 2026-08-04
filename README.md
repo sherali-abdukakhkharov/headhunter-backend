@@ -80,6 +80,29 @@ pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the l
 pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
 
+## File storage
+
+Bytes live in **Telegram**, not in object storage. A bot posts each upload to one
+fixed chat with `sendDocument`; `stored_files` keeps the metadata; retrieval is
+`getFile` plus a download. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_STORAGE_CHAT_ID`
+— boot logs whether the credentials work rather than failing, so a Telegram outage
+does not stop the rest of the API from serving.
+
+Three things to know before touching this code:
+
+- **Never hand a Telegram file URL to a client.** It is
+  `api.telegram.org/file/bot<token>/<path>` — unauthenticated, and it leaks the bot
+  token. Downloads are proxied through `GET /files/:id/content` after an ownership
+  check. That is also the §11.1 requirement: no permanently public links.
+- **20 MB is the hard ceiling**, because that is `getFile`'s *download* limit. A bot
+  can send 50 MB, so it is possible to store a file that can never be read back;
+  boot refuses a `FILE_MAX_SIZE_BYTES` above 20 MB for exactly that reason.
+- **The bot token is part of the data layer.** `file_id` values are per-bot, so
+  replacing the token orphans every stored file rather than re-authenticating.
+
+Whoever can read the storage chat can read every uploaded CV, so it should be a
+private channel whose only other member is the bot.
+
 ## Seeding dictionaries
 
 `pnpm seed` applies `src/modules/dictionaries/seed/dictionary-seed.data.ts`. It is
@@ -94,8 +117,22 @@ dictionary's version on each deployment and make every client refetch everything
 
 To add or correct content: edit the data file, run `pnpm seed`, and only the
 difference is applied. Each type is tagged with where its values come from —
-`spec`, `default` (needs client approval) or `awaiting` (the list has not arrived
-yet, and the type serves an empty set until it does).
+`spec` (enumerated in the specification), `default` (a compiled starting set that
+still needs client approval) or `awaiting`.
+
+Currently **487 items, 1 950 labels**. The four large lists are in `seed/data/`:
+
+| File | Contents |
+|---|---|
+| `locations.data.ts` | 14 regions and all 175 districts, by `parentCode` |
+| `occupations.data.ts` | 162 occupations across the five §2.1 categories |
+| `skills.data.ts` | 118 skills by family, and 32 industries |
+
+The content files use **positional** label helpers — `place(code, uzLatn, uzCyrl,
+ru, en)` — so a whole region stays reviewable at a glance. That makes a swapped
+column easy to write, which is why `dictionaries.int.spec.ts` asserts over the whole
+seed that no Latin-script slot contains Cyrillic and no Cyrillic slot lacks it,
+except where a label is deliberately untransliterated (`PostgreSQL`, `1C`).
 
 ## Structure
 
@@ -191,11 +228,17 @@ Every one of these was hit while setting the project up:
 - **M1** auth: phone + OTP, refresh rotation with reuse detection, sessions,
   multi-role with `active_role`, account status guard (BR-10), rate limiting.
 - **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
-  four-locale enforcement, the idempotent seeder.
+  four-locale enforcement, the idempotent seeder, and the content — 487 items in
+  four variants including all 175 districts.
+- **Cross-cutting**: every user-facing message localized into all four variants
+  (`infra/i18n`), and Telegram-backed file storage with owner-scoped
+  upload / download / delete (`infra/files`, `/files`).
 
 ## Not built yet
 
 Candidate and employer profiles, vacancies, applications, search, chat,
-notifications, admin (M3 onward). Cross-cutting gaps worth knowing: localized
-error messages (currently English only), a Dockerfile and CI, and the pruning job
-for `rate_limit_counters`. The `/health` module remains the wiring proof.
+notifications, admin (M3 onward). Smaller gaps worth knowing: a Dockerfile and CI,
+the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
+asks for it "where infrastructure permits"; Telegram does none on a bot upload, and
+the content checks in `FilesService` are type validation, not scanning). The
+`/health` module remains the wiring proof.
