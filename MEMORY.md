@@ -316,6 +316,19 @@ ones most likely to bite again:
 
 ## Local environment
 
+- **The public URL is https://hh.qitmir.uz** — named Cloudflare tunnel `headhunter`,
+  id `3d0cec91-0f40-4f1d-848a-76c4c952142b`, created 2026-08-05. Origin is
+  `host.docker.internal:3001`, so it serves whatever runs under `pnpm start:dev`.
+  Bring it up with `pnpm tunnel:up`.
+- **`cert.pem` is shared across the qitmir.uz tunnels and is deliberately not in this
+  repo.** A tunnel needs only its credentials JSON to *run*; the account-level cert is
+  needed only to create, delete or route, and authorizes the whole zone. The existing
+  one at `d:\Dev\tgbots\sahih-bot\docker\cloudflared\cert.pem` is referenced with
+  `--origincert` rather than copied into a third place.
+  *Trap:* `cloudflared tunnel create` ignores `--credentials-file` and writes the JSON
+  **next to whichever cert it found**. Move it into this project afterwards.
+- **cloudflared is installed via winget** at `C:\Program Files (x86)\cloudflared\`. It
+  is not on the PATH of a shell that was already open — start a new one.
 - API on **3001**, not 3000: the `sahih-bot` container permanently publishes 3000.
 - Postgres on **5435**, not 5432: this machine already runs Postgres on
   5432/5433/5434 for other projects.
