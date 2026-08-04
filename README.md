@@ -41,6 +41,7 @@ cp .env.example .env      # already done for local dev
 pnpm install
 pnpm db:up                # Postgres 18 in Docker
 pnpm migrate:latest       # apply migrations
+pnpm seed                 # dictionary content - the app needs it, see below
 pnpm start:dev            # http://localhost:3001
 ```
 
@@ -48,7 +49,9 @@ Check it:
 
 ```sh
 curl http://localhost:3001/health
-# {"status":"ok","database":"up","version":"0.0.1","timestamp":"..."}
+# {"status":"ok","database":"up","version":"0.0.1","timestamp":"2026-08-04T15:00:00+05:00"}
+
+curl -H 'x-lang: ru' http://localhost:3001/dictionaries/region
 ```
 
 ## Commands
@@ -59,7 +62,8 @@ pnpm build                # SWC build + full type check
 pnpm typecheck            # tsc --noEmit
 pnpm lint                 # eslint --fix
 pnpm format               # biome format --write
-pnpm test                 # jest
+pnpm test                 # jest, database-free (DummyDriver)
+pnpm test:int             # *.int.spec.ts against the dev Postgres - needs db:up
 pnpm test:cov             # coverage
 
 pnpm db:up / db:down      # Postgres container up/down
@@ -72,7 +76,26 @@ pnpm migrate:status        # what is applied and what is pending
 pnpm migrate:typecheck    # type-check migrations without running them
 
 pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the live DB
+
+pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
+
+## Seeding dictionaries
+
+`pnpm seed` applies `src/modules/dictionaries/seed/dictionary-seed.data.ts`. It is
+deliberately **not** a migration: dictionary content is reviewed and revised by
+the client (§13.2), so a corrected label has to be editable in place rather than
+needing a new migration file forever.
+
+It is idempotent in the strong sense — **a second run writes nothing at all**, not
+merely "creates no duplicates". Every item and translation write bumps the global
+revision by trigger, so a seeder that rewrote identical values would advance every
+dictionary's version on each deployment and make every client refetch everything.
+
+To add or correct content: edit the data file, run `pnpm seed`, and only the
+difference is applied. Each type is tagged with where its values come from —
+`spec`, `default` (needs client approval) or `awaiting` (the list has not arrived
+yet, and the type serves an empty set until it does).
 
 ## Structure
 
@@ -82,10 +105,21 @@ src/
   app.module.ts                  config + logging + database + feature modules
   infra/
     env-schema.ts                Joi schema; a bad env var fails the boot, not a request
+    api/
+      decorators/                @Public, @RequireRole, @RateLimit, @XLang, @ActiveUser
+      guards/                    the global stack: rate limit → auth → role → account status
+      filters/                   retry-after.filter.ts turns a 429 into Retry-After
+    crypto/hash.ts               HMAC hashing for OTP codes and refresh tokens
+    locale/locale.ts             x-lang normalization and the §3.2 fallback chain
+    phone/phone.ts               E.164 normalization, log masking
+    rate-limit/                  §12.5 buckets over rate_limit_counters
+    time/format.ts               the one timestamp serializer (explicit offset, never Z)
     db/
       database.module.ts         global Kysely provider (KYSELY token), closes the pool on shutdown
       database.types.ts          Kysely schema types (regenerate with kysely:generate)
       migrate.ts                 standalone migration runner
+      seed.ts                    standalone dictionary seed runner
+      testing/int-db.ts          the pool every *.int.spec.ts connects with
   modules/<feature>/
     <feature>.controller.ts      HTTP layer, Swagger decorators
     <feature>.service.ts         business logic
@@ -141,8 +175,27 @@ Every one of these was hit while setting the project up:
 - **pnpm needs `CI=true`** to remove `node_modules` non-interactively, plus
   `--no-frozen-lockfile` alongside it when `package.json` has changed.
 
+- **A throw inside `db.transaction().execute()` rolls back the write that
+  preceded it.** This cost two security bugs in M1 (an OTP attempt counter and a
+  session-family revocation, both silently undone by the exception reporting
+  them). When a transaction has a side effect on its failure path, return an
+  outcome and throw after the commit — and assert the side effect in the test,
+  not just the error. See MEMORY.md.
+- **Postgres `bigint` arrives as a JavaScript string** through node-pg. The
+  dictionary revision columns are `bigint` and cast with `::int` in the SELECT so
+  the wire contract stays numeric.
+
+## Built so far
+
+- **M0** foundations: health, migrations, env validation, logging, Swagger.
+- **M1** auth: phone + OTP, refresh rotation with reuse detection, sessions,
+  multi-role with `active_role`, account status guard (BR-10), rate limiting.
+- **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
+  four-locale enforcement, the idempotent seeder.
+
 ## Not built yet
 
-Auth (JWT), domain modules (users, vacancies, applications), rate limiting,
-e2e tests, Dockerfile, CI. The `/health` module is scaffolding that proves the
-API ↔ Postgres wiring — replace it with real features rather than building on it.
+Candidate and employer profiles, vacancies, applications, search, chat,
+notifications, admin (M3 onward). Cross-cutting gaps worth knowing: localized
+error messages (currently English only), a Dockerfile and CI, and the pruning job
+for `rate_limit_counters`. The `/health` module remains the wiring proof.

@@ -11,10 +11,23 @@ export type AccountStatus =
   | 'deletion_requested'
   | 'restricted';
 
+export type DictionaryCategory =
+  | 'physical_industrial'
+  | 'professional'
+  | 'seasonal_agricultural'
+  | 'service_operations'
+  | 'temporary_shift';
+
 export type Generated<T> =
   T extends ColumnType<infer S, infer I, infer U>
     ? ColumnType<S, I | undefined, U>
     : ColumnType<T, T | undefined, T>;
+
+export type Int8 = ColumnType<
+  string,
+  bigint | number | string,
+  bigint | number | string
+>;
 
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
 
@@ -23,6 +36,8 @@ export type OtpPurpose =
   | 'login'
   | 'phone_change'
   | 'registration';
+
+export type SchemaTarget = 'candidate_profile' | 'vacancy';
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
@@ -55,6 +70,36 @@ export interface DeletionRequests {
   user_id: string;
 }
 
+export interface DictionaryItems {
+  category: DictionaryCategory | null;
+  code: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  is_active: Generated<boolean>;
+  item_group: string | null;
+  merged_into_id: string | null;
+  parent_id: string | null;
+  rank: number | null;
+  revision: Generated<Int8>;
+  sort_order: Generated<number>;
+  type_code: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface DictionaryItemTranslations {
+  item_id: string;
+  label: string;
+  locale: LocaleCode;
+  revision: Generated<Int8>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface DictionaryTypes {
+  code: string;
+  created_at: Generated<Timestamp>;
+  has_rank: Generated<boolean>;
+}
+
 export interface OtpCodes {
   attempts: Generated<number>;
   code_hash: string;
@@ -72,6 +117,13 @@ export interface RateLimitCounters {
   hits: Generated<number>;
   subject: string;
   window_start: Timestamp;
+}
+
+export interface SchemaVersions {
+  category: DictionaryCategory;
+  target: SchemaTarget;
+  updated_at: Generated<Timestamp>;
+  version: Generated<number>;
 }
 
 export interface Sessions {
@@ -111,8 +163,12 @@ export interface DB {
   account_status_history: AccountStatusHistory;
   app_meta: AppMeta;
   deletion_requests: DeletionRequests;
+  dictionary_item_translations: DictionaryItemTranslations;
+  dictionary_items: DictionaryItems;
+  dictionary_types: DictionaryTypes;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
+  schema_versions: SchemaVersions;
   sessions: Sessions;
   user_roles: UserRoles;
   users: Users;

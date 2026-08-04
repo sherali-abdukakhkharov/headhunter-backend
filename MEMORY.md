@@ -30,6 +30,70 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-04 - A side effect and the throw that reports it cannot share a transaction
+Two M1 security bugs had one shape: code wrote a row inside
+`db.transaction().execute()` and then threw to report the failure. Kysely rolls
+back on a rejected callback, so **the write was undone and only the exception
+survived**.
+
+- `OtpService.verify` incremented `attempts` then threw → every wrong guess reset
+  the counter, so §4.2's lockout could never fire and a six-digit code was
+  brute-forceable for its whole TTL.
+- `SessionService.rotate` revoked the session family on reuse then threw → the
+  revocation vanished; reuse detection logged a warning, refused one request, and
+  left every stolen session live.
+
+Both now **return an outcome from the transaction and throw after the commit**.
+*Why this is worth remembering:* both looked correct in review, and both had
+tests that passed - the tests asserted the exception, which was never the part
+that was broken. When a transaction has a side effect on the failure path, the
+test has to assert the side effect, not the error.
+
+### 2026-08-04 - Rate limiting is a Postgres fixed window, not an in-memory counter
+`rate_limit_counters` holds one row per (bucket, subject); one
+`INSERT ... ON CONFLICT` both counts and decides.
+*Why not in-memory:* the counter would be per instance, so N replicas grant N×
+the budget - the opposite of a limit.
+*Why one statement:* read-compare-write lets two concurrent requests both read
+the same count and both pass, which is exactly the burst being prevented.
+*Why one row per subject rather than per window:* the table stays bounded by the
+number of distinct phones and IPs instead of growing forever.
+*Phone subjects are hashed* under the OTP pepper, so this table does not become a
+second register of every phone number that has touched the API.
+*Accepted cost:* a fixed window allows up to 2× the limit across a boundary. The
+buckets exist to stop abuse and SMS spend, not to shape traffic.
+
+### 2026-08-04 - Per-IP limits depend on `trust proxy`, so it is explicit config
+`TRUSTED_PROXY_HOPS` defaults to `0`.
+*Why it cannot be guessed either way:* behind a proxy, every request carries the
+proxy's address and one bucket is shared by all users; trusting
+`X-Forwarded-For` without a proxy in front lets any caller spoof its address and
+empty its own bucket at will. Too low a value only makes the limit stricter, so
+the default trusts nothing.
+
+### 2026-08-04 - Dictionary revisions and the four-locale rule are triggers
+The revision counter and "no activation without all four labels" are enforced by
+database triggers, not service code.
+*Why revision:* a write path that forgets to bump raises **no error at all** - the
+client silently never learns of the change and its cache stays wrong until
+something else touches the same type. There is no failure to notice.
+*Why the locale rule:* §3.2 forbids ever showing a technical key, and the rule has
+to survive an admin write path (M10), a seeder, and a manual SQL fix. It is a
+`CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED` so a caller may insert the
+item and its labels in either order within one transaction.
+*The required label count is derived from the `locale_code` enum*, so a fifth
+interface variant tightens the rule automatically.
+
+### 2026-08-04 - The dictionary seeder must be a no-op when nothing changed
+Not merely "must not duplicate": it must not *write*, because every write bumps
+the revision by trigger. A seeder that rewrote identical values would advance
+every type's version on every deployment and make every client refetch every
+dictionary. Hence read-and-compare before each write, and a test asserting the
+second run reports zero changes.
+*Why a seeder and not a migration:* dictionary content is reviewed and revised by
+the client (§13.2), so a corrected label must be editable in place rather than
+needing a new migration file forever.
+
 ### 2026-08-04 - Dictionary IDs are the only filterable currency
 Every occupation, skill, region, language, employment type and work attribute is
 a `dictionary_items` row with a stable ID and one label per locale. Profiles,

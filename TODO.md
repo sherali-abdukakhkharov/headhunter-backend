@@ -30,8 +30,13 @@ needs them.
       (§6.1 "if required by policy")? *Blocks M4.*
 - [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
       against an enumerated list. *Blocks M5.*
-- [?] **Approved dictionary value lists** from the client (§13.2). *Blocks M2
-      seeding, which is large - ask now.*
+- [?] **Approved dictionary value lists** from the client (§13.2). M2 no longer
+      *blocks* on this: the schema, endpoints and seeder are done, the
+      spec-determined types are seeded, and `occupation`, `skill`, `industry` and
+      the districts serve empty sets until the lists arrive. Four types are seeded
+      with a conventional default that still needs sign-off (`language`,
+      `skill_level`, `shift`, `education_level`). *Now blocks M3/M5 having anything
+      real to select, and the UAT-06 demo. Ask now.*
 
 ---
 
@@ -65,76 +70,105 @@ needs them.
 - [x] Native enums `locale_code`, `user_role`, `account_status`, `otp_purpose` -
       kysely-codegen turns these into string-literal unions rather than `string`
 
-### Endpoints
-- [ ] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
-- [ ] `POST /auth/refresh` with rotation + reuse detection
-- [ ] `POST /auth/logout`, `POST /auth/logout-all`
-- [ ] `GET /auth/sessions`, `DELETE /auth/sessions/:id`
-- [ ] `POST /auth/roles` (select roles at onboarding), `POST /auth/active-role`
-- [ ] `POST /users/me/deletion-request`
-- [ ] `PATCH /users/me/locale`
+### Endpoints *(done)*
+- [x] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
+- [x] `POST /auth/refresh` with rotation + reuse detection
+- [x] `POST /auth/logout`, `POST /auth/logout-all`
+- [x] `GET /auth/sessions`, `DELETE /auth/sessions/:id`
+- [x] `POST /auth/roles` (select roles at onboarding), `POST /auth/active-role`
+- [x] `POST /users/me/deletion-request` - in `users`, not `auth`: the module map
+      gives account state to `users` (ARCHITECTURE.md §2)
+- [x] `PATCH /users/me/locale`, plus `GET /users/me`
 
 ### Cross-cutting
-- [ ] Store OTP as a **hash**; never log codes or full phone numbers
-- [ ] Server-config TTL / resend delay / attempt limits via env + Joi
-- [ ] Rate limit OTP and auth per phone **and** per IP
-- [ ] `active_role` claim; server validates the role is actually granted
-- [ ] Guard stack: authenticated → role → ownership → account status
-- [ ] **BR-10 blocked-account guard on every mutating route** (do this now, not
-      later - retrofitting means auditing every endpoint)
-- [ ] Localized error messages, keys present in all four variants
-- [ ] Tests: OTP expiry, attempt lockout, refresh reuse detection, role switch to
-      an ungranted role is refused, blocked user refused on each mutation kind
+- [x] Store OTP as a **hash**; never log codes or full phone numbers
+- [x] Server-config TTL / resend delay / attempt limits via env + Joi
+- [x] Rate limit OTP and auth per phone **and** per IP - `rate_limit_counters`,
+      fixed window in Postgres so replicas cannot each grant the full budget.
+      Phone subjects stored hashed; every 429 carries `Retry-After`
+- [x] `TRUSTED_PROXY_HOPS` - per-IP limits need the real caller behind a proxy,
+      and trusting `X-Forwarded-For` without one is a bypass. Default trusts
+      nothing
+- [x] `active_role` claim; server validates the role is actually granted
+- [x] Guard stack: rate limit → authenticated → role → account status.
+      *Ownership* is per-resource and arrives with the first owned resource (M3)
+- [x] **BR-10 blocked-account guard on every mutating route**, by HTTP method in
+      one global guard
+- [ ] Localized error messages, keys present in all four variants - **still
+      open**; messages are currently English-only. Needs the client's key list
+- [x] Tests: OTP expiry, attempt lockout, code supersession, refresh reuse
+      detection and family revocation, concurrent-rotation single winner, role
+      switch to an ungranted role refused, blocked user refused at login
+- [ ] Test: blocked user refused on each *mutation kind* - can only be written
+      once there are mutations beyond auth itself (M3)
 
 ## M2 - Dictionaries
 
 Wire shapes are frozen in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §3.
 
-### Schema
-- [ ] `dictionary_types` (code)
-- [ ] `dictionary_items` (id, type_code, code, category, parent_id, sort_order,
-      `rank`, is_active, merged_into_id, `revision`)
-- [ ] `dictionary_item_translations` (item_id, locale, label, `revision`) - unique
-      per pair
-- [ ] Index `dictionary_item_translations(item_id, locale)`
-- [ ] Monotonic global `revision` sequence; bumped on every item **and**
-      translation write. Type version = max revision across its rows, which is what
-      makes `?since=` a real delta.
-- [ ] A merge bumps the revision of **both** rows, so one delta carries the loser
+### Schema *(done - `20260804150000_create_dictionary_tables`)*
+- [x] `dictionary_types` (code, `has_rank`)
+- [x] `dictionary_items` (id, type_code, code, category, `item_group`, parent_id,
+      sort_order, `rank`, is_active, merged_into_id, `revision`)
+      - `item_group` is a second grouping used by `attribute` items only; it is an
+        additive contract field, see API_CONTRACTS.md §3.4
+- [x] `dictionary_item_translations` (item_id, locale, label, `revision`) - the
+      pair is the primary key, so no separate uniqueness index is needed
+- [x] Monotonic global `revision` sequence, **bumped by trigger** on every item
+      and translation write. A write path that forgets to bump raises no error at
+      all - the client simply never learns of the change - so it cannot be left to
+      service code
+- [x] A merge bumps the revision of **both** rows, so one delta carries the loser
       in `removed` (with `mergedIntoId`) and the survivor in `items`
+- [x] `schema_versions`, ten rows generated from the two enums, so the manifest
+      can publish them before the field schemas exist (M3/M5)
 
-### Endpoints
-- [ ] `GET /dictionaries/manifest` - per-type versions **and** the 10 schema
-      versions, so a cold client revalidates in one request
-- [ ] `GET /dictionaries/{type}?since=<version>` with locale resolution, ETag,
-      `Vary: x-lang`, 304 on `If-None-Match`
-- [ ] `GET /dictionaries/items?ids=` resolving inactive and merged ids, for
+### Endpoints *(done)*
+- [x] `GET /dictionaries/manifest` - per-type versions **and** the 10 schema
+      versions. Locale-independent, so no `Vary`
+- [x] `GET /dictionaries/{type}?since=<version>` with locale resolution, ETag,
+      `Vary: x-lang`, 304 on `If-None-Match`, 404 on an unknown type
+- [x] `GET /dictionaries/items?ids=` resolving inactive and merged ids, for
       historical records
-- [ ] Regions come from `type=region` via `parentId`, not a bespoke tree endpoint
+- [x] Regions come from `type=region` via `parentId`, not a bespoke tree endpoint
+- [x] All three are `@Public()`: the language and its pickers are chosen *before*
+      registration (§3.2, §4.1)
 
 ### Cross-cutting
-- [ ] `x-lang` normalization to `uz-Latn | uz-Cyrl | ru | en`, accepting `uz`/`oz`
-      aliases (ARCHITECTURE.md §3.1) - strict allow-list, unknown → default
-- [ ] Responses always **emit** canonical casing, in `locale` and in the ETag; the
-      client keys its cache off the response, so a casing slip is a permanent miss
-- [ ] Fallback chain `uz-Cyrl→uz-Latn`, any→`en`, **with a warning log**
-- [ ] Reject activation of an item missing any of the four locales
-- [ ] Test: no dictionary endpoint can ever return a bare code as a label
-- [ ] Test: same occupation selected via each locale resolves to one ID (UAT-13)
-- [ ] Test: emitted locale casing is exactly the four canonical codes
+- [x] `x-lang` normalization to `uz-Latn | uz-Cyrl | ru | en`, accepting `uz`/`oz`
+      aliases - strict allow-list, unknown → default
+- [x] Responses always **emit** canonical casing, in `locale` and in the ETag
+- [x] Fallback chain `uz-Cyrl→uz-Latn`, any→`en`, **with a warning log** (once per
+      response, not once per row)
+- [x] Reject activation of an item missing any of the four locales - a deferrable
+      constraint trigger, so it holds against any write path including a manual
+      SQL fix, and the required count is derived from the `locale_code` enum
+- [x] Test: no dictionary endpoint can ever return a bare code as a label
+- [x] Test: the same item resolves to one id via each locale (UAT-13)
+- [x] Test: emitted locale casing is exactly the four canonical codes
+- [x] Test: a second identical seed run bumps no revision - otherwise every
+      deployment would make every client refetch every dictionary
 
-### Seed content *(large; needs client input)*
+### Seed content
+`pnpm seed` applies [dictionary-seed.data.ts](src/modules/dictionaries/seed/dictionary-seed.data.ts),
+idempotently. Not a migration: content is revised by the client far more often
+than schema changes, and a migration could never correct a label in place.
+
+Each type is tagged `spec` (enumerated in the specification), `default` (a
+conventional list seeded so dependent milestones can be built - **client still
+has to approve it**) or `awaiting` (a large list only the client can supply).
+
+- [x] `region` - 12 regions + Karakalpakstan + Tashkent city *(spec)*
+- [ ] Districts / cities under those regions via `parent_id` - ~200 rows, must be
+      confirmed against the official register *(awaiting)*
+- [x] `language_level` `A1..C2` + `native` with `rank` *(spec)*
+- [x] `employment_type`, `work_format`, `payment_period`, `file_purpose`,
+      `attribute` (licence / transport / tools / readiness groups) *(spec)*
+- [x] `language`, `skill_level` with `rank`, `shift`, `education_level`
+      *(default - needs client approval)*
 - [ ] Occupations / work types across all five §2.1 categories, with `category`
-- [ ] Skills, industries
-- [ ] Regions + districts/cities of Uzbekistan
-- [ ] Languages, plus `language_level` `A1..C2` + `native` carrying `rank`
-- [ ] `skill_level` scale carrying `rank`
-- [ ] Employment types, work formats, shift values
-- [ ] `payment_period`: monthly / daily / per-task (§6.3)
-- [ ] `education_level`
-- [ ] `file_purpose`: cv / certificate / evidence - drives the schema
-      `attachments[]` block, so a new evidence type stays data
-- [ ] Tool / transport / physical attributes
+      *(awaiting - the largest content item in the project)*
+- [ ] Skills, industries *(awaiting)*
 
 ## M3 - Candidate profile + files
 

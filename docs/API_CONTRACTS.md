@@ -85,6 +85,9 @@ Closed enum from §2.1. Safe to key client layouts and icons off these.
 
 ### 3.3 Manifest
 
+`count` is the number of **active** items — what a picker would show. An
+inactive item still resolves through `/dictionaries/items` but is not counted.
+
 ```json
 {
   "version": 1187,
@@ -123,6 +126,7 @@ translation write. A type's version is the max revision across its rows.
       "code": "call_centre_operator",
       "label": "Call-markaz operatori",
       "category": "service_operations",
+      "group": null,
       "parentId": null,
       "sortOrder": 120,
       "rank": null,
@@ -144,6 +148,13 @@ translation write. A type's version is the max revision across its rows.
 - `rank` is a non-null integer **only on the level types** (`skill_level`,
   `language_level`). It is the ordering used for `>= C1` range comparisons, is
   uniform per type, and never varies per item.
+- `group` is a non-null string **only on `attribute` items**, and is what a
+  schema field's `group` (§4.1) selects on: `licence`, `transport`, `tools`,
+  `readiness`. **Added 2026-08-04, during M2 implementation** — it is additive,
+  so no existing field changed, but without it the `"group": "tools"` in a
+  schema field has nothing to match and that field cannot be rendered.
+  `category` could not carry it: that column holds the five closed §2.1 work
+  categories and client layouts are keyed off them.
 - **Deactivated ≠ deleted.** A `removed` entry means "drop from pickers"; the id
   still resolves forever.
 - **Merges reach the client in one round trip.** A merge writes `merged_into_id`

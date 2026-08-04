@@ -11,6 +11,7 @@ import { DatabaseModule } from '@infra/db/database.module';
 import { type AppEnv, envSchema } from '@infra/env-schema';
 import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
 import { HealthModule } from '@modules/health/health.module';
 import { UsersModule } from '@modules/users/users.module';
 
@@ -50,6 +51,7 @@ import { UsersModule } from '@modules/users/users.module';
     RateLimitModule,
     AuthModule,
     UsersModule,
+    DictionariesModule,
     HealthModule,
   ],
   providers: [

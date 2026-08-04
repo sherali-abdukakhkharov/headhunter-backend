@@ -38,6 +38,13 @@ re-derivable from the text.
 - **Contact details go through the one BR-09 helper.** Never inline the rule.
 - **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
   BR-06 is checked inside the insert transaction.
+- **Never throw from inside a transaction that already wrote something.** Kysely
+  rolls back on a rejected callback, so the write disappears and only the
+  exception survives. Return an outcome from `transaction().execute()` and throw
+  after the commit. This cost two M1 security bugs — an OTP attempt counter and a
+  session-family revocation, both undone by the very throw that reported them —
+  and both had passing tests, because the tests asserted the exception rather
+  than the side effect.
 - **Never hard-delete a dictionary item** — deactivate, and use `merged_into_id`
   for merges, so historical references still resolve.
 
@@ -87,6 +94,16 @@ approach three times — change approach rather than pushing harder.
   committing. `pnpm build` runs the full type check too.
 
 ## Testing
+
+Two suites, split by whether they need Postgres:
+
+- `pnpm test` — `*.spec.ts`, database-free, runs anywhere.
+- `pnpm test:int` — `*.int.spec.ts` against the dev database via
+  `createIntTestDb()`. Everything enforced by a trigger, a row lock, a partial
+  unique index or a transaction boundary belongs here: over `DummyDriver` those
+  tests would compile the query, run nothing, and pass while the behaviour was
+  entirely absent. Fixtures go in through the production write path (the seeder,
+  the service) and clean up after themselves.
 
 Unit tests use Nest's `Test.createTestingModule`. For anything touching the
 database, build a **real** `Kysely` instance over `DummyDriver` rather than

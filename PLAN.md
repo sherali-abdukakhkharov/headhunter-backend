@@ -17,9 +17,9 @@ a profile contract.
 | # | Milestone | Blocks | State |
 |---|---|---|---|
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
-| M1 | Auth, users, roles, sessions | all authenticated work | next |
-| M2 | Dictionaries + seed data | M3, M5, M6, M7 | next (parallel with M1) |
-| M3 | Candidate profile + files | M6, M7 | after M1+M2 |
+| M1 | Auth, users, roles, sessions | all authenticated work | **done** (localized error messages open) |
+| M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
+| M3 | Candidate profile + files | M6, M7 | next - resolve the file-service decision first |
 | M4 | Employer profile + verification | M5, M7 | after M1 |
 | M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
@@ -101,6 +101,14 @@ mutation with a clear reason.
 
 **Done when:** selecting an occupation in any of the four variants yields the same
 ID, and no endpoint can return a raw code as a label.
+
+*Status: the mechanism is complete and tested; the content is not, and cannot be
+without the client.* `pnpm seed` is idempotent, so the lists can arrive in
+batches. `occupation`, `skill`, `industry` and the districts under each region
+serve empty sets until they do — which means the pickers M3 and M5 build against
+work, but have nothing meaningful to offer yet. Four further types
+(`language`, `skill_level`, `shift`, `education_level`) carry a conventional
+default that still needs sign-off.
 
 > Seeding is the largest single content task in the project and needs client
 > input on the approved value lists. Start it early; it is not a day of work.
