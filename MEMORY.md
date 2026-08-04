@@ -47,6 +47,22 @@ is verified when present, ready for the day it does.
 Telegram-client-only, and needs an inbound webhook plus a second round trip for the
 phone, respectively. The deciding factor was the `phone` scope - see below.
 
+### 2026-08-05 - Telegram does not send `phone_number_verified`; the docs say it does
+Its live `openid-configuration` advertises `claims_supported` as `aud
+preferred_username phone_number exp iat iss name picture sub`. The prose documentation
+mentions `phone_number_verified`, `id`, `given_name` and `family_name`; none of them is
+in that list.
+*Why it mattered:* the verifier required `phone_number_verified === true`, which would
+have refused **every** real login with `auth.telegram_phone_required`. Caught by
+fetching the discovery document while checking the client's configuration, not by any
+test - the tests asserted the shape the docs described.
+*The rule now:* a `phone_number` counts as verified unless the claim is explicitly
+`false`. Sound rather than a workaround: a Telegram account *is* a confirmed phone
+number, so the only way Telegram can name a user's phone is that the user proved
+control of it to Telegram.
+*Generalisable lesson:* for any OIDC provider, trust `/.well-known/
+openid-configuration` over the prose, and fetch it before writing the verifier.
+
 ### 2026-08-05 - The `phone` scope is what keeps the identity model intact
 §4.1 makes the platform's identity a phone number and BR-09 is about revealing it to
 employers. Telegram's `phone` scope returns `phone_number_verified`, so the model

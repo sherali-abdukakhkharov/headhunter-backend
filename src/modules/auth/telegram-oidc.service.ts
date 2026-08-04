@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type JWTPayload, createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -41,25 +45,34 @@ import type { AppEnv } from '@infra/env-schema';
  *   claim is verified below when present.
  */
 
-/** The claims we rely on, from the `openid`, `profile` and `phone` scopes. */
+/**
+ * The claims we rely on, from the `openid`, `profile` and `phone` scopes.
+ *
+ * Confirmed against Telegram's live `claims_supported`: `aud preferred_username
+ * phone_number exp iat iss name picture sub`. Nothing here depends on a claim
+ * Telegram does not advertise - in particular not `id`, `given_name` or
+ * `family_name`, which the prose documentation mentions but the discovery document
+ * does not list.
+ */
 export interface TelegramIdentity {
-  /** Telegram user id. The credential; stable, and always present. */
+  /** Telegram user id, from `sub`. The credential; stable, always present. */
   telegramUserId: string;
   /** `@username` without the `@`. Optional on Telegram and user-changeable. */
   username: string | null;
-  /** From the `phone` scope, and only when Telegram reports it verified. */
+  /** From the `phone` scope. See `toIdentity` on what "verified" means here. */
   verifiedPhone: string | null;
   displayName: string | null;
 }
 
 @Injectable()
-export class TelegramOidcService {
+export class TelegramOidcService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TelegramOidcService.name);
 
   private readonly issuer: string;
   private readonly audience: string;
   private readonly maxTokenAgeSeconds: number;
   private readonly requirePhone: boolean;
+  private readonly botTokenPrefix: string | null;
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
 
   constructor(config: ConfigService<AppEnv, true>) {
@@ -70,6 +83,13 @@ export class TelegramOidcService {
     });
     this.requirePhone = config.get('TELEGRAM_REQUIRE_PHONE', { infer: true });
 
+    // Only the public numeric prefix is kept, for the boot-time check below - never
+    // the secret half. Defensive about the value's absence: this service must not be
+    // the reason a process fails to start over a diagnostic it only logs.
+    const botToken: unknown = config.get('TELEGRAM_BOT_TOKEN', { infer: true });
+    this.botTokenPrefix =
+      typeof botToken === 'string' ? botToken.split(':')[0] || null : null;
+
     // Built once: the key set is cached across requests and refetched only on an
     // unknown `kid`, with a cooldown so a token carrying a bogus kid cannot be used
     // to hammer Telegram's endpoint.
@@ -77,6 +97,44 @@ export class TelegramOidcService {
       new URL(config.get('TELEGRAM_JWKS_URL', { infer: true })),
       { cacheMaxAge: 600_000, cooldownDuration: 30_000 },
     );
+  }
+
+  /**
+   * Says which bot logins are accepted for, and flags the one misconfiguration that
+   * is genuinely hard to diagnose.
+   *
+   * If `TELEGRAM_LOGIN_BOT_ID` is not the bot the app authorized against, **every**
+   * login fails the audience check and the client sees only
+   * `auth.telegram_token_invalid` - correct behaviour, and indistinguishable from a
+   * forged token, an expired one or a network problem. Since the file-storage token
+   * already tells us a bot id, comparing them costs nothing and turns hours of
+   * confusion into one line at start-up.
+   *
+   * A warning rather than a failure: using a separate bot for login and for file
+   * storage is a legitimate deployment.
+   */
+  onApplicationBootstrap(): void {
+    this.logger.log(
+      `Telegram login accepts id_tokens for bot ${this.audience} from ${this.issuer}`,
+    );
+
+    if (this.botTokenPrefix && this.botTokenPrefix !== this.audience) {
+      this.logger.warn(
+        `TELEGRAM_LOGIN_BOT_ID (${this.audience}) is not the bot behind ` +
+          `TELEGRAM_BOT_TOKEN (${this.botTokenPrefix}). Intentional if login and ` +
+          'file storage use different bots - otherwise every login will be ' +
+          'refused as invalid.',
+      );
+    }
+
+    if (!this.requirePhone) {
+      // Worth saying out loud: it is the difference between accounts that can take
+      // part in hiring and accounts that silently cannot.
+      this.logger.warn(
+        'TELEGRAM_REQUIRE_PHONE is off - logins without a phone number are ' +
+          'accepted, and those accounts cannot take part in BR-09 contact exposure.',
+      );
+    }
   }
 
   /**
@@ -134,12 +192,27 @@ export class TelegramOidcService {
       throw new UnauthorizedError('auth.telegram_token_invalid');
     }
 
-    // Only a phone Telegram itself reports as verified is usable: an unverified
-    // value would let a login attach to an existing account by claiming its number.
+    // A `phone_number` from Telegram counts as verified unless Telegram explicitly
+    // says otherwise.
+    //
+    // Requiring `phone_number_verified === true` looked like the careful reading, and
+    // it is wrong: `https://oauth.telegram.org/.well-known/openid-configuration`
+    // advertises `claims_supported` as `aud preferred_username phone_number exp iat
+    // iss name picture sub` - no `phone_number_verified` at all. Demanding it refuses
+    // every real login.
+    //
+    // Treating the claim's absence as verified is sound rather than merely pragmatic:
+    // a Telegram account *is* a verified phone number. Telegram will not issue one
+    // without confirming the number by SMS or call, so the only way it can name a
+    // user's phone here is that the user proved control of it to Telegram. An
+    // explicit `false` is still honoured, in case Telegram ever starts emitting it
+    // for a case we have not seen.
+    const claimedPhone =
+      typeof payload.phone_number === 'string' ? payload.phone_number : null;
+
     const verifiedPhone =
-      payload.phone_number_verified === true &&
-      typeof payload.phone_number === 'string'
-        ? payload.phone_number
+      claimedPhone !== null && payload.phone_number_verified !== false
+        ? claimedPhone
         : null;
 
     if (this.requirePhone && !verifiedPhone) {

@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
@@ -48,6 +49,8 @@ const CONFIG: Partial<AppEnv> = {
   TELEGRAM_LOGIN_BOT_ID: BOT_ID,
   TELEGRAM_ID_TOKEN_MAX_AGE_SECONDS: 300,
   TELEGRAM_REQUIRE_PHONE: true,
+  // Same bot as login, so the boot-time consistency check stays quiet.
+  TELEGRAM_BOT_TOKEN: `${BOT_ID}:AAHtest-not-a-real-bot-token-000000000`,
 };
 
 function configService(overrides: Partial<AppEnv> = {}) {
@@ -81,6 +84,8 @@ interface TokenOptions {
   issuer?: string;
   phone?: string | null;
   phoneVerified?: boolean;
+  /** Emit `phone_number` with no `phone_number_verified` - what Telegram sends. */
+  omitVerifiedClaim?: boolean;
   username?: string | null;
   issuedAt?: number;
   expiresAt?: number;
@@ -94,11 +99,12 @@ async function idToken(options: TokenOptions = {}): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const issuedAt = options.issuedAt ?? now;
 
+  // Exactly the claims Telegram's discovery document advertises - `name`,
+  // `preferred_username`, `picture`, plus `sub`/`aud`/`iss`/`iat`/`exp` set below.
+  // Deliberately no `id`, `given_name` or `family_name`: the prose docs mention them
+  // but `claims_supported` does not list them, so nothing may depend on them.
   const claims: Record<string, unknown> = {
-    id: Number(options.sub ?? '111222333'),
     name: 'Alisher Karimov',
-    given_name: 'Alisher',
-    family_name: 'Karimov',
     preferred_username: options.username ?? 'alisher_k',
     picture: 'https://t.me/i/userpic/320/alisher_k.jpg',
   };
@@ -107,7 +113,10 @@ async function idToken(options: TokenOptions = {}): Promise<string> {
 
   if (phone !== null) {
     claims.phone_number = phone;
-    claims.phone_number_verified = options.phoneVerified ?? true;
+
+    if (!options.omitVerifiedClaim) {
+      claims.phone_number_verified = options.phoneVerified ?? true;
+    }
   }
 
   if (options.nonce) {
@@ -279,11 +288,27 @@ describe('id_token verification', () => {
 });
 
 describe('the phone number', () => {
-  it('ignores a phone Telegram did not mark verified', async () => {
+  it('accepts a phone_number with no phone_number_verified claim', async () => {
+    // The shape Telegram actually sends. Its live discovery document advertises
+    // `claims_supported` as `aud preferred_username phone_number exp iat iss name
+    // picture sub` - there is no `phone_number_verified`, so requiring one refuses
+    // every real login. A Telegram account is a verified phone number by
+    // construction, which is what makes the absence safe to treat as verified.
+    const { telegram } = services();
+
+    const identity = await telegram.verify(
+      await idToken({ phone: '+998901112233', omitVerifiedClaim: true }),
+    );
+
+    expect(identity.verifiedPhone).toBe('+998901112233');
+  });
+
+  it('honours an explicit phone_number_verified: false', async () => {
     const lenient = services({ TELEGRAM_REQUIRE_PHONE: false });
 
-    // An unverified value must never reach the account-linking step: matching on it
-    // would let anyone claim an existing account by naming its phone number.
+    // Telegram is not known to emit this, but if it ever does the value must not
+    // reach the account-linking step: matching on an unverified number would let
+    // anyone claim an existing account by naming its phone.
     const identity = await lenient.telegram.verify(
       await idToken({ phone: '+998900000001', phoneVerified: false }),
     );
@@ -523,6 +548,51 @@ describe('accounts', () => {
     const user = await userByTelegramId(sub);
     const active = await sessions.listActive(user.id);
     expect(active).toHaveLength(1);
+  });
+});
+
+describe('the boot-time configuration check', () => {
+  it('stays quiet when the login bot is the file-storage bot', () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    try {
+      services().telegram.onApplicationBootstrap();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('warns when the login bot id is not the bot behind the token', () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    try {
+      // The misconfiguration this exists for: every login would fail the audience
+      // check and report only `auth.telegram_token_invalid`, which looks exactly
+      // like a forged token.
+      services({
+        TELEGRAM_BOT_TOKEN: '999999:AAHdifferent-bot-000000000000000000',
+      }).telegram.onApplicationBootstrap();
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('is not the bot behind') as string,
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('does not fail to construct when no bot token is configured', () => {
+    // A diagnostic must never be the reason a process cannot start.
+    expect(() =>
+      services({
+        TELEGRAM_BOT_TOKEN: undefined,
+      }).telegram.onApplicationBootstrap(),
+    ).not.toThrow();
   });
 });
 

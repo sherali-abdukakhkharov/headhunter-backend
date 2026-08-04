@@ -144,6 +144,29 @@ unverified value would let anyone claim an existing account by naming its number
 
 ---
 
+## 4a. Verified against the live services, 2026-08-05
+
+With the real credentials configured:
+
+| Check | Result |
+|---|---|
+| `getMe` with `TELEGRAM_BOT_TOKEN` | ok — bot `@uzhh_robot`, id `8565299674` |
+| `TELEGRAM_LOGIN_BOT_ID` == that bot id | matches |
+| OIDC discovery document | issuer, endpoints, JWKS URL and scopes all as assumed |
+| JWKS | 4 keys: `oidc-1` RS256, `oidc-es256-1` ES256, `oidc-eddsa-1` EdDSA, `oidc-es256k-1` ES256K |
+| File storage round trip | `sendDocument` → `getFile` → download → **SHA-256 matched**; test message deleted |
+
+**Found by that check, and it would have blocked every login:** the discovery document
+does not advertise `phone_number_verified`, but the verifier required it to be `true`.
+Fixed — a `phone_number` is now treated as verified unless explicitly `false`.
+
+**Not verifiable from the server side:** whether the BotFather Allowed URLs are
+registered. Telegram's `/auth` endpoint does not report it in a way a server-side
+probe can read, so it surfaces on the first real attempt from a device. If the
+redirect URI is missing or does not match exactly, the SDK never returns a token —
+the failure is on the client, before our API is called at all. Distinguish it from a
+backend problem that way: no request in our logs means the redirect URI, not us.
+
 ## 5. Testing without a real bot
 
 `telegram-login.int.spec.ts` generates an RSA keypair, serves it from a local JWKS

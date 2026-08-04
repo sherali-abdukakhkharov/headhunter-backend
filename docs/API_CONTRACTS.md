@@ -68,12 +68,37 @@ everything after login is unchanged: `accessToken`, `refreshToken`,
 
 `openid profile phone`
 
-The `phone` scope is **required** in practice: the server refuses a token without
-`phone_number_verified` while `TELEGRAM_REQUIRE_PHONE` is on, answering `401` with
-`code: "auth.telegram_phone_required"` and a localized message telling the user to
-allow it. The reason is BR-09 — contact exposure to an employer has nothing to
-reveal without a phone number, so an account created without one silently cannot
-take part in hiring.
+The `phone` scope is **required** in practice: while `TELEGRAM_REQUIRE_PHONE` is on,
+a token with no `phone_number` is refused with `401` and
+`code: "auth.telegram_phone_required"`, plus a localized message telling the user to
+allow it. The reason is BR-09 — contact exposure to an employer has nothing to reveal
+without a phone number, so an account created without one silently cannot take part
+in hiring.
+
+Consider adding `telegram:bot_access` too. It lets the bot message the user directly,
+which is a candidate delivery channel for M9's notifications — and asking for it at
+login is far easier than asking again later.
+
+### Claims Telegram actually sends
+
+Verified against `https://oauth.telegram.org/.well-known/openid-configuration`:
+
+```
+aud  preferred_username  phone_number  exp  iat  iss  name  picture  sub
+```
+
+Two things follow, and both bit us:
+
+- **There is no `phone_number_verified`.** The prose docs mention it; the discovery
+  document does not list it. A `phone_number` from Telegram is treated as verified
+  unless the claim is explicitly `false` — sound, because a Telegram account *is* a
+  confirmed phone number: Telegram will not issue one without verifying it, so the
+  only way it can name a user's phone is that the user proved control of it.
+- **No `id`, `given_name` or `family_name`** either. The user id comes from `sub`.
+
+Signing algorithms offered are `RS256 ES256 EdDSA ES256K`; we accept the first two.
+**Do not select EdDSA or ES256K in BotFather** — they restrict the token to the
+`openid` scope, so it could not carry the phone number.
 
 ### Errors
 
