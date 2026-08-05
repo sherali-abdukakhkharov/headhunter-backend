@@ -53,7 +53,15 @@ needs them.
 - [x] helmet, CORS, global `ValidationPipe`, Swagger `/docs` + Scalar `/reference`
 - [x] `GET /health` verified from the Flutter client on an emulator
 - [ ] Add `docs/` deliverables scaffold: deployment, backup/restore notes (§13.2)
-- [ ] Dockerfile + CI workflow (lint, typecheck, test, build)
+- [x] **Dockerfile** - multi-stage, runtime carries `dist` plus production
+      dependencies only, non-root, tini for signals, healthcheck on `/health`.
+      `docker-compose.api.yml` runs it as `headhunter-api` and the tunnel origin is
+      now `http://api:3001`; `pnpm api:up` is the whole redeploy. Migrations stay a
+      deliberate host command - a container that migrates at boot races itself the
+      moment there are two
+- [ ] CI workflow (lint, typecheck, test, build). The image build is the natural
+      place to hang it: `nest build` inside the Dockerfile already type-checks, so CI
+      is `docker build` plus the two test suites
 
 ## M1 - Auth, users, roles
 

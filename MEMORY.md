@@ -30,6 +30,34 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 - The API is a container, and the tunnel addresses it by service name
+`Dockerfile` + `docker-compose.api.yml`; the tunnel origin changed from
+`host.docker.internal:3001` to `http://api:3001`. Three compose files in one directory
+share a Compose project and therefore one network, which is what makes both service
+names resolve with no network block anywhere.
+*Why not keep `host.docker.internal`, which does work here:* the container publishes
+its port to **loopback only**, and Docker Desktop's port proxy happens to make that
+reachable from `host.docker.internal` while a Linux host does not. The API would be
+unreachable on a real server with no clue as to why. Addressing the service directly
+also means nothing has to be published at all for the tunnel to work - the loopback
+mapping survives purely so a developer can curl the origin.
+*Why `NODE_ENV` is not baked into the image:* Joi refuses `OTP_STATIC_CODE` in
+production, and the fixed code is intentional until an SMS provider exists, so a
+`production` image would refuse to boot against the current `.env`. That forced a real
+improvement: log format is now `LOG_PRETTY`, not `NODE_ENV`. Without it the container
+crashed at boot requiring `pino-pretty`, a devDependency the production image does not
+carry - "development mode" and "pretty logs" were never the same concern.
+*Why migrations do not run at boot:* two replicas would race, and a rollback would
+become a database event. `pnpm migrate:latest` from the host, before `pnpm api:up`.
+*Why pnpm needed `--node-linker=hoisted` for the production install:* pnpm's default
+layout is symlinks into a content-addressed store, which do not survive a
+`COPY --from` into a stage that has no store. A hoisted tree is a plain directory.
+*An unplanned benefit worth keeping:* the container runs **UTC** while the platform
+zone is `Asia/Tashkent`, so it permanently exercises the case the date handling exists
+for. A birth date round-tripped unchanged and timestamps carried `+05:00` on the first
+try - which is the entry below, verified against a differently-zoned server rather
+than argued about.
+
 ### 2026-08-05 (M3) - `date` columns come back as strings, or a birth date shifts a day
 `kysely:generate` runs with `--date-parser string` and `infra/db/pg-types.ts` registers
 the matching runtime parser for OID 1082. The two are a **pair**: changing one alone
@@ -461,14 +489,15 @@ ones most likely to bite again:
 
 - **The public URL is https://hh.qitmir.uz** — named Cloudflare tunnel `headhunter`,
   id `3d0cec91-0f40-4f1d-848a-76c4c952142b`, created 2026-08-05. Origin is
-  `host.docker.internal:3001`, so it serves whatever is listening on 3001.
-  Bring it up with `pnpm tunnel:up`.
-  *Trap paid for on 2026-08-05:* that process has been `node dist/main.js`, a
-  **compiled build and not a watcher**, so it kept serving hours-old code while the
-  source and `.env` had both moved on. The symptom was a correct-looking 404 from
+  `http://api:3001`, the `headhunter-api` container over the shared compose network.
+  Bring it up with `pnpm db:up && pnpm api:up && pnpm tunnel:up`.
+  *Trap paid for on 2026-08-05, and it survives containerisation:* the origin serves a
+  **built artefact, never a watcher**, so it keeps serving old code while the source
+  and `.env` have both moved on. The symptom was a correct-looking 404 from
   `/auth/otp/send` — the guard reading an `OTP_LOGIN_ENABLED` that was false when the
-  build was made. Check `(Get-CimInstance Win32_Process -Filter "ProcessId=$pid").CommandLine`
-  before believing a live response; `pnpm build` then restart is what picks up a change.
+  build was made. `pnpm api:up` rebuilds; a bare `docker compose up -d` reuses the
+  existing image and reproduces the trap exactly. Before believing any live response,
+  confirm what is actually serving: `docker ps --filter name=headhunter-api`.
   *Also worth knowing:* the tunnel drops its QUIC connection when the origin goes
   away and takes a few seconds to re-register, so the first call after a restart can
   fail once through `hh.qitmir.uz` while `127.0.0.1:3001` is already fine.

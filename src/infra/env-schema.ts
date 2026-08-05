@@ -16,6 +16,18 @@ export interface AppEnv {
   LOG_LEVEL: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
   /**
+   * Human-readable logs through `pino-pretty` instead of raw JSON.
+   *
+   * Separate from `NODE_ENV` because they are different concerns, and the
+   * container proves it: this deployment runs with `NODE_ENV=development` on
+   * purpose (the fixed OTP code is refused in production), but it must still emit
+   * JSON, because `pino-pretty` is a devDependency and the image carries
+   * production dependencies only. Tying the two together made the container crash
+   * at boot on an unresolvable transport.
+   */
+  LOG_PRETTY: boolean;
+
+  /**
    * IANA zone every client-facing timestamp is rendered in (§8.3, single
    * platform zone). Storage stays UTC; see `infra/time/format.ts`.
    */
@@ -168,6 +180,12 @@ export const envSchema = Joi.object<AppEnv, true>({
   LOG_LEVEL: Joi.string()
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
+
+  // Defaults to on outside production, which is what a developer watching a
+  // terminal wants. The container sets it to false explicitly.
+  LOG_PRETTY: Joi.boolean().default(
+    (parent: { NODE_ENV?: string }) => parent.NODE_ENV !== 'production',
+  ),
 
   // Validated as a real IANA zone at boot rather than trusted: a typo would
   // otherwise surface as a RangeError from Intl on the first response.

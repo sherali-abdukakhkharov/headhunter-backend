@@ -69,6 +69,10 @@ pnpm test:cov             # coverage
 pnpm db:up / db:down      # Postgres container up/down
 pnpm db:logs              # follow Postgres logs
 
+pnpm api:up               # build the image and run the API in Docker (see below)
+pnpm api:down / api:logs  # stop it / follow its logs
+pnpm api:build            # rebuild the image without restarting anything
+
 pnpm migrate:latest       # apply all pending migrations
 pnpm migrate:up           # apply the next one
 pnpm migrate:down         # roll back the most recent
@@ -95,6 +99,41 @@ edge and is partly attacker-controlled. Boot warns if the combination is wrong.
 ```sh
 pnpm tunnel:up / tunnel:logs / tunnel:down
 ```
+
+## Running the API in Docker
+
+`pnpm start:dev` on the host stays the inner loop — Nest's watch mode beats an image
+rebuild every time. The container is how the same code gets **deployed**: it is what
+serves `hh.qitmir.uz`.
+
+```sh
+pnpm db:up                # the database first: there is no cross-file depends_on
+pnpm migrate:latest       # migrations are run deliberately, never at container boot
+pnpm api:up               # build and start headhunter-api
+pnpm tunnel:up            # publish it
+```
+
+Three compose files, one per concern, deliberately separate: the database is always
+wanted, running the API in Docker is a choice, and exposing it to the internet is a
+deliberate act. They sit in one directory, so Compose gives them **one project and
+one network** — which is why `api` can reach `postgres` by name and cloudflared can
+reach `api` by name, with no network block anywhere.
+
+Things worth knowing about the image:
+
+- **The container's port is bound to loopback** (`127.0.0.1:3001`). The tunnel
+  reaches it over the Docker network as `http://api:3001`, so nothing needs to be
+  reachable from the LAN; the mapping exists only for `curl` and Swagger.
+- **`NODE_ENV` is not baked in.** Joi refuses `OTP_STATIC_CODE` when it is
+  `production`, and the fixed OTP code is intentional until an SMS provider exists,
+  so the image would refuse to boot. `LOG_PRETTY=false` gives JSON logs instead of
+  tying log format to `NODE_ENV`.
+- **Migrations do not run at boot.** Two replicas would race, and a rollback would
+  become a database event. Run `pnpm migrate:latest` from the host.
+- **The container runs UTC while the platform zone is `Asia/Tashkent`** — which is
+  the case the date handling exists for, and a good place to notice a regression: a
+  birth date must round-trip unchanged and timestamps must carry `+05:00`.
+- `pnpm api:up` rebuilds. After changing source, that one command is the deploy.
 
 ## Login
 
@@ -174,7 +213,7 @@ difference is applied. Each type is tagged with where its values come from —
 `spec` (enumerated in the specification), `default` (a compiled starting set that
 still needs client approval) or `awaiting`.
 
-Currently **487 items, 1 950 labels**. The four large lists are in `seed/data/`:
+Currently **490 items, 1 962 labels**. The four large lists are in `seed/data/`:
 
 | File | Contents |
 |---|---|
@@ -211,14 +250,24 @@ src/
     db/
       database.module.ts         global Kysely provider (KYSELY token), closes the pool on shutdown
       database.types.ts          Kysely schema types (regenerate with kysely:generate)
+      pg-types.ts                keeps `date` a 'YYYY-MM-DD' string - see the gotchas
       migrate.ts                 standalone migration runner
       seed.ts                    standalone dictionary seed runner
       testing/int-db.ts          the pool every *.int.spec.ts connects with
-  modules/<feature>/
-    <feature>.controller.ts      HTTP layer, Swagger decorators
-    <feature>.service.ts         business logic
-    dto/                         request/response DTOs
+  modules/
+    schemas/                     category-driven field schemas: the form, the write
+                                 routing and the completeness definition, in one
+                                 declaration per target
+    candidates/                  candidate profile, experience, education, attachments
+    <feature>/
+      <feature>.controller.ts    HTTP layer, Swagger decorators
+      <feature>.service.ts       business logic
+      dto/                       request/response DTOs
 migrations/                      timestamped Kysely migrations
+Dockerfile                       multi-stage image; runtime carries dist + prod deps
+docker-compose.dev.yml           Postgres
+docker-compose.api.yml           the API container
+docker-compose.tunnel.yml        cloudflared, origin http://api:3001
 ```
 
 Architecture is **lean modular**: Controller → Service → (Repository, once a
