@@ -70,6 +70,25 @@ export interface AppEnv {
    */
   EMPLOYER_VERIFICATION_ENABLED: boolean;
 
+  /**
+   * Whether a submitted vacancy waits for a moderator (§6.4, BR-04).
+   *
+   * **Off for the MVP**, for the reason PLAN.md's M5 records: the admin module is M10,
+   * so nobody can approve a vacancy, and BR-04 would leave every submission parked in
+   * `under_moderation` - closing the whole employer-posts-candidate-applies loop the
+   * MVP exists to demonstrate. With it off, submit transitions `draft → active`
+   * directly, **still writing its BR-08 history row** with a null actor and an
+   * `auto_approved_no_moderator` reason.
+   *
+   * *What it deliberately does not cover:* a vacancy carrying a BR-12 age or gender
+   * restriction is sent for review **regardless of this flag**. BR-12 requires
+   * "administrator review", and a flag that exists to stop ordinary vacancies being
+   * stranded must not become a way to publish a restriction nobody checked. Such a
+   * vacancy therefore cannot be published until M10 lands - which is the right
+   * outcome, and the employer is told so.
+   */
+  MODERATION_ENABLED: boolean;
+
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;
   OTP_RESEND_DELAY_SECONDS: number;
@@ -236,6 +255,10 @@ export const envSchema = Joi.object<AppEnv, true>({
 
   // Off until the admin module (M10) gives submissions a reviewer. See AppEnv.
   EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(false),
+
+  // Off until M10 gives vacancies a moderator. BR-12 restrictions are reviewed
+  // regardless - see AppEnv.
+  MODERATION_ENABLED: Joi.boolean().default(false),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.

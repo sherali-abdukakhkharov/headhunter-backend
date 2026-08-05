@@ -21,8 +21,8 @@ a profile contract.
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
 | M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access deferred to M4/M7, where its inputs exist |
 | M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
-| M5 | Vacancies + moderation | M6, M7 | next |
-| M6 | Vacancy discovery + applications | M8 | after M3+M5 |
+| M5 | Vacancies + moderation | M6, M7 | **done**; BR-12 restrictions wait for M10 by design |
+| M6 | Vacancy discovery + applications | M8 | next - **closes the MVP loop** |
 | M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
 | M8 | Chat + interviews | - | after M6+M7 |
 | M10 | Admin module + audit | - | after M4+M5 |
@@ -226,6 +226,30 @@ Two decisions worth knowing before building on this:
   row** (BR-08) with a system actor and an `auto_approved_no_moderator` reason, so
   the history never claims a human approved it. Flipping the flag on when M10
   lands needs no client change.
+
+*Status: done.* Four things worth carrying forward:
+
+- **BR-12 overrides the flag, deliberately.** A vacancy carrying an age or gender
+  restriction goes to `under_moderation` whatever `MODERATION_ENABLED` says, because
+  BR-12 makes "administrator review" part of the rule rather than an optimisation. The
+  consequence is real and accepted: such a vacancy **cannot be published until M10**.
+  That is the right failure — the alternative is auto-approving a restriction nobody
+  checked — and the employer sees the status rather than silence. Changing a
+  restriction on an already-live vacancy sends it back for review for the same reason.
+- **BR-12's permitted reasons are enumerated as data**, like M4's evidence rules:
+  `age-gender-justifications.ts` for the rule (which reason supports which
+  restriction, with an argument per entry) and a `restriction_justification` dictionary
+  for the four labels. The split is deliberate — a dictionary row is admin-editable
+  (§10.3), and widening BR-12 must not be a content edit. **It wants legal review.**
+- **The vacancy field schema shares the candidate profile's mechanism entirely** — one
+  resolver, one validator, one contract test over both targets. The contract test also
+  pins that shared field codes mean the same thing on both sides, which is what M7's
+  UAT-06 prefill depends on: it maps a vacancy's requirements onto candidate filters by
+  code.
+- **BR-06 has one definition**, `isOpenForApplications(status, deadline, today)`,
+  exported for M6. The feed filter and the in-transaction apply check must both use it;
+  a feed advertising a vacancy the apply route refuses is the failure that guards
+  against.
 
 ## M6 - Discovery + applications
 

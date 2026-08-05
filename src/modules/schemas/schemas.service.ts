@@ -11,6 +11,7 @@ import type { AppEnv } from '@infra/env-schema';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 
 import { CANDIDATE_PROFILE_SCHEMA } from './candidate-profile.schema';
+import { VACANCY_SCHEMA } from './vacancy.schema';
 import {
   attachmentsFor,
   isRequiredIn,
@@ -20,9 +21,10 @@ import {
 import type { FieldSchemaDefinition } from './schema-types';
 import type { FieldSchemaDto, SchemaAttachmentDto } from './dto/schemas.dto';
 
-/** The declarations this service can serve. `vacancy` joins at M5. */
+/** Both targets of the frozen `schema_versions` table (API_CONTRACTS.md §3.3). */
 const DEFINITIONS: Partial<Record<SchemaTarget, FieldSchemaDefinition>> = {
   candidate_profile: CANDIDATE_PROFILE_SCHEMA,
+  vacancy: VACANCY_SCHEMA,
 };
 
 @Injectable()

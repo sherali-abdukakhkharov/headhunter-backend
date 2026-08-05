@@ -37,10 +37,18 @@ needs them.
       file. The current default is that an individual employer need not upload an
       identity document, and a company must upload a registration certificate.
       What remains is sign-off, not delivery.
-- [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
-      against an enumerated list. *Blocks M5.*
+- [x] ~~**Permitted age/gender justifications**~~ (BR-12) - **no longer blocking.**
+      Enumerated as *data*, the same way the employer evidence rules were: five
+      permitted reasons in
+      [age-gender-justifications.ts](src/modules/vacancies/age-gender-justifications.ts),
+      each with a provenance tag and an argument, plus a
+      `restriction_justification` dictionary for the four labels. Each reason
+      declares which restriction kinds it can support, so a gender restriction
+      justified by a minimum-age rule is refused. **Wants legal review** - nothing
+      on that list has been seen by a lawyer, which is why every entry is tagged
+      `default`.
 - [?] **Approved dictionary value lists** from the client (§13.2). **No longer
-      blocking anything.** All 14 types are seeded and working - 487 items, 1 950
+      blocking anything.** All 16 types are seeded and working - 575 items, 2 300
       labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.
       What remains is *review*, not delivery: `occupation` (162), `skill` (118),
       `industry` (32), `language`, `skill_level`, `shift` and `education_level` are
@@ -221,7 +229,7 @@ Each type is tagged `spec` (enumerated in the specification), `default` (a
 conventional list seeded so dependent milestones can be built - **client still
 has to approve it**) or `awaiting` (a large list only the client can supply).
 
-All 14 types are populated - **487 items, 1 950 labels**. The four large lists live
+All 16 types are populated - **575 items, 2 300 labels**. The four large lists live
 in `seed/data/`.
 
 - [x] `region` - 14 first-level units **plus all 175 districts** by `parent_id`
@@ -403,18 +411,76 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
       the files, or it fails. Nothing does today - `purge_after` is still nullable
       pending BR-14 - but the purge implementation has to know this ordering
 
-## M5 - Vacancies + moderation
+## M5 - Vacancies + moderation *(done)*
 
-- [ ] `vacancies` + `vacancy_requirements` (skills/languages with level and
-      mandatory-vs-preferred, experience, education, attributes)
-- [ ] Status machine + transition validation in one place
-- [ ] `vacancy_status_history` audit rows on every transition
-- [ ] BR-05 check constraint `worker_count >= 1`
-- [ ] BR-06 deadline/closure enforcement
-- [ ] BR-11 closed leaves discovery, stays in history
-- [ ] BR-12 age/gender need justification and force `under_moderation`
-- [ ] Seasonal shape test: work type, date range, worker count, hours, transport,
-      payment method (UAT-10)
+### Schema *(done - `20260805170000_create_vacancies`)*
+- [x] `vacancies` + `vacancy_requirements` (skills/languages with level and
+      mandatory-vs-preferred, experience, education, attributes) - **one**
+      requirements table keyed by field code, because a vacancy's requirements are
+      read whole rather than filtered across vacancies the way candidate skills are
+- [x] `vacancy_status_history` - BR-08, same shape as the employer and account
+      histories
+- [x] BR-05 check constraint `worker_count >= 1`
+- [x] BR-12 as a CHECK too: any age or gender restriction requires a justification
+      in the same row, so no admin path or manual SQL fix can write an unexplained
+      restriction
+- [x] CHECKs keeping the timestamps honest: `published_at` present once published,
+      `closed_at` exactly when closed
+- [x] Partial indexes expressing BR-11 - discovery reads `status = 'active'` only,
+      so a closed vacancy cannot appear in it by forgetting a filter
+
+### The vacancy field schema *(done)*
+- [x] `GET /schemas/vacancy?category=` - the second target `schema_versions` has
+      published since M2, now real. Same resolver, same validator, same
+      `requiredForSearchable` guarantee as the candidate profile
+- [x] Contract tests generalized to run over **both** targets, plus two new ones:
+      shared field codes mean the same thing on both sides (M7 maps one to the other
+      by code for UAT-06's prefill), and each target uses only storage kinds its
+      writer implements
+
+### Endpoints *(done)*
+- [x] `POST /vacancies` (draft), `GET /vacancies/mine`, `GET /vacancies/:id`
+- [x] `PATCH /vacancies/:id` - partial by field code, re-validated server-side.
+      Editing a rejected vacancy returns it to `draft` and clears the stale reason
+- [x] `POST /vacancies/:id/submit` - BR-03, completeness (one 422 violation per
+      unfilled field), deadline sanity, BR-12 justification
+- [x] `PUT /vacancies/:id/status` - pause, resume, close with a reason
+- [x] `POST /vacancies/:id/moderation` - the admin decision, admin role only. M10
+      adds the *queue*; the rules and audit rows live with the machine
+- [x] Status machine + transition validation in one place (`vacancy-status.ts`),
+      and the one method that changes a status always writes its history row
+
+### `MODERATION_ENABLED` *(off for the MVP)* and the BR-12 exception
+- [x] Off, so an ordinary vacancy publishes on submit with an
+      `auto_approved_no_moderator` audit row and a warning - otherwise BR-04 would
+      strand every vacancy and close the MVP loop
+- [x] **A BR-12 restricted vacancy goes to review regardless of the flag.** BR-12
+      requires "administrator review", and a flag meant to stop ordinary vacancies
+      being stranded must not become a way to publish an unchecked restriction. Such
+      a vacancy therefore cannot publish until M10 - the right outcome, and the
+      employer sees `under_moderation` rather than silence
+- [x] Changing a restriction on a *live* vacancy sends it back for review too: it
+      has not been reviewed as it now reads
+
+### BR-06
+- [x] `isOpenForApplications(status, deadline, today)` - one definition, exported,
+      so M6's feed filter and its in-transaction apply check cannot disagree. A feed
+      that advertised a vacancy the apply route refuses is the failure this prevents
+- [ ] Apply it in M6: the deadline check inside the insert transaction with the
+      vacancy read `FOR SHARE` (ARCHITECTURE.md §6)
+
+### Tests *(done - 22 unit, 25 integration)*
+- [x] The transition table pinned exactly, `closed` terminal (BR-11), no self
+      transitions, and which statuses are editable
+- [x] BR-06 boundary: open *on* the deadline day, closed the day after
+- [x] BR-12: unknown reason refused, mismatched reason refused, a reason must cover
+      every restriction present, and no preference-shaped reason is on the list
+- [x] Seasonal shape end to end: work type, date range, worker count, hours,
+      transport, tools, crew, payment method (UAT-10)
+- [x] reject → edit → draft → resubmit → approve, with all six history rows
+- [x] Pause and resume without moving `published_at`; close keeps it in the list
+- [x] One employer never sees another's vacancy (404, not 403)
+- [x] Cascade from the employer through vacancies to requirements and history
 
 ## M6 - Discovery + applications
 

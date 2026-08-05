@@ -93,7 +93,16 @@ export type FieldStorage =
   | { kind: 'occupation_additional' }
   | { kind: 'skills' }
   | { kind: 'languages' }
-  | { kind: 'attribute' };
+  | { kind: 'attribute' }
+  /**
+   * A `vacancy_requirements` row - the vacancy target's equivalent of `attribute`.
+   *
+   * One table for every requirement group, because a vacancy's requirements are read
+   * whole (to render it, to prefill a search per UAT-06, to score a candidate), never
+   * filtered across vacancies the way candidate skills are. Carries a level and the
+   * §6.3 mandatory/preferred flag.
+   */
+  | { kind: 'requirement' };
 
 export interface SchemaField {
   /** Stable code. The write body is keyed by it (§4.6), so renaming one is a contract change. */

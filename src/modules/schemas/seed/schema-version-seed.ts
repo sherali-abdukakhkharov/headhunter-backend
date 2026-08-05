@@ -1,6 +1,7 @@
 import type { Database } from '@infra/db/database.module';
 
 import { CANDIDATE_PROFILE_SCHEMA } from '../candidate-profile.schema';
+import { VACANCY_SCHEMA } from '../vacancy.schema';
 import type { FieldSchemaDefinition } from '../schema-types';
 
 /**
@@ -21,7 +22,10 @@ import type { FieldSchemaDefinition } from '../schema-types';
  * enough that the extra bookkeeping buys less than the guarantee that all five
  * agree.
  */
-const DEFINITIONS: FieldSchemaDefinition[] = [CANDIDATE_PROFILE_SCHEMA];
+const DEFINITIONS: FieldSchemaDefinition[] = [
+  CANDIDATE_PROFILE_SCHEMA,
+  VACANCY_SCHEMA,
+];
 
 export interface SchemaVersionSeedReport {
   versionsUpdated: number;

@@ -775,6 +775,88 @@ The client should not special-case this: it is the same response shape, and the
 a null actor and an `auto_verified_no_reviewer` reason, so nothing claims a person
 reviewed it.
 
+## 4c. Vacancies
+
+Built 2026-08-05 with M5. The employer side; what a *candidate* sees is discovery (M6),
+a separate module with different authorization and ranking.
+
+```
+POST  /vacancies                    ->  Vacancy   (a draft)
+GET   /vacancies/mine                ->  { items: Vacancy[] }
+GET   /vacancies/{id}                ->  Vacancy
+PATCH /vacancies/{id}                ->  Vacancy   (§4.6 body)
+POST  /vacancies/{id}/submit         ->  Vacancy
+PUT   /vacancies/{id}/status         ->  Vacancy   (pause | resume | close)
+POST  /vacancies/{id}/moderation     ->  Vacancy   (admin role only)
+```
+
+The form comes from `GET /schemas/vacancy?category=<code>` — **the same mechanism as the
+candidate profile**, so one form engine renders both, and `fields` is keyed by the same
+field codes in both directions. `category` is derived from `occupation_id`, as on a
+candidate profile.
+
+### Statuses (§6.4)
+
+`draft` · `under_moderation` · `active` · `paused` · `closed` · `rejected`
+
+```
+draft            → under_moderation | active
+under_moderation → active | rejected
+rejected         → draft            (an edit does this automatically)
+active           → paused | closed | under_moderation
+paused           → active | closed | under_moderation
+closed           → nothing          (BR-11: leaves discovery, stays in history)
+```
+
+- **`isOpenForApplications`** is BR-06 in one field: `active`, and either no deadline or
+  one that has not passed. The deadline day itself still accepts applications.
+- **`missingForSubmit`** lists required codes still unfilled. `POST /submit` refuses
+  while it is non-empty, with **one 422 violation per code** so each can be focused.
+- **Editing a `rejected` vacancy returns it to `draft`** and clears the moderator's
+  reason — otherwise a stale reason would read as current.
+- **A vacancy under review cannot be edited** (`409 vacancy.under_moderation`): a
+  moderator is reading it, and an edit would have them approve something else.
+- `closed` is terminal, and closing is the employer's action with a reason.
+
+### BR-12: age and gender restrictions
+
+Optional fields, in the `restrictions` section: `age_min`, `age_max`, `gender_id`,
+`restriction_justification_id`, `restriction_justification_note`.
+
+Four things the client must know:
+
+1. **A restriction requires `restriction_justification_id`** — an id from the
+   `restriction_justification` dictionary, never free text, because BR-12 requires
+   moderation to validate the reason. The note is elaboration for the reviewer.
+2. **Each reason supports only certain restriction kinds.** A gender restriction
+   justified by a minimum-age rule is `403 vacancy.restriction_not_justified`.
+3. **A restricted vacancy always goes to `under_moderation`**, even while
+   `MODERATION_ENABLED` is off. Until the admin module exists it therefore **cannot be
+   published** — deliberately: the flag exists so ordinary vacancies are not stranded,
+   not so an unchecked restriction can go live.
+4. **Adding or changing a restriction on a live vacancy sends it back for review**, so
+   it leaves discovery until approved.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `employer.profile_incomplete` / `employer.not_verified` | 403 | BR-03, on create and submit. |
+| `vacancy.not_found` | 404 | Unknown, or another employer's — we do not confirm which (§11.1). |
+| `vacancy.under_moderation` | 409 | Being reviewed; not editable yet. |
+| `vacancy.not_editable` | 409 | Closed. BR-11 keeps it as history. |
+| `vacancy.not_submittable` | 409 | Only a `draft` or a `rejected` vacancy may be submitted. |
+| `vacancy.transition_not_allowed` | 409 | Not a legal move in the machine above. |
+| `vacancy.deadline_passed` | 403 | Publishing something BR-06 would refuse every application to. |
+| `vacancy.restriction_not_justified` | 403 | BR-12: absent or unsuitable justification. |
+| `validation.failed` | 422 | Per-field, on a write **and** on an incomplete submit. |
+
+**Publication currently happens on submit.** `MODERATION_ENABLED` is off until the admin
+module (M10), so an unrestricted vacancy goes straight to `active` with an
+`auto_approved_no_moderator` audit row. The client should not special-case that: the
+response shape is identical, and `under_moderation` starts appearing when the flag goes
+on — and already appears today for anything BR-12 touches.
+
 ---
 
 ## 5. Deferred

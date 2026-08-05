@@ -49,6 +49,14 @@ export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type UserRole = 'admin' | 'candidate' | 'employer';
 
+export type VacancyStatus =
+  | 'active'
+  | 'closed'
+  | 'draft'
+  | 'paused'
+  | 'rejected'
+  | 'under_moderation';
+
 export type VerificationStatus =
   | 'changes_required'
   | 'not_submitted'
@@ -316,6 +324,65 @@ export interface Users {
   updated_at: Generated<Timestamp>;
 }
 
+export interface Vacancies {
+  address: string | null;
+  age_max: number | null;
+  age_min: number | null;
+  category: DictionaryCategory | null;
+  closed_at: Timestamp | null;
+  closure_reason: string | null;
+  created_at: Generated<Timestamp>;
+  deadline_on: string | null;
+  description: string | null;
+  district_id: string | null;
+  employer_user_id: string;
+  ends_on: string | null;
+  gender_id: string | null;
+  hired_count: Generated<number>;
+  id: Generated<string>;
+  moderation_reason: string | null;
+  occupation_id: string | null;
+  published_at: Timestamp | null;
+  region_id: string | null;
+  restriction_justification_id: string | null;
+  restriction_justification_note: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  starts_on: string | null;
+  status: Generated<VacancyStatus>;
+  title: string | null;
+  updated_at: Generated<Timestamp>;
+  worker_count: number | null;
+}
+
+export interface VacancyRequirements {
+  created_at: Generated<Timestamp>;
+  field_code: string;
+  is_mandatory: Generated<boolean>;
+  item_id: string | null;
+  level_id: string | null;
+  level_rank: number | null;
+  vacancy_id: string;
+  value_bool: boolean | null;
+  value_date: string | null;
+  value_decimal: Numeric | null;
+  value_int: number | null;
+  value_text: string | null;
+}
+
+export interface VacancyStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: VacancyStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: VacancyStatus;
+  vacancy_id: string;
+}
+
 export interface VerificationSubmissionFiles {
   file_id: string;
   submission_id: string;
@@ -355,6 +422,9 @@ export interface DB {
   stored_files: StoredFiles;
   user_roles: UserRoles;
   users: Users;
+  vacancies: Vacancies;
+  vacancy_requirements: VacancyRequirements;
+  vacancy_status_history: VacancyStatusHistory;
   verification_submission_files: VerificationSubmissionFiles;
   verification_submissions: VerificationSubmissions;
 }

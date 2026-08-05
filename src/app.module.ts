@@ -18,6 +18,7 @@ import { FilesHttpModule } from '@modules/files/files.module';
 import { HealthModule } from '@modules/health/health.module';
 import { SchemasModule } from '@modules/schemas/schemas.module';
 import { UsersModule } from '@modules/users/users.module';
+import { VacanciesModule } from '@modules/vacancies/vacancies.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { UsersModule } from '@modules/users/users.module';
     SchemasModule,
     CandidatesModule,
     EmployersModule,
+    VacanciesModule,
     FilesHttpModule,
     HealthModule,
   ],

@@ -213,7 +213,8 @@ difference is applied. Each type is tagged with where its values come from —
 `spec` (enumerated in the specification), `default` (a compiled starting set that
 still needs client approval) or `awaiting`.
 
-Currently **490 items, 1 962 labels**. The four large lists are in `seed/data/`:
+Currently **575 items, 2 300 labels** across 16 types — measured from the seeded
+database, and exactly four labels per item. The four large lists are in `seed/data/`:
 
 | File | Contents |
 |---|---|
@@ -346,7 +347,7 @@ Every one of these was hit while setting the project up:
   `active_role`, account status guard (BR-10), rate limiting. Telegram login is
   deprecated but still working.
 - **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
-  four-locale enforcement, the idempotent seeder, and the content — 490 items in
+  four-locale enforcement, the idempotent seeder, and the content — 575 items in
   four variants including all 175 districts.
 - **M3** candidate profile: the category-driven field schema
   (`GET /schemas/candidate-profile`) that also drives write routing and
@@ -361,13 +362,20 @@ Every one of these was hit while setting the project up:
   policy question is declared as data in `employer-requirements.ts` rather than left as
   a blocker. `EMPLOYER_VERIFICATION_ENABLED` is off until M10 supplies a reviewer, so
   submissions self-approve — recorded honestly, with a null actor.
+- **M5** vacancies + moderation: the vacancy field schema (the second target, sharing
+  the candidate profile's mechanism entirely), structured requirements carrying §6.3's
+  mandatory/preferred flag, §6.4's status machine with a BR-08 audit row on every
+  transition, BR-05, BR-06's single definition of "open for applications", BR-11's
+  closed-stays-in-history, and BR-12 as an enumerated, validated justification that
+  **always** requires review. `MODERATION_ENABLED` is off until M10, so an ordinary
+  vacancy publishes on submit.
 - **Cross-cutting**: every user-facing message localized into all four variants
   (`infra/i18n`), and Telegram-backed file storage with owner-scoped
   upload / download / delete (`infra/files`, `/files`).
 
 ## Not built yet
 
-Vacancies, applications, search, chat, notifications, admin (M5 onward), plus BR-09's
+Discovery, applications, search, chat, notifications, admin (M6 onward), plus BR-09's
 employer access to a candidate CV, which still needs a hiring interaction (M6/M7)
 before it has anything to evaluate — until then a CV is readable only by its owner.
 Smaller gaps worth knowing: CI,

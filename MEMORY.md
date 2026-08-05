@@ -30,6 +30,39 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 (M5) - BR-12 overrides the missing-moderator flag, and that is the point
+A vacancy carrying an age or gender restriction goes to `under_moderation` **regardless
+of `MODERATION_ENABLED`**, so with no admin module it cannot be published at all.
+*Why that is correct rather than a gap:* BR-12 makes "administrator review" part of the
+rule. The flag exists so *ordinary* vacancies are not stranded behind a moderator who
+does not exist yet; letting it also wave through a restriction nobody checked would use
+a convenience to defeat the one rule in the specification specifically about
+discrimination. Refusing to publish is the safe failure, and the employer sees
+`under_moderation` rather than silence.
+*The same reasoning covers a live vacancy whose restriction changes:* it has not been
+reviewed as it now reads, so it leaves discovery until it is. That is why `active →
+under_moderation` is a legal transition.
+*Generalisable:* when a feature flag exists to work around a missing dependency, decide
+explicitly which rules it is allowed to bypass. A flag that bypasses everything reachable
+from its code path is a flag that will eventually bypass something that mattered.
+
+### 2026-08-05 (M5) - BR-12's reasons: the labels are content, the rule is code
+The permitted justifications live in two places on purpose. The four labels are a
+`restriction_justification` dictionary (BR-13, like every selectable value). The *rule* -
+which reason can support which restriction, and the argument for each - is
+`age-gender-justifications.ts`.
+*Why not put `applies` in the dictionary row's `item_group`:* dictionary content is
+admin-editable by design (§10.3). If the rule lived there, an administrator could widen
+BR-12 by editing a label row - turning "minimum age" into something that justifies a
+gender restriction. The rule belongs where changing it is a code review.
+*Why enumerate at all rather than take free text:* BR-12 requires moderation to
+**validate** the reason. Prose cannot be validated, and a text box collects "young
+dynamic team" and leaves a moderator arguing case by case.
+*What the tests hold:* that the two code lists match exactly, that a reason must cover
+every restriction kind present, and that no preference-shaped code ("client_preference",
+"team_culture") is on the list. That last test looks paranoid and is not - it is the
+exact failure mode BR-12 exists to prevent, and the list is the only thing preventing it.
+
 ### 2026-08-05 (M4) - An unanswered policy question can be a declaration instead of a blocker
 §6.1 asks for "identity verification data **if required by policy**" and no policy
 exists, which had M4 marked as blocked. It is now answered as *data*:
@@ -572,17 +605,18 @@ ones most likely to bite again:
 
 Tracked as `[?]` items at the top of [TODO.md](TODO.md). Still open and still
 blocking: **data-retention periods** (BR-14, blocks the deletion purge and audit
-retention) and the **permitted age/gender justifications** (BR-12, blocks M5
-moderation - and a good candidate for the declaration treatment described above).
+retention). That is now the only one.
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
 
-No longer blocking, though still wanting sign-off: **individual-employer verification
-evidence** (§6.1). Declared as data with a stated default and a provenance tag, so the
-answer is one file edit rather than a milestone dependency.
+No longer blocking, though still wanting sign-off - both declared as data with stated
+defaults and provenance tags, so an answer is one file edit rather than a milestone
+dependency: **individual-employer verification evidence** (§6.1) and the **permitted
+age/gender justifications** (BR-12). The second wants **legal** review specifically;
+nothing on that list has been seen by a lawyer.
 
-The dictionary value lists are no longer a blocker - all 14 types are seeded and
+The dictionary value lists are no longer a blocker - all 16 types are seeded and
 working - but four of them and the occupation set are compiled starting points
 awaiting client review, and each says so in its data file. Getting that review is
 now a quality task, not a dependency.

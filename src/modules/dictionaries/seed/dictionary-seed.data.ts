@@ -609,6 +609,66 @@ export const DICTIONARY_SEED: SeedType[] = [
     ],
   },
   {
+    code: 'restriction_justification',
+    provenance: 'default',
+    note:
+      'BR-12: an age or gender restriction needs "an objective reason" that ' +
+      'moderation can validate, so the reasons are enumerated rather than typed. ' +
+      'These are the four labels for the employer’s picker; the *rule* about which ' +
+      'reason supports which restriction lives in ' +
+      'modules/vacancies/age-gender-justifications.ts, deliberately in code - a ' +
+      'dictionary row is admin-editable and widening BR-12 must not be a content ' +
+      'edit. A test asserts the codes here and there match. Needs legal review by ' +
+      'the client. Added 2026-08-05 with M5.',
+    items: [
+      {
+        code: 'statutory_minimum_age',
+        labels: {
+          'uz-Latn': 'Qonun bilan belgilangan eng kichik yosh',
+          'uz-Cyrl': 'Қонун билан белгиланган энг кичик ёш',
+          ru: 'Установленный законом минимальный возраст',
+          en: 'Statutory minimum age for the work',
+        },
+      },
+      {
+        code: 'night_work_restriction',
+        labels: {
+          'uz-Latn': 'Tungi ishga qonuniy cheklov',
+          'uz-Cyrl': 'Тунги ишга қонуний чеклов',
+          ru: 'Законодательное ограничение на ночной труд',
+          en: 'Legal restriction on night work',
+        },
+      },
+      {
+        code: 'hazardous_conditions',
+        labels: {
+          'uz-Latn': 'Zararli yoki xavfli mehnat sharoitlari',
+          'uz-Cyrl': 'Зарарли ёки хавфли меҳнат шароитлари',
+          ru: 'Вредные или опасные условия труда',
+          en: 'Hazardous or harmful working conditions',
+        },
+      },
+      {
+        code: 'heavy_lifting_limits',
+        labels: {
+          'uz-Latn': 'Yuk ko‘tarish me’yorlari',
+          'uz-Cyrl': 'Юк кўтариш меъёрлари',
+          ru: 'Нормы подъёма тяжестей',
+          en: 'Statutory manual-handling limits',
+        },
+      },
+      {
+        code: 'single_sex_facility',
+        labels: {
+          'uz-Latn': 'Bir jinsli muhit talab qilinadigan ish',
+          'uz-Cyrl': 'Бир жинсли муҳит талаб қилинадиган иш',
+          ru: 'Работа в среде одного пола',
+          en: 'Work in a single-sex setting',
+        },
+      },
+    ],
+  },
+  {
     code: 'gender',
     provenance: 'spec',
     note:

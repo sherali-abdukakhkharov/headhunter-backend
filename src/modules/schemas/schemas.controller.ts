@@ -86,4 +86,39 @@ export class SchemasController {
       locale,
     );
   }
+
+  @Get('vacancy')
+  @ApiOperation({
+    summary: 'The vacancy form for one work category',
+    description:
+      'The same mechanism as the candidate profile, deliberately: the client renders ' +
+      'both with one form engine, and the server validates both against these ' +
+      'declarations. `requiredForSearchable` here means "required before the vacancy ' +
+      'may be submitted for publication".',
+  })
+  @ApiOkResponse({ type: FieldSchemaDto })
+  @ApiResponse({
+    status: HttpStatus.NOT_MODIFIED,
+    description: 'The client’s `If-None-Match` matches the current version.',
+  })
+  @Header('Vary', 'x-lang')
+  @Header('Cache-Control', 'private, max-age=0, must-revalidate')
+  async vacancy(
+    @Query() query: SchemaQueryDto,
+    @XLang() locale: LocaleCode,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<FieldSchemaDto | undefined> {
+    const version = await this.schemas.version('vacancy', query.category);
+    const etag = `W/"schema:vacancy:${query.category}:${version}:${locale}"`;
+
+    response.setHeader('ETag', etag);
+
+    if (request.headers['if-none-match'] === etag) {
+      response.status(HttpStatus.NOT_MODIFIED);
+      return undefined;
+    }
+
+    return this.schemas.fieldSchema('vacancy', query.category, locale);
+  }
 }

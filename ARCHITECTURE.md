@@ -323,7 +323,20 @@ Enforcement points:
   write both or neither.
 - **BR-05** worker count `>= 1` as a check constraint.
 - **BR-12** age/gender restrictions on a vacancy require a stored justification
-  and force `under_moderation`; the audit row records the admin decision.
+  and force `under_moderation`; the audit row records the admin decision. Two
+  properties worth stating, because both are easy to undo by accident:
+  - **The justification is an id from an enumerated list, never prose.** BR-12
+    requires moderation to *validate* the reason, and prose cannot be validated. The
+    list's labels are a dictionary; the rule about which reason supports which
+    restriction is code, because a dictionary row is admin-editable and widening
+    BR-12 must not be a content edit. The CHECK constraint refuses a restriction with
+    no justification at all, so no write path can produce one.
+  - **It overrides `MODERATION_ENABLED`.** A restricted vacancy waits for review even
+    when nothing can review it, which means it cannot publish before M10. That is the
+    safe failure: the flag exists so *ordinary* vacancies are not stranded, not so a
+    restriction can skip the review the specification requires for it. Changing a
+    restriction on a live vacancy sends it back for the same reason, which is why
+    `active → under_moderation` is a legal transition.
 - **BR-11** closed vacancies leave active discovery but stay in history - a
   status filter, never a delete.
 
@@ -564,8 +577,12 @@ Answers change the schema, so raise them before the affected milestone:
    **no longer blocking.** Declared as data in `employer-requirements.ts` (§5a.1);
    the current default is that an individual need not upload an identity document and
    a company must upload a registration certificate. Still wants sign-off.
-3. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
-   age/gender filtering need to be enumerated, since moderation must check them.
+3. ~~**Conditional filters** (§7.1, BR-12)~~ - **no longer blocking, but wants legal
+   review.** Five permitted justifications are enumerated in
+   `modules/vacancies/age-gender-justifications.ts`, each declaring which restriction
+   kinds it supports and arguing for itself; the four labels are a
+   `restriction_justification` dictionary. Nothing on that list has been reviewed by a
+   lawyer, which is why every entry is tagged `default`.
 4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and
    working, but four of them carry a conventional default rather than an approved
    list, and the occupation set is a starting point rather than a classifier. See

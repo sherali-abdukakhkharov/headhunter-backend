@@ -389,6 +389,64 @@ export const MESSAGES = {
     en: 'A reason is required to reject or request changes.',
   },
 
+  // --- vacancies (§6.3, §6.4, BR-04, BR-11, BR-12) -------------------------
+  'vacancy.not_found': {
+    'uz-Latn': 'Vakansiya topilmadi.',
+    'uz-Cyrl': 'Вакансия топилмади.',
+    ru: 'Вакансия не найдена.',
+    en: 'The vacancy was not found.',
+  },
+  'vacancy.not_editable': {
+    'uz-Latn': 'Bu vakansiyani tahrirlash mumkin emas.',
+    'uz-Cyrl': 'Бу вакансияни таҳрирлаш мумкин эмас.',
+    ru: 'Эту вакансию нельзя редактировать.',
+    en: 'This vacancy can no longer be edited.',
+  },
+  // Distinct from the above: the employer's action is to wait, not to give up.
+  'vacancy.under_moderation': {
+    'uz-Latn': 'Vakansiya koʻrib chiqilmoqda, shu vaqtda tahrirlanmaydi.',
+    'uz-Cyrl': 'Вакансия кўриб чиқилмоқда, шу вақтда таҳрирланмайди.',
+    ru: 'Вакансия на проверке и пока не редактируется.',
+    en: 'The vacancy is under review and cannot be edited yet.',
+  },
+  'vacancy.not_submittable': {
+    'uz-Latn': 'Joriy holatda nashrga yuborib boʻlmaydi.',
+    'uz-Cyrl': 'Жорий ҳолатда нашрга юбориб бўлмайди.',
+    ru: 'В текущем состоянии публикация невозможна.',
+    en: 'It cannot be submitted for publication in its current state.',
+  },
+  'vacancy.transition_not_allowed': {
+    'uz-Latn': 'Bu holatga oʻtish mumkin emas.',
+    'uz-Cyrl': 'Бу ҳолатга ўтиш мумкин эмас.',
+    ru: 'Такой переход состояния невозможен.',
+    en: 'That status change is not allowed.',
+  },
+  'vacancy.deadline_passed': {
+    'uz-Latn': 'Arizalar muddati oʻtgan. Muddatni yangilang.',
+    'uz-Cyrl': 'Аризалар муддати ўтган. Муддатни янгиланг.',
+    ru: 'Срок приёма заявок истёк. Обновите срок.',
+    en: 'The application deadline has passed. Update it first.',
+  },
+  // BR-12: the reason must be one moderation can actually validate.
+  'vacancy.restriction_not_justified': {
+    'uz-Latn': 'Yosh yoki jins cheklovi uchun asos toʻgʻri koʻrsatilmagan.',
+    'uz-Cyrl': 'Ёш ёки жинс чеклови учун асос тўғри кўрсатилмаган.',
+    ru: 'Для ограничения по возрасту или полу не указано допустимое основание.',
+    en: 'The age or gender restriction has no permitted justification.',
+  },
+  'vacancy.not_under_moderation': {
+    'uz-Latn': 'Bu vakansiya koʻrib chiqilmoqda emas.',
+    'uz-Cyrl': 'Бу вакансия кўриб чиқилмоқда эмас.',
+    ru: 'Эта вакансия не находится на проверке.',
+    en: 'This vacancy is not under review.',
+  },
+  'vacancy.moderation_reason_required': {
+    'uz-Latn': 'Rad etish uchun sabab koʻrsatilishi shart.',
+    'uz-Cyrl': 'Рад этиш учун сабаб кўрсатилиши шарт.',
+    ru: 'Для отказа необходимо указать причину.',
+    en: 'A reason is required to reject a vacancy.',
+  },
+
   // --- validation (§3.2 "validation messages shall be localized") --------
   'validation.failed': {
     'uz-Latn': 'Kiritilgan maʼlumotlarni tekshirib chiqing.',
