@@ -574,6 +574,38 @@ export const DICTIONARY_SEED: SeedType[] = [
           en: 'Profile photo',
         },
       },
+      // --- employer verification (§6.1) ---
+      // "verification documents if required" for a company and "identity
+      // verification data if required by policy" for an individual. Which of these
+      // is actually mandatory is an open client decision, so the requirement lives
+      // in `employer-requirements.ts` as data and these purposes exist either way.
+      {
+        code: 'company_registration',
+        labels: {
+          'uz-Latn': 'Davlat royxatidan otganlik guvohnomasi',
+          'uz-Cyrl': 'Давлат рўйхатидан ўтганлик гувоҳномаси',
+          ru: 'Свидетельство о регистрации',
+          en: 'Certificate of registration',
+        },
+      },
+      {
+        code: 'id_document',
+        labels: {
+          'uz-Latn': 'Shaxsni tasdiqlovchi hujjat',
+          'uz-Cyrl': 'Шахсни тасдиқловчи ҳужжат',
+          ru: 'Документ, удостоверяющий личность',
+          en: 'Identity document',
+        },
+      },
+      {
+        code: 'logo',
+        labels: {
+          'uz-Latn': 'Kompaniya logotipi',
+          'uz-Cyrl': 'Компания логотипи',
+          ru: 'Логотип компании',
+          en: 'Company logo',
+        },
+      },
     ],
   },
   {

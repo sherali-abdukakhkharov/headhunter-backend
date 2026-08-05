@@ -685,6 +685,96 @@ readable only by its owner — stricter than BR-09 requires, so nothing is expos
 arrives with M4's verified employer and M7's candidate serializer, where "an allowed
 hiring interaction" can actually be evaluated.
 
+## 4b. The employer profile and verification
+
+Built 2026-08-05 with M4. Every route requires an **active role of `employer`**.
+
+```
+GET   /employers/me                ->  EmployerProfile
+PUT   /employers/me                ->  EmployerProfile
+GET   /employers/me/verification    ->  VerificationState
+POST  /employers/me/verification    ->  VerificationState
+```
+
+### The profile
+
+`PUT` is a full replacement — §6.1 is one screen and submits whole. `type` is
+`company` or `individual`, chosen once: it decides which fields apply and what
+verification asks for, so changing it later would strand the other type's answers and
+the evidence verification was granted against. A later `PUT` with a different `type`
+is `403 employer.type_immutable`.
+
+Unlike the candidate profile, **`GET` is a 404 before the first `PUT`**
+(`employer.profile_not_found`). There is no neutral empty employer to render, because
+`type` decides which fields exist at all.
+
+Fields by type, per §6.1:
+
+| Type | Required for BR-03 | Also accepted |
+|---|---|---|
+| `company` | `contactPhone`, `regionId`, `legalName`, `publicName`, `industryId`, `contactPersonName`, `description` | `districtId`, `address`, `logoFileId` |
+| `individual` | `contactPhone`, `regionId`, `fullName`, `description` | `districtId`, `address` |
+
+- **`legalName` and `publicName` are both kept.** They differ often enough that
+  showing the legal name on a vacancy card would be wrong and verifying against the
+  public name would be impossible.
+- **`contactPhone` is not the login phone.** BR-01's verified number stays on the
+  account; this is the number a candidate should call, which is often a different
+  person.
+- `logoFileId` is a stored file of purpose `logo`, uploaded through `POST /files`.
+
+**`canPublish` is BR-03 in one field**: `isComplete && verificationStatus ===
+'verified'`. Read it rather than ANDing the two — a client that re-derived it would be
+a second implementation of the rule that decides who may post a vacancy.
+`missingFields[]` names the unfilled required fields so the client can focus one.
+
+### Verification
+
+`verificationStatus` is §6.1's five states exactly: `not_submitted`, `under_review`,
+`verified`, `rejected`, `changes_required`. `verificationReason` is the
+administrator's text for a rejection or a correction request — **human prose in
+whatever language they wrote it**, not a translatable key.
+
+```json
+{
+  "status": "not_submitted",
+  "reason": null,
+  "verifiedAt": null,
+  "requiredEvidence": [
+    { "purposeCode": "company_registration", "required": true },
+    { "purposeCode": "evidence", "required": false }
+  ],
+  "submissions": []
+}
+```
+
+**Read `requiredEvidence` rather than hardcoding a document list.** §6.1 says
+"verification documents if required" and "identity verification data if required by
+policy", and that policy is still an open client decision — so the answer is served as
+data and will change without a client release. Today a company must provide
+`company_registration` and an individual need not provide anything.
+
+`POST` takes `{ "fileIds": [...] }` — files uploaded through `POST /files` with the
+purpose the list names, each owned by the caller. Refusals:
+
+| Code | Status | Meaning |
+|---|---|---|
+| `employer.profile_incomplete` | 403 | BR-03: finish the profile first. |
+| `employer.verification_evidence_missing` | 403 | A `required` document is absent. |
+| `employer.verification_not_submittable` | 409 | Already under review, or already verified. A 409 rather than a 403: the state forbids it, not the caller. |
+| `file.not_found` | 404 | A file id is unknown, deleted, or belongs to another account. |
+
+`submissions[]` is newest first and keeps every attempt with its reason, so a client
+can show why a previous try was refused. After a `changes_required` decision the
+employer may submit again.
+
+**Verification currently approves immediately.** The admin module is M10, so
+`EMPLOYER_VERIFICATION_ENABLED` is off and a submission goes straight to `verified`.
+The client should not special-case this: it is the same response shape, and the
+`under_review` state will start appearing when the flag goes on. The audit row records
+a null actor and an `auto_verified_no_reviewer` reason, so nothing claims a person
+reviewed it.
+
 ---
 
 ## 5. Deferred

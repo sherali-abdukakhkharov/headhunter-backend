@@ -57,6 +57,19 @@ export class NotFoundError extends LocalizedException {
   }
 }
 
+/**
+ * 409 - the request is valid but the resource's current state forbids it.
+ *
+ * Distinct from 403 on purpose: a 403 means "not you", a 409 means "not now". A
+ * client retrying a 409 after the state changes is correct behaviour, which is not
+ * true of a 403.
+ */
+export class ConflictError extends LocalizedException {
+  constructor(key: MessageKey, params?: MessageParams) {
+    super(HttpStatus.CONFLICT, key, params);
+  }
+}
+
 /** 413 - the upload exceeds the configured limit (§12.5). */
 export class PayloadTooLargeError extends LocalizedException {
   constructor(key: MessageKey, params?: MessageParams) {

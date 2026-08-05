@@ -20,8 +20,8 @@ a profile contract.
 | M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
 | M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access deferred to M4/M7, where its inputs exist |
-| M4 | Employer profile + verification | M5, M7 | next |
-| M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
+| M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
+| M5 | Vacancies + moderation | M6, M7 | next |
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
 | M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
 | M8 | Chat + interviews | - | after M6+M7 |
@@ -179,6 +179,29 @@ Two decisions worth knowing before building on this:
 - Status: `not_submitted | under_review | verified | rejected | changes_required`,
   with admin reason text.
 - BR-03 precondition wired into invitation and vacancy-submit routes.
+
+*Status: done.* Three decisions worth carrying into M5:
+
+- **`EMPLOYER_VERIFICATION_ENABLED` is off**, for the same reason `MODERATION_ENABLED`
+  exists below: the admin module is M10, so nobody can approve a submission, and
+  BR-03 would strand every employer in `under_review` and make the employer half of
+  the product unreachable. Submit therefore transitions straight to `verified` — and
+  **still writes its BR-08 history row**, with a null actor and an
+  `auto_verified_no_reviewer` reason, so the audit trail never claims a person
+  reviewed anything. The statuses, transitions, evidence rules and BR-03 are all
+  implemented; only the queue is absent, and flipping the flag needs no client change.
+- **§6.1's open question is answered as data, not deferred.** What each employer type
+  must upload lives in `employer-requirements.ts` with a `spec | default` provenance
+  tag per value, exactly as dictionary content does. The client's answer is one edit
+  to one file — no migration, no endpoint, no release. This is what stopped the
+  milestone being blocked, and the same move is available for BR-12's permitted
+  age/gender justifications, which currently block M5's moderation.
+- **BR-03 is one method, not three checks.** `EmployersService.gate` returns the two
+  conditions separately, because "finish your profile" and "wait for verification"
+  are different refusals. M5's vacancy submit and M7's search and invitations call it
+  rather than reading the status; a precondition duplicated across three modules is
+  one that drifts, and the failure mode is an unverified employer reaching candidate
+  contact details.
 
 ## M5 - Vacancies + moderation
 

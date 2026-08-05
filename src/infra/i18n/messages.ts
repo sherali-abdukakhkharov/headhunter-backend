@@ -337,6 +337,58 @@ export const MESSAGES = {
     en: 'A file of this kind is not part of the profile.',
   },
 
+  // --- employers (§6.1, BR-03) ---------------------------------------------
+  'employer.profile_not_found': {
+    'uz-Latn': 'Ish beruvchi profili topilmadi.',
+    'uz-Cyrl': 'Иш берувчи профили топилмади.',
+    ru: 'Профиль работодателя не найден.',
+    en: 'The employer profile was not found.',
+  },
+  // BR-03: the fix is "finish the profile", which is why it is not the same message
+  // as "not verified yet" - the two need different actions from the employer.
+  'employer.profile_incomplete': {
+    'uz-Latn': 'Avval ish beruvchi profilini toʻliq toʻldiring.',
+    'uz-Cyrl': 'Аввал иш берувчи профилини тўлиқ тўлдиринг.',
+    ru: 'Сначала заполните профиль работодателя полностью.',
+    en: 'Complete the employer profile first.',
+  },
+  'employer.not_verified': {
+    'uz-Latn': 'Bu amal uchun profil tasdiqlanishi kerak.',
+    'uz-Cyrl': 'Бу амал учун профил тасдиқланиши керак.',
+    ru: 'Для этого действия профиль должен быть подтверждён.',
+    en: 'This action requires a verified profile.',
+  },
+  'employer.type_immutable': {
+    'uz-Latn': 'Ish beruvchi turini keyinchalik oʻzgartirib boʻlmaydi.',
+    'uz-Cyrl': 'Иш берувчи турини кейинчалик ўзгартириб бўлмайди.',
+    ru: 'Тип работодателя нельзя изменить позже.',
+    en: 'The employer type cannot be changed later.',
+  },
+  'employer.verification_not_submittable': {
+    'uz-Latn': 'Joriy holatda tasdiqlashga yuborib boʻlmaydi.',
+    'uz-Cyrl': 'Жорий ҳолатда тасдиқлашга юбориб бўлмайди.',
+    ru: 'В текущем состоянии отправка на проверку невозможна.',
+    en: 'A submission is not possible in the current state.',
+  },
+  'employer.verification_evidence_missing': {
+    'uz-Latn': 'Talab qilingan hujjatlar toʻliq yuklanmagan.',
+    'uz-Cyrl': 'Талаб қилинган ҳужжатлар тўлиқ юкланмаган.',
+    ru: 'Загружены не все требуемые документы.',
+    en: 'Not all required documents were uploaded.',
+  },
+  'employer.verification_not_pending': {
+    'uz-Latn': 'Bu soʻrov koʻrib chiqilmoqda emas.',
+    'uz-Cyrl': 'Бу сўров кўриб чиқилмоқда эмас.',
+    ru: 'Эта заявка не находится на рассмотрении.',
+    en: 'This submission is not under review.',
+  },
+  'employer.verification_reason_required': {
+    'uz-Latn': 'Rad etish yoki tuzatish uchun sabab koʻrsatilishi shart.',
+    'uz-Cyrl': 'Рад этиш ёки тузатиш учун сабаб кўрсатилиши шарт.',
+    ru: 'Для отказа или замечаний необходимо указать причину.',
+    en: 'A reason is required to reject or request changes.',
+  },
+
   // --- validation (§3.2 "validation messages shall be localized") --------
   'validation.failed': {
     'uz-Latn': 'Kiritilgan maʼlumotlarni tekshirib chiqing.',

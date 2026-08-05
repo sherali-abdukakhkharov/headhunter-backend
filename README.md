@@ -355,16 +355,22 @@ Every one of these was hit while setting the project up:
   experience and education sub-resources, and profile attachments with §5.4's
   replace-by-superseding. BR-09's employer access to a CV is deferred to M4/M7,
   where its inputs exist.
+- **M4** employer profile + verification: company and individual profiles, the
+  five-state verification machine with a BR-08 audit row on every transition, evidence
+  submission with ownership checks, and BR-03's publish gate as one method. §6.1's open
+  policy question is declared as data in `employer-requirements.ts` rather than left as
+  a blocker. `EMPLOYER_VERIFICATION_ENABLED` is off until M10 supplies a reviewer, so
+  submissions self-approve — recorded honestly, with a null actor.
 - **Cross-cutting**: every user-facing message localized into all four variants
   (`infra/i18n`), and Telegram-backed file storage with owner-scoped
   upload / download / delete (`infra/files`, `/files`).
 
 ## Not built yet
 
-Employer profiles, vacancies, applications, search, chat, notifications, admin
-(M4 onward), plus BR-09's employer access to a candidate CV, which needs a verified
-employer (M4) and a hiring interaction (M6/M7) before it has anything to evaluate —
-until then a CV is readable only by its owner. Smaller gaps worth knowing: a Dockerfile and CI,
+Vacancies, applications, search, chat, notifications, admin (M5 onward), plus BR-09's
+employer access to a candidate CV, which still needs a hiring interaction (M6/M7)
+before it has anything to evaluate — until then a CV is readable only by its owner.
+Smaller gaps worth knowing: CI,
 the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
 asks for it "where infrastructure permits"; Telegram does none on a bot upload, and
 the content checks in `FilesService` are type validation, not scanning). The

@@ -241,4 +241,5 @@ Not blockers for a staging URL; each is a real gap for production.
 | No SMS arrives after `/auth/otp/send` | Expected — no provider is connected. The code is `OTP_STATIC_CODE`, and `devCode` in the response |
 | `/auth/otp/*` returns 404 | `OTP_LOGIN_ENABLED` is false. The 404 is deliberate; see `OtpEnabledGuard` |
 | Boot logs `OTP_STATIC_CODE is set` | Not an error. It warns on every start because a fixed code is a master key |
+| Logs `auto-verified: EMPLOYER_VERIFICATION_ENABLED is off` | Expected until M10. Nobody can approve a submission yet, so it self-approves; the audit row records a null actor. Turn the flag on when the admin module lands |
 | Telegram login fails, nothing in our logs | The redirect URI is not registered in BotFather. It fails on the client, before reaching us |

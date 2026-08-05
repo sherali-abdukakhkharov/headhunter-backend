@@ -260,6 +260,43 @@ never include phone or full contact details.
 
 ---
 
+## 5a. Employers and verification
+
+Two employer types with different fields (§6.1), so **company detail is its own
+table** rather than a set of nullable columns: which fields must be filled becomes a
+property of the schema instead of a rule in code, and an individual employer does not
+carry eight columns that can never apply.
+
+Verification keeps **the current state on the employer and the attempts as rows**.
+Both are needed — §6.1 shows the employer one status, while an administrator
+reviewing a resubmission needs to see what was sent before and why it was refused —
+and the status is written in the same transaction as the submission that changes it.
+
+- **Transitions live in one place** and every one writes an
+  `employer_verification_history` row in the same transaction (BR-08). The method
+  that sets the status is private, so no caller can change it without the audit row.
+- `verified` is **terminal** in this machine. Revoking it is an administrator action
+  against a *user* (§10.4), not a step here; treating it as one would let an employer
+  resubmit their way out of a revocation.
+- **`EMPLOYER_VERIFICATION_ENABLED` is off until M10.** With no admin module nobody
+  can approve a submission, and BR-03 would strand every employer in `under_review`.
+  The automatic approval still writes its history row, with a null actor and an
+  `auto_verified_no_reviewer` reason.
+- **`is_complete` is stored**, like the candidate's, because BR-03 is read on every
+  vacancy submission and invitation.
+
+### 5a.1 An open policy question, answered as data
+
+§6.1 requires "verification documents if required" and "identity verification data
+if required by policy", and no policy exists. Rather than block the milestone, the
+requirement is **declared** in `employer-requirements.ts` — per employer type, with a
+`spec | default` provenance tag and a note per value, exactly as dictionary content
+declares its own provenance. The `file_purpose` rows it names are seeded regardless,
+so the client renders the upload slots today and the answer arrives as one file edit.
+
+The same move is available for BR-12's permitted age/gender justifications, which is
+the remaining decision blocking M5's moderation.
+
 ## 6. Vacancies, applications and status machines
 
 Statuses are explicit and transitions are validated in one place per aggregate.
@@ -523,8 +560,10 @@ Answers change the schema, so raise them before the affected milestone:
 
 1. **Retention periods** for account deletion and audit logs - BR-14 defers to
    "the approved privacy policy", which we do not have yet.
-2. **Verification evidence** required for individual (non-company) employers
-   (§6.1 says "if required by policy").
+2. ~~**Verification evidence** required for individual (non-company) employers~~ -
+   **no longer blocking.** Declared as data in `employer-requirements.ts` (§5a.1);
+   the current default is that an individual need not upload an identity document and
+   a company must upload a registration certificate. Still wants sign-off.
 3. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
    age/gender filtering need to be enumerated, since moderation must check them.
 4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and

@@ -18,6 +18,8 @@ export type DictionaryCategory =
   | 'service_operations'
   | 'temporary_shift';
 
+export type EmployerType = 'company' | 'individual';
+
 export type Generated<T> =
   T extends ColumnType<infer S, infer I, infer U>
     ? ColumnType<S, I | undefined, U>
@@ -46,6 +48,13 @@ export type SchemaTarget = 'candidate_profile' | 'vacancy';
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type UserRole = 'admin' | 'candidate' | 'employer';
+
+export type VerificationStatus =
+  | 'changes_required'
+  | 'not_submitted'
+  | 'rejected'
+  | 'under_review'
+  | 'verified';
 
 export interface AccountStatusHistory {
   actor_role: UserRole | null;
@@ -151,6 +160,17 @@ export interface CandidateSkills {
   user_id: string;
 }
 
+export interface Companies {
+  contact_person_name: string | null;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  industry_id: string | null;
+  legal_name: string | null;
+  logo_file_id: string | null;
+  public_name: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface DeletionRequests {
   cancelled_at: Timestamp | null;
   confirmed_at: Timestamp | null;
@@ -189,6 +209,35 @@ export interface DictionaryTypes {
   code: string;
   created_at: Generated<Timestamp>;
   has_rank: Generated<boolean>;
+}
+
+export interface Employers {
+  address: string | null;
+  completeness_percent: Generated<number>;
+  contact_phone: string | null;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  district_id: string | null;
+  full_name: string | null;
+  is_complete: Generated<boolean>;
+  region_id: string | null;
+  type: EmployerType;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  verification_reason: string | null;
+  verification_status: Generated<VerificationStatus>;
+  verified_at: Timestamp | null;
+}
+
+export interface EmployerVerificationHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  from_status: VerificationStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: VerificationStatus;
 }
 
 export interface OtpCodes {
@@ -267,6 +316,21 @@ export interface Users {
   updated_at: Generated<Timestamp>;
 }
 
+export interface VerificationSubmissionFiles {
+  file_id: string;
+  submission_id: string;
+}
+
+export interface VerificationSubmissions {
+  decided_at: Timestamp | null;
+  decided_by_user_id: string | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  reason: string | null;
+  status: VerificationStatus;
+  submitted_at: Generated<Timestamp>;
+}
+
 export interface DB {
   account_status_history: AccountStatusHistory;
   app_meta: AppMeta;
@@ -277,10 +341,13 @@ export interface DB {
   candidate_occupations: CandidateOccupations;
   candidate_profiles: CandidateProfiles;
   candidate_skills: CandidateSkills;
+  companies: Companies;
   deletion_requests: DeletionRequests;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;
   dictionary_types: DictionaryTypes;
+  employer_verification_history: EmployerVerificationHistory;
+  employers: Employers;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
   schema_versions: SchemaVersions;
@@ -288,4 +355,6 @@ export interface DB {
   stored_files: StoredFiles;
   user_roles: UserRoles;
   users: Users;
+  verification_submission_files: VerificationSubmissionFiles;
+  verification_submissions: VerificationSubmissions;
 }

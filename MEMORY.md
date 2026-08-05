@@ -30,6 +30,53 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 (M4) - An unanswered policy question can be a declaration instead of a blocker
+§6.1 asks for "identity verification data **if required by policy**" and no policy
+exists, which had M4 marked as blocked. It is now answered as *data*:
+`employer-requirements.ts` declares, per employer type, which profile fields BR-03
+requires and which documents a submission must carry - each with a `spec | default`
+provenance tag and a note arguing the value.
+*Why this is not a guess dressed up as a decision:* the provenance tag is the same
+device the dictionary seed uses, and it records **who may change the value**. A
+`default` is ours until the client approves it; changing one is one edit to one file,
+with no migration, endpoint or client release. The `file_purpose` rows are seeded
+either way, so the upload slots already render.
+*The defaults, and why they are asymmetric:* a company must upload a registration
+certificate - verifying nothing makes the verified badge meaningless. An individual
+must **not**. That is deliberate: an individual hiring two seasonal workers is the case
+this product exists to serve, demanding an identity document up front is the surest way
+to lose them, and storing scans of identity documents is a data-protection liability to
+accept only when a policy says to. A test pins both, so flipping either is deliberate.
+*Generalisable, and worth doing next:* BR-12's permitted age/gender justifications are
+the same shape of question and currently block M5's moderation. They can be declared
+the same way.
+
+### 2026-08-05 (M4) - The missing-reviewer flag, a second time
+`EMPLOYER_VERIFICATION_ENABLED` defaults to **off**, exactly as PLAN.md specifies
+`MODERATION_ENABLED` for M5. Submitting therefore transitions straight to `verified`.
+*Why a flag rather than skipping verification:* BR-03 blocks vacancy submission and
+invitations on a verified employer, so with no admin module (M10) every employer would
+park in `under_review` forever and the entire employer half of the product would be
+unreachable. The statuses, transitions, evidence rules and BR-03 all stay implemented;
+only the queue is absent.
+*Why the automatic approval still writes its BR-08 row:* an audit trail that silently
+omits the approvals nobody made is worse than one that records them honestly. The row
+carries a **null actor** and an `auto_verified_no_reviewer` reason, and every use logs
+a warning. Both paths are tested, so turning the flag on is not a leap of faith.
+*The pattern to reuse:* when a milestone's approver does not exist yet, flag the
+transition rather than the feature, and make the audit row admit what happened.
+
+### 2026-08-05 (M4) - Evidence is RESTRICT, so a purge has an ordering requirement
+`verification_submission_files.file_id` is `ON DELETE RESTRICT` on purpose: evidence
+must not vanish from under a submission an administrator is reading.
+*The consequence, found by a test cleanup that failed:* deleting a user's
+`stored_files` while a submission still references them **fails**. A BR-14 purge must
+delete the employer row first (which cascades its submissions and their file links),
+then the files, then the user. Nothing does this today - `purge_after` is still
+nullable pending the retention decision - but the purge implementation has to know it,
+and the failure would otherwise appear as a mysterious foreign-key error in production
+rather than in a test.
+
 ### 2026-08-05 - The API is a container, and the tunnel addresses it by service name
 `Dockerfile` + `docker-compose.api.yml`; the tunnel origin changed from
 `host.docker.internal:3001` to `http://api:3001`. Three compose files in one directory
@@ -525,11 +572,15 @@ ones most likely to bite again:
 
 Tracked as `[?]` items at the top of [TODO.md](TODO.md). Still open and still
 blocking: **data-retention periods** (BR-14, blocks the deletion purge and audit
-retention), **individual-employer verification evidence** (§6.1, blocks M4), and
-the **permitted age/gender justifications** (BR-12, blocks M5 moderation).
+retention) and the **permitted age/gender justifications** (BR-12, blocks M5
+moderation - and a good candidate for the declaration treatment described above).
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
+
+No longer blocking, though still wanting sign-off: **individual-employer verification
+evidence** (§6.1). Declared as data with a stated default and a provenance tag, so the
+answer is one file edit rather than a milestone dependency.
 
 The dictionary value lists are no longer a blocker - all 14 types are seeded and
 working - but four of them and the occupation set are compiled starting points

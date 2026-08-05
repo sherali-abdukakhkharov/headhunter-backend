@@ -49,6 +49,27 @@ export interface AppEnv {
    */
   OTP_LOGIN_ENABLED: boolean;
 
+  /**
+   * Whether a verification submission waits for a human decision (§6.1).
+   *
+   * **Off for the MVP**, and the reasoning is the same as `MODERATION_ENABLED` in
+   * PLAN.md's M5: the admin module is M10, so there is nobody who *can* approve a
+   * submission. With it off, submitting transitions straight to `verified` - and
+   * still writes its BR-08 history row, with a null actor and an
+   * `auto_verified_no_reviewer` reason, so the audit trail never claims a person
+   * reviewed anything.
+   *
+   * Everything else stays implemented: the five statuses, the transition rules, the
+   * evidence requirement and BR-03's precondition. Turning this on when M10 lands
+   * needs no client change.
+   *
+   * *Why not simply skip verification until M10:* BR-03 blocks vacancy submission
+   * and invitations on a verified employer, so an employer who submits would park in
+   * `under_review` forever and the entire employer half of the product would be
+   * unreachable - exactly the trap PLAN.md records for BR-04.
+   */
+  EMPLOYER_VERIFICATION_ENABLED: boolean;
+
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;
   OTP_RESEND_DELAY_SECONDS: number;
@@ -212,6 +233,9 @@ export const envSchema = Joi.object<AppEnv, true>({
   // The MVP login path (§4.1), so it defaults to on. It stays a flag because the
   // routes still need to be closable without a revert - see OtpEnabledGuard.
   OTP_LOGIN_ENABLED: Joi.boolean().default(true),
+
+  // Off until the admin module (M10) gives submissions a reviewer. See AppEnv.
+  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(false),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.

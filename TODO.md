@@ -29,8 +29,14 @@ needs them.
 - [?] **Retention periods** for deleted accounts and audit logs (BR-14 defers to
       an approved privacy policy we do not have). *Blocks M1 deletion flow and
       M10 audit.*
-- [?] **Individual-employer verification evidence** - what is actually required
-      (§6.1 "if required by policy")? *Blocks M4.*
+- [x] ~~**Individual-employer verification evidence**~~ (§6.1 "if required by
+      policy") - **no longer blocking.** Resolved as *data*: the requirement is
+      declared per employer type in
+      [employer-requirements.ts](src/modules/employers/employer-requirements.ts)
+      with a provenance tag and a note, so the client's answer is one edit to one
+      file. The current default is that an individual employer need not upload an
+      identity document, and a company must upload a registration certificate.
+      What remains is sign-off, not delivery.
 - [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
       against an enumerated list. *Blocks M5.*
 - [?] **Approved dictionary value lists** from the client (§13.2). **No longer
@@ -319,14 +325,83 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [ ] Flutter: mirror `CandidateProfileDto`, `FieldSchemaDto` and the history and
       attachment DTOs (the app repo's M3)
 
-## M4 - Employer profile + verification
+## M4 - Employer profile + verification *(done)*
 
-- [ ] `employers` (type: company | individual) + `companies` detail
-- [ ] `verification_submissions` with evidence file references
-- [ ] Status `not_submitted | under_review | verified | rejected | changes_required`
-      + admin reason
-- [ ] BR-03 precondition on invitation and vacancy-submit routes
-- [ ] Test: unverified employer cannot search candidates (§7) or invite
+### Schema *(done - `20260805150000_create_employers`)*
+- [x] `employers` (type: company | individual) + `companies` detail as its own
+      table - §6.1 gives the two types different fields, and nullable columns for
+      both on one table would make "which of these must be filled" a property of
+      code rather than of the schema
+- [x] `verification_submissions` + `verification_submission_files`, with a partial
+      unique index allowing **one open submission** per employer
+- [x] `employer_verification_history` - BR-08 for the verification machine, same
+      shape as `account_status_history` so an auditor reads one layout
+- [x] CHECK: `verified_at` is present exactly when the status is `verified`, so a
+      rejection cannot leave a stale verification timestamp behind
+
+### Endpoints *(done)*
+- [x] `GET /employers/me` - 404 before creation, unlike the candidate profile:
+      `type` decides which fields exist, so there is no neutral empty employer
+- [x] `PUT /employers/me` - full replacement; `type` is immutable after creation
+- [x] `GET /employers/me/verification` - state, past attempts and their reasons,
+      plus the **required evidence list served as data**
+- [x] `POST /employers/me/verification` - requires a complete profile and every
+      required document, each owned by the caller
+- [x] Status `not_submitted | under_review | verified | rejected | changes_required`
+      + admin reason, transitions validated in one place, every one writing its
+      BR-08 history row in the same transaction
+- [x] `VerificationService.decide` - the administrator's decision with a mandatory
+      reason for anything other than an approval (§6.1). M10 adds the queue and the
+      route; the rules and the audit row live with the machine
+
+### `EMPLOYER_VERIFICATION_ENABLED` *(off for the MVP)*
+- [x] The same reasoning as `MODERATION_ENABLED` in PLAN.md's M5: the admin module
+      is M10, so nobody *can* approve a submission, and BR-03 would park every
+      employer in `under_review` forever - making the whole employer half of the
+      product unreachable. With the flag off, submit goes straight to `verified`,
+      **still writing its history row** with a null actor and an
+      `auto_verified_no_reviewer` reason, and logging a warning on every use.
+      Both paths are tested
+
+### The open §6.1 decision, resolved as data
+- [x] **`employer-requirements.ts` declares what each type must provide**, with a
+      `spec | default` provenance tag and a note per value - the same pattern the
+      dictionary seed uses. Current defaults: a company must upload a registration
+      certificate; an individual **need not** upload an identity document. The
+      asymmetry is deliberate and argued in the file: an individual hiring two
+      seasonal workers is the case the product exists for, and storing scans of
+      identity documents is a liability to accept only when a policy says to
+- [ ] Client sign-off on those two defaults. A change is one edit to that file -
+      no migration, no endpoint change, no client release. **No longer blocking**
+
+### BR-03 *(the rule, ready for its callers)*
+- [x] `EmployersService.gate` / `assertVerified` - the two conditions returned
+      separately, because "finish your profile" and "wait for verification" are
+      different refusals with different fixes. `canPublish` on the profile response
+      is BR-03 in one field so no client re-implements it
+- [ ] Apply it at the call sites, which arrive with the routes: vacancy submit (M5),
+      candidate search and invitations (M7). Deliberately not a guard yet - a guard
+      with no route to guard is an abstraction with no caller
+
+### Tests *(done - 10 unit, 21 integration)*
+- [x] Completeness measured against that type's requirements only; missing-field list
+- [x] Type immutability; company detail absent for an individual
+- [x] Submission refused when incomplete, when a required document is missing, and
+      when the file belongs to another account
+- [x] Auto-verify writes an honest audit row (null actor, named reason)
+- [x] Queued path: one open submission, BR-03 still blocking under review
+- [x] Rejection and changes-required with a mandatory reason, then a resubmission
+      keeping both attempts and three history rows
+- [x] BR-03's gate across the whole lifecycle
+- [ ] Test: unverified employer cannot search candidates (§7) or invite - written
+      with those routes, in M7
+
+### Noticed while building, worth knowing before BR-14
+- [ ] `verification_submission_files.file_id` is `RESTRICT` on purpose: evidence must
+      not vanish from under a submission an administrator is reading. That means a
+      **purge** must delete the employer row (which cascades submissions) *before*
+      the files, or it fails. Nothing does today - `purge_after` is still nullable
+      pending BR-14 - but the purge implementation has to know this ordering
 
 ## M5 - Vacancies + moderation
 

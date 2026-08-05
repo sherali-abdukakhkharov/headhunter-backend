@@ -13,6 +13,7 @@ import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CandidatesModule } from '@modules/candidates/candidates.module';
 import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
+import { EmployersModule } from '@modules/employers/employers.module';
 import { FilesHttpModule } from '@modules/files/files.module';
 import { HealthModule } from '@modules/health/health.module';
 import { SchemasModule } from '@modules/schemas/schemas.module';
@@ -59,6 +60,7 @@ import { UsersModule } from '@modules/users/users.module';
     DictionariesModule,
     SchemasModule,
     CandidatesModule,
+    EmployersModule,
     FilesHttpModule,
     HealthModule,
   ],
