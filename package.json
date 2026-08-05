@@ -35,7 +35,7 @@
     "migrate:status": "tsx src/infra/db/migrate.ts status",
     "seed": "tsx src/infra/db/seed.ts",
     "migrate:typecheck": "tsc --noEmit -p tsconfig.migrate.json",
-    "kysely:generate": "kysely-codegen --out-file ./src/infra/db/database.types.ts"
+    "kysely:generate": "kysely-codegen --date-parser string --out-file ./src/infra/db/database.types.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

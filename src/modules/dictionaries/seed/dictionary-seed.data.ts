@@ -31,7 +31,10 @@ export type { SeedItem, SeedProvenance, SeedType } from './seed-types';
  * depends on.
  */
 
-/** The 14 frozen types of docs/API_CONTRACTS.md §3.1, in that order. */
+/**
+ * The frozen types of docs/API_CONTRACTS.md §3.1, in that order, plus `gender`
+ * added for M3 - see its entry below.
+ */
 export const DICTIONARY_SEED: SeedType[] = [
   // Large content lists, in data/. See each file's header for provenance.
   OCCUPATION_SEED,
@@ -556,6 +559,49 @@ export const DICTIONARY_SEED: SeedType[] = [
           'uz-Cyrl': 'Тасдиқловчи ҳужжат',
           ru: 'Подтверждающий документ',
           en: 'Supporting document',
+        },
+      },
+      // §5.1 "profile photo optional" and §7.3's candidate card. A file purpose
+      // rather than a schema field, because §4.5 keeps every upload out of the
+      // field union - a photo needs the same progress, retry and authorization
+      // lifecycle as a CV.
+      {
+        code: 'photo',
+        labels: {
+          'uz-Latn': 'Profil surati',
+          'uz-Cyrl': 'Профил сурати',
+          ru: 'Фото профиля',
+          en: 'Profile photo',
+        },
+      },
+    ],
+  },
+  {
+    code: 'gender',
+    provenance: 'spec',
+    note:
+      '§5.1 personal information asks for gender, and §7.1 / BR-12 let a ' +
+      'moderated vacancy restrict on it. A dictionary rather than an enum ' +
+      'because the field schema has no `enum` kind (API_CONTRACTS.md §4.2), the ' +
+      'four labels have to come from somewhere, and a vacancy restriction and a ' +
+      'profile must reference the same id. Added 2026-08-05 with M3.',
+    items: [
+      {
+        code: 'male',
+        labels: {
+          'uz-Latn': 'Erkak',
+          'uz-Cyrl': 'Эркак',
+          ru: 'Мужской',
+          en: 'Male',
+        },
+      },
+      {
+        code: 'female',
+        labels: {
+          'uz-Latn': 'Ayol',
+          'uz-Cyrl': 'Аёл',
+          ru: 'Женский',
+          en: 'Female',
         },
       },
     ],

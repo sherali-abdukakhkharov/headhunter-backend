@@ -151,12 +151,18 @@ Three things to know before touching this code:
 Whoever can read the storage chat can read every uploaded CV, so it should be a
 private channel whose only other member is the bot.
 
-## Seeding dictionaries
+## Seeding dictionaries and schema versions
 
 `pnpm seed` applies `src/modules/dictionaries/seed/dictionary-seed.data.ts`. It is
 deliberately **not** a migration: dictionary content is reviewed and revised by
 the client (§13.2), so a corrected label has to be editable in place rather than
 needing a new migration file forever.
+
+It also publishes the version each **field schema** declares in code into
+`schema_versions`, which is what `GET /dictionaries/manifest` and the schema ETag
+read. So after changing `candidate-profile.schema.ts` in a way clients must refetch,
+bump its `version` and run `pnpm seed` — the endpoint logs a warning when the
+declared and published versions disagree, which is what a forgotten run looks like.
 
 It is idempotent in the strong sense — **a second run writes nothing at all**, not
 merely "creates no duplicates". Every item and translation write bumps the global
@@ -272,6 +278,16 @@ Every one of these was hit while setting the project up:
 - **Postgres `bigint` arrives as a JavaScript string** through node-pg. The
   dictionary revision columns are `bigint` and cast with `::int` in the SELECT so
   the wire contract stays numeric.
+- **A `date` column must stay a string, and that takes two settings that travel
+  together.** `pnpm kysely:generate` passes `--date-parser string`, and
+  `infra/db/pg-types.ts` registers the matching runtime parser (imported by the
+  database module, the seeder and `createIntTestDb`). Drop either and node-pg parses
+  a date into **local** midnight, after which UTC getters or a zone-aware formatter
+  move a birth date by a day — correct on a machine set to Tashkent, wrong in
+  production. `timestamptz` is untouched: an instant really is one.
+- **"Today" is not `toISOString().slice(0, 10)`.** In `Asia/Tashkent` that is
+  yesterday for five hours a day, so a "not in the future" rule would reject a valid
+  date every night. Use `formatDateOnly(date, zone)`.
 
 ## Built so far
 
@@ -281,16 +297,25 @@ Every one of these was hit while setting the project up:
   `active_role`, account status guard (BR-10), rate limiting. Telegram login is
   deprecated but still working.
 - **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
-  four-locale enforcement, the idempotent seeder, and the content — 487 items in
+  four-locale enforcement, the idempotent seeder, and the content — 490 items in
   four variants including all 175 districts.
+- **M3** candidate profile: the category-driven field schema
+  (`GET /schemas/candidate-profile`) that also drives write routing and
+  completeness, the uniform field write with server-side re-validation, stored
+  completeness with a missing-field list, BR-02's searchability gate, the bespoke
+  experience and education sub-resources, and profile attachments with §5.4's
+  replace-by-superseding. BR-09's employer access to a CV is deferred to M4/M7,
+  where its inputs exist.
 - **Cross-cutting**: every user-facing message localized into all four variants
   (`infra/i18n`), and Telegram-backed file storage with owner-scoped
   upload / download / delete (`infra/files`, `/files`).
 
 ## Not built yet
 
-Candidate and employer profiles, vacancies, applications, search, chat,
-notifications, admin (M3 onward). Smaller gaps worth knowing: a Dockerfile and CI,
+Employer profiles, vacancies, applications, search, chat, notifications, admin
+(M4 onward), plus BR-09's employer access to a candidate CV, which needs a verified
+employer (M4) and a hiring interaction (M6/M7) before it has anything to evaluate —
+until then a CV is readable only by its owner. Smaller gaps worth knowing: a Dockerfile and CI,
 the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
 asks for it "where infrastructure permits"; Telegram does none on a bot upload, and
 the content checks in `FilesService` are type validation, not scanning). The

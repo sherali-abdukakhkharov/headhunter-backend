@@ -61,6 +61,25 @@ re-derivable from the text.
   Cloudflare, `X-Forwarded-For` has the user first and the edge second - the opposite
   of what Express's hop count reads - so per-IP limits must key off
   `CF-Connecting-IP`, and only when `CLIENT_IP_HEADER` names it.
+- **The field schema is one declaration, not three.** `modules/schemas/*.schema.ts`
+  is the client's form, the server's write-routing/validation table *and* the
+  completeness definition. Never add a parallel list of required fields, a mapping
+  from field code to column, or a second copy of a label — API_CONTRACTS.md §4.1
+  promises every `requiredForSearchable` code resolves to a rendered field, and one
+  declaration is what makes that true by construction. Bump its `version` and run
+  `pnpm seed` when a change needs clients to refetch.
+- **`completeness_percent` and `is_complete` answer different questions.** The
+  percentage is over every field of the category; `is_complete` is over the required
+  ones only, and is BR-02's gate. Never derive one from the other — a threshold on
+  the percentage would let a profile with no occupation into search.
+- **A calendar date is a `'YYYY-MM-DD'` string end to end**, never a `Date`. `date`
+  columns are typed as strings (`--date-parser string` plus `infra/db/pg-types.ts`,
+  which are a pair). "Today" comes from `formatDateOnly(new Date(), zone)`, never
+  `toISOString().slice(0, 10)` — in Tashkent that is yesterday for five hours a day.
+- **Privacy toggles must not refresh `last_meaningful_update_at`** (§5.3, §7.3). This
+  is structural, not conditional: visibility has its own route, and every *content*
+  write goes through `CandidatesService.refreshDerived`. Keep it that way rather than
+  adding a "was this meaningful" branch.
 - **Race-shaped rules belong in the database**: BR-07 is a partial unique index,
   BR-06 is checked inside the insert transaction.
 - **Never throw from inside a transaction that already wrote something.** Kysely

@@ -19,8 +19,8 @@ a profile contract.
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
 | M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
-| M3 | Candidate profile + files | M6, M7 | next - file storage already done |
-| M4 | Employer profile + verification | M5, M7 | after M1 |
+| M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access deferred to M4/M7, where its inputs exist |
+| M4 | Employer profile + verification | M5, M7 | next |
 | M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
 | M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
@@ -142,6 +142,33 @@ default that still needs sign-off.
 **Done when:** a profile with occupation, experience, Russian C1, location and
 preferences saves, reports completeness, becomes searchable only when complete
 and visible, and its CV is reachable only by an authorized employer.
+
+*Status: done, with one part deliberately deferred.* Everything above is built and
+tested: the schema endpoint, the uniform field write with server-side
+re-validation, stored completeness with a missing-field list, the BR-02 gate, the
+privacy toggle that does not refresh `last_meaningful_update_at`, the bespoke
+experience and education sub-resources, and profile attachments with §5.4's
+replace-by-superseding.
+
+**BR-09's employer access to a CV is not built**, because two of the helper's three
+inputs do not exist yet - there is no employer profile before M4 and no
+application or invitation before M6/M7, so "an allowed hiring interaction" has
+nothing to evaluate. Today a CV is reachable **only by its owner**, which is
+stricter than BR-09 asks, so the gap exposes nothing; it is a missing capability,
+not a missing check. It lands with M4's verified employer and M7's candidate
+serializer, which is where the callers are. Building the helper now would mean an
+abstraction with no caller and a rule tested only against invented inputs.
+
+Two decisions worth knowing before building on this:
+
+- **The field schema is one declaration serving three jobs** - the client's form,
+  the server's re-validation of a write, and the completeness calculation. That is
+  what makes §4.1's rule ("every `requiredForSearchable` code resolves to a
+  rendered field") true by construction rather than by review. M5's vacancy schema
+  should reuse the same shape.
+- **A profile has no category until a primary occupation is chosen**, and only the
+  fields common to all five categories exist until then. The client's first profile
+  screen is therefore choosing the target work.
 
 ## M4 - Employer profile + verification
 

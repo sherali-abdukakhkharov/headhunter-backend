@@ -30,6 +30,100 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 (M3) - `date` columns come back as strings, or a birth date shifts a day
+`kysely:generate` runs with `--date-parser string` and `infra/db/pg-types.ts` registers
+the matching runtime parser for OID 1082. The two are a **pair**: changing one alone
+makes the generated types lie about what the driver returns.
+*The trap:* node-postgres parses a `date` into `new Date(y, m-1, d)` - **local**
+midnight on the server. That is a value with a time and a zone standing in for one
+that has neither, and every later formatting choice can move the day: UTC getters, or
+`formatWithOffset` for `Asia/Tashkent`, shift a birth date or an availability date by
+one whenever the server's zone and the platform zone disagree. It looks correct on a
+machine configured for Tashkent and wrong in production.
+*Why a string is not a workaround:* `'2026-08-12'` is what Postgres stores, what the
+driver now returns, and what API_CONTRACTS.md §4.2 puts on the wire for `kind: "date"`.
+No conversion exists to get wrong. Date comparisons are then lexicographic, which is
+exactly right for ISO dates.
+*Related:* `formatDateOnly(date, zone)` exists for "today" in the platform zone -
+`toISOString().slice(0,10)` is the previous day for five hours out of every
+twenty-four, which would make a `notAfter: 'today'` rule reject a legitimate value
+every night. The validator takes `today` as an **injected** value, so the rule is
+testable at all.
+
+### 2026-08-05 (M3) - The field schema is one declaration serving three jobs
+`modules/schemas/candidate-profile.schema.ts` is simultaneously the client's form
+(API_CONTRACTS.md §4), the server's write-routing and validation table, and the
+completeness definition. Each field carries its four labels, its requiredness per
+category, and where its value is stored.
+*Why not three separate lists:* §4.1 promises that every code in
+`requiredForSearchable` resolves to a field the client can render, so a completeness
+prompt can always focus something. With one declaration that is true by
+construction. With three it is true until someone edits one of them - and the
+failure is a client stuck on "something is missing" with nothing to tap.
+*Consequence to keep:* `storage` is part of the field declaration and is stripped
+from the response. Adding a field is one edit in one place; a mapping table next door
+would be the second place to forget.
+*For M5:* the vacancy schema should reuse this shape and the same validator. The
+validator is provided by `CandidatesModule` today because it has one caller; it moves
+to a shared module when the second arrives, not before.
+
+### 2026-08-05 (M3) - Completeness is two answers, and `is_complete` is not a threshold
+`completeness_percent` is measured over **every** entry the category's form has -
+engine fields plus experience and education as one entry each. `is_complete` is about
+the **required** entries only.
+*Why they must stay separate:* a percentage over only the mandatory fields moves in
+20-point jumps and tells an employer nothing, while a threshold on the percentage
+("80% is complete") would let a profile with no occupation into search and break
+BR-02. Two different questions, computed in one pass, never derived from each other.
+*The contract forces one detail:* a bespoke section has no fields, so
+`requiredForSearchable` can never name experience or education. BR-02 therefore never
+blocks on having entered a job - completeness still counts them, so an empty history
+is a lower percentage rather than a locked profile. That is the contract's shape, not
+an oversight.
+
+### 2026-08-05 (M3) - Gender is a dictionary row, because the field union has no enum
+§5.1 asks for gender and §7.1/BR-12 let a moderated vacancy restrict on it. It is
+stored as `gender_id` referencing `dictionary_items`, and `gender` is seeded as a 15th
+dictionary type.
+*Why not a native enum, which was the first implementation:* §4.2's `kind` union
+deliberately has no `enum` member (§3.1 - everything selectable is a dictionary), so
+an enum column would have had no way to reach the client except a bespoke field kind
+or a hand-maintained id mapping. It also has to be the **same id** a BR-12 vacancy
+restriction references, or the moderation review compares two vocabularies.
+*Why adding a "frozen" type is safe:* a field names its own `dictionaryType` and the
+client fetches whatever is named, so a new type changes nothing existing. The frozen
+list documents what exists; it is not a limit on additions.
+*The same reasoning kept visibility out of the field engine* - but there the answer
+was its own route, not a dictionary, because it also must not touch
+`last_meaningful_update_at`.
+
+### 2026-08-05 (M3) - Validate before opening the transaction, again
+`CandidatesService.patch` resolves the category, validates every field and collects
+every violation **before** `db.transaction()`. `applyFields` cannot throw.
+*Why this is written down a second time:* it is the same trap as the two M1 security
+bugs below, approached from the other side. There the throw was after the write; here
+the discipline is that by the time a transaction opens there is nothing left that can
+throw. The history service does the mirror thing - it returns the outcome from the
+transaction and throws the 404 after the commit, so the derived-state refresh is not
+rolled back by the exception that reports a missing row.
+*Also relevant:* the whole request fails as a unit. One bad field in a body of five
+writes none of them, which a test asserts - a client that got a 422 must not have to
+guess which half landed.
+
+### 2026-08-05 (M3) - `candidate_attributes` is the generic field store, not just category fields
+One key/value table keyed by the **schema field's code** holds every §5.2 category
+field *and* the core multi-selects (employment type, work format, shift, industry).
+One row per scalar, one row per selected id.
+*Why the core multi-selects went there too:* they need no column of their own, and one
+indexed table answers "has this tool" and "accepts this employment type" with the same
+join in M7. Four more child tables would have been four more migrations for no new
+capability.
+*What keeps it honest:* a CHECK requires exactly one of the six value columns per row,
+so a field whose kind changed cannot leave two values behind for readers to choose
+between; and two partial unique indexes (scalar rows have a null `item_id`, multi rows
+do not) express "one row per scalar field, one per selected id" - which a primary key
+cannot, because `item_id` is nullable.
+
 ### 2026-08-05 (later the same day) - Login reverts to phone + OTP; Telegram is deprecated
 Client direction, superseding the two Telegram entries below after one day: the app logs
 in with §4.1's phone + OTP, which is what the specification and UAT-01 said all along.

@@ -157,7 +157,62 @@ Decisions:
   absorb. Recompute on profile write.
 - **`last_meaningful_update_at`** is separate from `updated_at`: §5.3 requires
   showing the last *meaningful* update, and §7.1/§7.3 allow sorting by it.
-  Touching a privacy toggle must not make a stale profile look fresh.
+  Touching a privacy toggle must not make a stale profile look fresh. Structural
+  rather than conditional: visibility has its **own route**, which is the only
+  write that does not refresh it, so no branch decides "was this meaningful".
+- **`candidate_attributes` is the generic store for any engine field without a
+  column or a child table of its own** - every §5.2 category field, plus the core
+  multi-selects (employment type, work format, shift, industry). One row per scalar
+  field, one row per selected id for a multi-select, keyed by the **schema field's
+  code**. That is what makes an attribute filter an ordinary indexed join in M7 and
+  a new work-type field a data change rather than a migration.
+- **`gender` is a dictionary reference, not a native enum.** §4.2's `kind` union has
+  no `enum` member, the four labels have to come from somewhere, and BR-12's vacancy
+  restrictions must reference the same ids the profile stores. It is the 15th
+  dictionary type; adding one is additive, because a field names its own
+  `dictionaryType` and the client fetches whatever is named.
+- **A calendar date is a string end to end.** `date` columns come back as
+  `'YYYY-MM-DD'` (`infra/db/pg-types.ts` plus `--date-parser string`), because
+  node-postgres otherwise parses one into local midnight - a value with a time and
+  a zone standing in for one that has neither, which shifts a birth date by a day
+  whenever the server's zone and the platform zone disagree.
+
+### 4.1 Completeness (§5.3, BR-02)
+
+Two answers from one pass, and the distinction matters:
+
+- **`completeness_percent`** is measured over *every* entry the category's form has
+  - engine fields plus experience and education as one entry each. A percentage over
+  only the mandatory fields would move in 20-point jumps and tell an employer
+  nothing (§7.1 filters on "minimum completeness").
+- **`is_complete`** is only about the *required* entries. It is BR-02's gate, so it
+  must never be a threshold on the percentage - "80% complete" would otherwise let a
+  profile with no occupation into search.
+
+`missingFields` carries both, flagged, so §5.3's "missing mandatory fields with
+direct edit links" and the client's optional-gap prompts come from one list.
+
+A consequence of the contract worth knowing: a bespoke section has no fields, so
+`requiredForSearchable` can never name experience or education (§4.1 requires every
+code there to resolve to a rendered field). BR-02 therefore never blocks on having
+entered a job - completeness still counts them, so an empty history shows up as a
+percentage rather than a locked profile.
+
+### 4.2 The field schema is one declaration, not three
+
+`modules/schemas/candidate-profile.schema.ts` is the client's form, the server's
+write-validation table **and** the completeness definition. Each field carries its
+labels, its requiredness per category, and where its value is stored.
+
+*Why:* three separate lists are three chances for a field to be required in one and
+unknown in another, and API_CONTRACTS.md §4.1 promises that every code in
+`requiredForSearchable` resolves to a field the client can focus. With one
+declaration that is true by construction; with three it is true until someone edits
+one of them.
+
+The published version lives in `schema_versions` and is copied there from the
+declaration by `pnpm seed`. A content hash was rejected: not every edit needs a
+refetch, and hashing would make a reordered comment invalidate every cached form.
 
 ---
 

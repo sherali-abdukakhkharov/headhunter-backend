@@ -31,11 +31,15 @@ export type Int8 = ColumnType<
 
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
 
+export type Numeric = ColumnType<string, number | string, number | string>;
+
 export type OtpPurpose =
   | 'device_confirmation'
   | 'login'
   | 'phone_change'
   | 'registration';
+
+export type ProfileVisibility = 'hidden' | 'searchable' | 'visible_after_apply';
 
 export type SchemaTarget = 'candidate_profile' | 'vacancy';
 
@@ -58,6 +62,93 @@ export interface AppMeta {
   key: string;
   updated_at: Generated<Timestamp>;
   value: string;
+}
+
+export interface CandidateAttributes {
+  created_at: Generated<Timestamp>;
+  field_code: string;
+  item_id: string | null;
+  user_id: string;
+  value_bool: boolean | null;
+  value_date: string | null;
+  value_decimal: Numeric | null;
+  value_int: number | null;
+  value_text: string | null;
+}
+
+export interface CandidateEducation {
+  created_at: Generated<Timestamp>;
+  graduation_year: number | null;
+  id: Generated<string>;
+  institution: string | null;
+  level_id: string;
+  specialization: string | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface CandidateExperience {
+  created_at: Generated<Timestamp>;
+  employer_name: string | null;
+  ended_on: string | null;
+  id: Generated<string>;
+  is_current: Generated<boolean>;
+  occupation_id: string | null;
+  responsibilities: string | null;
+  role_title: string;
+  started_on: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface CandidateLanguages {
+  certificate_note: string | null;
+  created_at: Generated<Timestamp>;
+  has_certificate: Generated<boolean>;
+  item_id: string;
+  level_id: string;
+  level_rank: number;
+  user_id: string;
+}
+
+export interface CandidateOccupations {
+  created_at: Generated<Timestamp>;
+  is_primary: Generated<boolean>;
+  item_id: string;
+  level_id: string | null;
+  user_id: string;
+}
+
+export interface CandidateProfiles {
+  available_from: string | null;
+  category: DictionaryCategory | null;
+  completeness_percent: Generated<number>;
+  created_at: Generated<Timestamp>;
+  date_of_birth: string | null;
+  district_id: string | null;
+  full_name: string | null;
+  gender_id: string | null;
+  is_complete: Generated<boolean>;
+  last_meaningful_update_at: Timestamp | null;
+  region_id: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  settlement: string | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  visibility: Generated<ProfileVisibility>;
+  willing_to_relocate: boolean | null;
+  willing_to_travel: boolean | null;
+}
+
+export interface CandidateSkills {
+  created_at: Generated<Timestamp>;
+  item_id: string;
+  level_id: string;
+  level_rank: number;
+  user_id: string;
 }
 
 export interface DeletionRequests {
@@ -179,6 +270,13 @@ export interface Users {
 export interface DB {
   account_status_history: AccountStatusHistory;
   app_meta: AppMeta;
+  candidate_attributes: CandidateAttributes;
+  candidate_education: CandidateEducation;
+  candidate_experience: CandidateExperience;
+  candidate_languages: CandidateLanguages;
+  candidate_occupations: CandidateOccupations;
+  candidate_profiles: CandidateProfiles;
+  candidate_skills: CandidateSkills;
   deletion_requests: DeletionRequests;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;

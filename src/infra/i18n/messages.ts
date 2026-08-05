@@ -320,6 +320,23 @@ export const MESSAGES = {
     en: 'The file could not be downloaded. Please try again.',
   },
 
+  // --- candidate profile (§5) ---------------------------------------------
+  // A record that is not there, or belongs to someone else. One message for both:
+  // confirming that an id exists but is another candidate's is information we do
+  // not owe (§11.1), and the caller's fix is the same either way.
+  'candidate.record_not_found': {
+    'uz-Latn': 'Yozuv topilmadi.',
+    'uz-Cyrl': 'Ёзув топилмади.',
+    ru: 'Запись не найдена.',
+    en: 'The record was not found.',
+  },
+  'candidate.attachment_purpose_invalid': {
+    'uz-Latn': 'Bu turdagi fayl profilga qoʻshilmaydi.',
+    'uz-Cyrl': 'Бу турдаги файл профилга қўшилмайди.',
+    ru: 'Файл этого типа не добавляется в профиль.',
+    en: 'A file of this kind is not part of the profile.',
+  },
+
   // --- validation (§3.2 "validation messages shall be localized") --------
   'validation.failed': {
     'uz-Latn': 'Kiritilgan maʼlumotlarni tekshirib chiqing.',
@@ -416,6 +433,73 @@ export const MESSAGES = {
     'uz-Cyrl': 'Камида битта қиймат танланиши керак.',
     ru: 'Необходимо выбрать хотя бы одно значение.',
     en: 'At least one value must be selected.',
+  },
+  'validation.too_many_items': {
+    'uz-Latn': 'Koʻpi bilan {max} ta qiymat tanlash mumkin.',
+    'uz-Cyrl': 'Кўпи билан {max} та қиймат танлаш мумкин.',
+    ru: 'Можно выбрать не более {max} значений.',
+    en: 'At most {max} values may be selected.',
+  },
+  'validation.date_in_future': {
+    'uz-Latn': 'Sana kelajakda boʻlishi mumkin emas.',
+    'uz-Cyrl': 'Сана келажакда бўлиши мумкин эмас.',
+    ru: 'Дата не может быть в будущем.',
+    en: 'The date cannot be in the future.',
+  },
+  'validation.min_age': {
+    'uz-Latn': 'Yoshingiz kamida {min} boʻlishi kerak.',
+    'uz-Cyrl': 'Ёшингиз камида {min} бўлиши керак.',
+    ru: 'Возраст должен быть не менее {min} лет.',
+    en: 'You must be at least {min} years old.',
+  },
+  'validation.date_order': {
+    'uz-Latn': 'Tugash sanasi boshlanish sanasidan oldin boʻlmasligi kerak.',
+    'uz-Cyrl': 'Тугаш санаси бошланиш санасидан олдин бўлмаслиги керак.',
+    ru: 'Дата окончания не может быть раньше даты начала.',
+    en: 'The end date cannot be before the start date.',
+  },
+  'validation.current_has_no_end': {
+    'uz-Latn': 'Hozirgi ish joyi uchun tugash sanasi koʻrsatilmaydi.',
+    'uz-Cyrl': 'Ҳозирги иш жойи учун тугаш санаси кўрсатилмайди.',
+    ru: 'Для текущего места работы дата окончания не указывается.',
+    en: 'A current job cannot have an end date.',
+  },
+  'validation.must_be_url': {
+    'uz-Latn': 'Havola http:// yoki https:// bilan boshlanishi kerak.',
+    'uz-Cyrl': 'Ҳавола http:// ёки https:// билан бошланиши керак.',
+    ru: 'Ссылка должна начинаться с http:// или https://.',
+    en: 'The link must start with http:// or https://.',
+  },
+
+  // --- schema-driven writes (docs/API_CONTRACTS.md §4.6) -------------------
+  // A selected id that is not an active item of the field's dictionary type.
+  // Separate from `must_be_id`, which is about the format: the realistic cause
+  // here is a client cache old enough to still offer a deactivated item, and
+  // "reload the list" is different advice from "that is not an id".
+  'validation.dictionary_item_invalid': {
+    'uz-Latn': 'Tanlangan qiymat endi mavjud emas. Roʻyxatni yangilang.',
+    'uz-Cyrl': 'Танланган қиймат энди мавжуд эмас. Рўйхатни янгиланг.',
+    ru: 'Выбранное значение больше не доступно. Обновите список.',
+    en: 'The selected value is no longer available. Refresh the list.',
+  },
+  'validation.district_not_in_region': {
+    'uz-Latn': 'Tuman tanlangan viloyatga tegishli emas.',
+    'uz-Cyrl': 'Туман танланган вилоятга тегишли эмас.',
+    ru: 'Район не относится к выбранному региону.',
+    en: 'The district does not belong to the selected region.',
+  },
+  'validation.salary_range_order': {
+    'uz-Latn': 'Boshlangʻich summa yuqori summadan katta boʻlmasligi kerak.',
+    'uz-Cyrl': 'Бошланғич сумма юқори суммадан катта бўлмаслиги керак.',
+    ru: 'Начальная сумма не должна превышать конечную.',
+    en: 'The lower amount must not exceed the upper one.',
+  },
+  // §4.3: "Negotiable, 5-8M" is a contradiction the salary filter cannot rank.
+  'validation.salary_negotiable_excludes_range': {
+    'uz-Latn': 'Kelishilgan holatda summa koʻrsatilmaydi.',
+    'uz-Cyrl': 'Келишилган ҳолатда сумма кўрсатилмайди.',
+    ru: 'При оплате по договорённости сумма не указывается.',
+    en: 'A negotiable rate cannot also state an amount.',
   },
 } as const satisfies MessageCatalog;
 

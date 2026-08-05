@@ -232,34 +232,84 @@ in `seed/data/`.
 - [x] Every district resolves to one of the 14 regions
 - [x] Every occupation carries one of the five §2.1 categories
 
-## M3 - Candidate profile + files
+## M3 - Candidate profile + files *(done, except BR-09 - see below)*
 
-Storage is done (`infra/files`, Telegram-backed) with owner-scoped
-upload / list / download / delete at `/files`. What M3 adds is the candidate-facing
-part: attaching a file to a profile, the `attachments[]` schema block, and BR-09's
-rule for when an employer may read a candidate's CV.
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 
+### Schema *(done - `20260805120000_create_candidate_profiles`)*
+- [x] `candidate_profiles` with `visibility`, `completeness_percent`,
+      `is_complete`, `last_meaningful_update_at`, and `category` derived from the
+      primary occupation
+- [x] `candidate_occupations`, `candidate_skills`, `candidate_languages`,
+      `candidate_experience`, `candidate_education`, `candidate_attributes`
+- [x] Indexes from ARCHITECTURE.md §5 created **with** the tables, including the
+      two partial indexes over `visibility = 'searchable' AND is_complete` that
+      make BR-02's gate an index scan
+- [x] Race- and coherence-shaped rules in the database: one primary occupation
+      (partial unique index), exactly one value per attribute row (CHECK),
+      negotiable-excludes-a-range (CHECK), `from <= to` (CHECK), no future or
+      under-14 birth date (CHECK)
+- [x] `gender_id` is a **dictionary reference, not an enum** - §4.2's `kind` union
+      has no `enum` member, and BR-12 vacancy restrictions will reference the same
+      ids. `gender` is seeded as a 15th dictionary type
+
+### Field schemas *(done)*
+- [x] `GET /schemas/candidate-profile?category=` - core and category sections
+      together, ETag, `Vary: x-lang`, 304 on `If-None-Match`
+- [x] One declaration drives the form, the write routing **and** completeness
+      (`candidate-profile.schema.ts`), so a `requiredForSearchable` code cannot
+      fail to resolve to a field
+- [x] `pnpm seed` publishes the declared version into `schema_versions`, which is
+      what the manifest and the ETag read
+- [x] Contract tests over all five categories: every required code resolves, every
+      dictionary type exists, all four labels present, `accept` is a subset of what
+      the file service stores
+
+### Endpoints *(done)*
+- [x] `GET /candidates/me/profile` - an unstarted profile reads as empty with
+      `isStarted: false` rather than 404, so the form has one code path
+- [x] `PATCH /candidates/me/profile` - partial by field code, re-validated
+      server-side against the same schema (§4.2 rule 3), 422 per field
+- [x] `PUT /candidates/me/visibility` - its own route, and the only write that
+      does **not** move `last_meaningful_update_at`
+- [x] `GET/POST/PUT/DELETE /candidates/me/experience` and `.../education` - the
+      bespoke repeating sections
+- [x] `GET/POST/DELETE /candidates/me/attachments` - declared purposes only;
+      exceeding a purpose's `maxCount` supersedes the oldest, which is how §5.4's
+      "replace" works
+- [x] Recompute completeness and the derived category on every content write, in
+      the same transaction; expose the missing-field list with `required` flags
+- [x] BR-02: `is_complete AND visibility='searchable'`, reported as `isSearchable`
+
+### Files *(done in M0/M2 era, unchanged)*
 - [x] File upload / download / delete with type and size validation
 - [x] Authorized access without a public link - proxied, ownership-checked
-- [ ] BR-09 employer access to a candidate CV, via the one contact-exposure helper
-
-- [ ] `candidate_profiles` with `visibility`, `completeness_percent`,
-      `is_complete`, `last_meaningful_update_at`
-- [ ] `candidate_occupations`, `candidate_skills`, `candidate_languages`,
-      `candidate_experience`, `candidate_education`, `candidate_attributes`
-- [ ] Indexes from ARCHITECTURE.md §5 created **with** the tables
-- [ ] Category-driven required-field contract endpoint (§5.2) so the client form
-      adapts without hardcoding
-- [ ] Recompute completeness on write; expose the missing-field list
-- [ ] BR-02: searchable only when `is_complete AND visibility='searchable'`
-- [ ] `last_meaningful_update_at` must **not** move on a privacy-toggle-only change
-- [ ] Attach a stored file to the profile as its CV; replace supersedes the old one
 - [x] ~~Type + size validation; no public links~~ - done in `infra/files`. Note the
       shape changed from the original plan: **no signed URLs**. The Telegram file
       URL carries the bot token, so downloads are proxied through this API instead,
       which is a stronger reading of §11.1 than a short-lived URL
-- [ ] Tests: completeness maths, BR-02 gate, privacy toggle does not refresh
-      the update timestamp, unauthorized file access refused
+
+### Tests *(done - 34 new unit, 28 new integration)*
+- [x] Completeness maths, including that `isComplete` is not a threshold on the
+      percentage
+- [x] Every validator rule, over pure functions with injected dictionary facts
+- [x] BR-02 gate end to end; privacy toggle does not refresh
+      `last_meaningful_update_at`; a calendar date survives a round trip unshifted
+- [x] One primary occupation across a change of primary; a leveled set rewrite
+      removes an entry; an invalid field in a body writes nothing at all
+- [x] Cascade from `users` through the profile to every child table
+- [x] One candidate cannot read, update or delete another's records or files
+
+### Deferred out of M3, deliberately
+- [ ] **BR-09 employer access to a candidate CV.** The helper takes (viewer,
+      candidate, interaction state) and two of those three do not exist yet: there
+      is no employer profile until M4 and no application or invitation until
+      M6/M7, so "an allowed hiring interaction" has nothing to read. Today a CV is
+      reachable **only by its owner**, which is stricter than BR-09 requires, so
+      nothing is exposed in the meantime. Build it with M4's verified employer and
+      M7's candidate serializer, which is where its callers are.
+- [ ] Flutter: mirror `CandidateProfileDto`, `FieldSchemaDto` and the history and
+      attachment DTOs (the app repo's M3)
 
 ## M4 - Employer profile + verification
 

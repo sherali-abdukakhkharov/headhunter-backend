@@ -237,12 +237,20 @@ GET /dictionaries/items?ids=<uuid,uuid>
 
 `occupation` · `skill` · `industry` · `region` · `language` · `employment_type` ·
 `work_format` · `shift` · `attribute` · `skill_level` · `language_level` ·
-`education_level` · `payment_period` · `file_purpose`
+`education_level` · `payment_period` · `file_purpose` · `gender`
 
 Everything selectable anywhere in the product is one of these. There is no
 inline enum in any contract: BR-13 requires a stable id plus four locales, and
 §10.3 requires admin management — both of which only the dictionary tables
 provide.
+
+**`gender` added 2026-08-05 with M3.** §5.1 asks for gender on the profile and
+§7.1/BR-12 let a moderated vacancy restrict on it, so it needed four labels and a
+stable id that a profile and a vacancy requirement can share. A native enum was
+rejected because §4.2's `kind` union has no `enum` member — deliberately, per §3.1.
+Adding a type is **additive**: a field names its own `dictionaryType` and the client
+fetches whatever is named, so nothing existing changed. `file_purpose` also gained a
+`photo` item for §5.1's optional profile photo.
 
 ### 3.2 Categories — frozen
 
@@ -439,6 +447,21 @@ stays bespoke.
 | `dictionary_multi` | `uuid[]` |
 | `dictionary_leveled` | see §4.4 |
 
+Two field properties were **added 2026-08-05 with M3**, both additive:
+
+- **`parentFieldCode`** on a `dictionary_single` — restrict the options to the
+  children of the item chosen in that field. Only `district_id` uses it today
+  (`parentFieldCode: "region_id"`). Without it the client would have to hardcode
+  "districts are the children of a region", which is exactly the hardcoding the
+  schema exists to remove. The server enforces it: a district under another region
+  is `422` with `rule: "parentField"`, checked against the stored region when the
+  request does not resend one.
+- **`validation.notAfter: "today"` and `validation.minAgeYears`** on a `date`. The
+  mirror of §4.1's `notBefore` example, plus the rule a birth date needs.
+  `date_of_birth` carries both, and the column keeps the same rule as a CHECK — the
+  schema layer exists so an under-age entry gets a field-level message instead of a
+  constraint failure.
+
 There is no `enum` and no file kind. Both were considered and rejected — §3.1
 and §4.5.
 
@@ -551,6 +574,116 @@ to the field that produced it.
 `completenessPercent` and `isComplete` are computed and stored server-side
 (§7.1 filters on them). Read them from the profile response; recomputing
 client-side guarantees the two disagree.
+
+## 4a. The candidate profile
+
+Built 2026-08-05 with M3. Every route requires an **active role of `candidate`** —
+an account may hold several roles (§2.3), and holding one is not acting as it.
+
+```
+GET   /candidates/me/profile                 ->  CandidateProfile
+PATCH /candidates/me/profile                 ->  CandidateProfile   (§4.6 body)
+PUT   /candidates/me/visibility              ->  CandidateProfile
+
+GET   /candidates/me/experience               ->  { items: Experience[] }
+POST  /candidates/me/experience               ->  Experience
+PUT   /candidates/me/experience/{id}          ->  Experience
+DELETE/candidates/me/experience/{id}          ->  204
+
+GET   /candidates/me/education                ->  { items: Education[] }
+POST  /candidates/me/education                ->  Education
+PUT   /candidates/me/education/{id}           ->  Education
+DELETE/candidates/me/education/{id}           ->  204
+
+GET   /candidates/me/attachments               ->  { items: Attachment[] }
+POST  /candidates/me/attachments               ->  Attachment  (multipart)
+DELETE/candidates/me/attachments/{id}          ->  204
+```
+
+### The profile response
+
+```json
+{
+  "isStarted": true,
+  "category": "professional",
+  "visibility": "hidden",
+  "completenessPercent": 52,
+  "isComplete": true,
+  "isSearchable": false,
+  "missingFields": [
+    { "code": "available_from", "section": "preferences", "required": false }
+  ],
+  "fields": { "full_name": "Anvar Karimov", "region_id": "…", "…": "…" },
+  "lastMeaningfulUpdateAt": "2026-08-05T18:02:55+05:00",
+  "updatedAt": "2026-08-05T18:03:05+05:00"
+}
+```
+
+Five things the client should rely on:
+
+- **`fields` is keyed by schema field codes and shaped exactly as `PATCH` accepts.**
+  Read, change one value, send it back. There is no second mapping to maintain.
+- **A profile that does not exist yet is not a 404.** `isStarted: false`, every field
+  present and null, completeness 0. The form screen has one code path.
+- **`category` is derived from the primary occupation** and is what to pass to
+  `GET /schemas/candidate-profile`. It is `null` until an occupation is chosen, and
+  only the fields common to all five categories exist until then — so the first
+  profile screen is choosing the target work. Sending a category-specific code
+  before that is `422 validation.unknown_field`.
+- **`isSearchable` is BR-02 in one field**: `isComplete && visibility === 'searchable'`.
+  ANDing it client-side would be a second implementation of the rule that decides
+  who is findable.
+- **`missingFields` carries optional gaps too**, flagged by `required`. The `true`
+  ones are §5.3's mandatory list and block searchability; the rest are prompts.
+  `code` is a field code (or a bespoke section's code) and `section` is what to open.
+
+### Visibility is its own route, not a field
+
+`PUT /candidates/me/visibility` with `{ "visibility": "searchable" | "hidden" | "visible_after_apply" }`.
+
+Two reasons it is not in `fields`: §4.2's `kind` union has no `enum` member, and this
+is the **only write that does not refresh `lastMeaningfulUpdateAt`** (§5.3, §7.3) —
+a privacy toggle must not let a stale profile present itself as freshly maintained.
+It is accepted while the profile is incomplete: BR-02 gates the *effect*, not the
+setting.
+
+### Experience and education
+
+The `editor: "bespoke"` sections of §4.1, at the `endpoint` the schema publishes.
+Fixed shapes rather than schema-driven ones, and `PUT` is a full replacement — the
+records are small and a bespoke editor submits the whole form.
+
+Only `roleTitle` and `startedOn` are required on experience: §5.1 asks for a
+simplified entry for informal or seasonal work, where there is often no employer to
+name. `isCurrent` and `endedOn` are mutually exclusive (`422`
+`validation.current_has_no_end`), and an end before the start is
+`validation.date_order`.
+
+Both count toward `completenessPercent`, refreshed in the same transaction as the
+write. Neither can ever be *required* — a bespoke section has no field for
+`requiredForSearchable` to name — so an empty work history lowers the percentage
+without locking the profile out of search.
+
+### Attachments
+
+`POST` is `multipart/form-data` with `purpose` (a `file_purpose` **code** —
+`cv`, `photo`, `certificate`, `evidence`) and `file`.
+
+- Only purposes the category's `attachments[]` declares are accepted; anything else
+  is `400 candidate.attachment_purpose_invalid`.
+- **`maxCount` is how "replace" works** (§5.4). Uploading a second CV supersedes the
+  first: the new file is stored, then the oldest beyond the limit is soft-deleted.
+  There is deliberately no "replace" operation — delete-then-upload leaves a
+  candidate with no CV if the second call fails.
+- `downloadPath` is a path on this API (`/files/{id}/content`). There is never a
+  storage URL: Telegram's carries the bot token, so bytes are proxied after an
+  ownership check (§11.1, ARCHITECTURE.md §9).
+- Deletes are soft. BR-14's retention period is still open.
+
+**Employer access to a candidate's CV (BR-09) is not built yet.** A CV is currently
+readable only by its owner — stricter than BR-09 requires, so nothing is exposed. It
+arrives with M4's verified employer and M7's candidate serializer, where "an allowed
+hiring interaction" can actually be evaluated.
 
 ---
 

@@ -11,6 +11,9 @@ import { Pool } from 'pg';
 import type { AppEnv } from '@infra/env-schema';
 
 import type { DB } from './database.types';
+import { configurePgTypeParsers } from './pg-types';
+
+configurePgTypeParsers();
 
 /** DI token for the Kysely instance. */
 export const KYSELY = 'KYSELY';
