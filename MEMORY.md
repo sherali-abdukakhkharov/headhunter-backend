@@ -30,6 +30,61 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 (M6) - BR-09 was worth waiting for, and the wait is the lesson
+The contact-exposure rule was on M3's checklist and deliberately not built there. It
+landed in M6, unchanged in shape from what M3 would have written, because that is when its
+inputs existed: a verified employer (M4) and a hiring interaction (M6).
+*Why deferring was right rather than lazy:* built in M3 it would have had **no caller**
+and could only have been tested against invented inputs - "does this function return false
+when I pass it false". Meanwhile the actual behaviour in M3 was *stricter* than BR-09
+requires (a CV was owner-only), so the gap exposed nothing. A missing capability is not a
+missing check, and telling the two apart is what made it safe to wait.
+*What the finished rule looks like:* one pure function taking (viewer, visibility,
+interaction) and returning two booleans **and a reason code**. The reason is not
+decoration - §11.1 requires logging access to protected data, and a log that cannot
+distinguish "was entitled" from "asked and was refused" answers no audit question. Two
+denials with different causes are not the same denial.
+*The property M7 must not break:* a search card is not an interaction. §11.1 forbids a
+phone number on one, so candidate-search cards have to be built from `expose()`'s output
+rather than from the profile row.
+
+### 2026-08-05 (M6) - The employer's file access is its own route, not a flag on the owner's
+`GET /files/:id/content` stays owner-only. An employer downloads a CV through
+`GET /applications/:id/files/:fileId/content`.
+*Why not teach the existing route about BR-09:* the entitlement comes from the
+application, so the route that serves it has to be the one that can see the application.
+Adding an "or an authorized employer" branch to the owner route would put a privacy rule
+in `infra/files`, which has no business knowing what a hiring interaction is - and
+`FilesService.readAsAuthorized` exists precisely so the check happens above it.
+*Why BR-09 is re-evaluated on every download rather than trusted from the listing:* a
+client may hold a `downloadPath` from a moment when the interaction still existed. A
+candidate who withdraws stops the download working, which is the point of the rule.
+*Why `readAsAuthorized` is a separate method and not a boolean parameter:* a flag named
+`authorized` is how "authorized" ends up defaulting to true at some future call site.
+
+### 2026-08-05 (M6) - Idempotency claims the key before doing the work
+`IdempotencyService.run` inserts the key row **first**, then performs the operation, then
+records the resource id.
+*Why that order and not check-then-insert:* two concurrent retries would both pass a
+check. Claiming first means the second conflicts on the primary key, waits, and finds the
+first one's result - which is the whole window the mechanism exists to close.
+*Why the resource id and not the response body:* a cached body goes stale the moment the
+resource changes. Re-reading the resource keeps one source of truth for what a client gets
+back on a replay.
+*Why it is not redundant with BR-07's unique index:* the index prevents the duplicate but
+answers a retry with a conflict, which a client cannot distinguish from "somebody else got
+there first". The key makes an interrupted-but-committed request replay as the success it
+was. Both are needed, and §12.4 asks for both.
+
+### 2026-08-05 (M6) - A saved list is not discovery
+Saved vacancies are deliberately **not** filtered by the visibility predicate that BR-11
+imposes on the feed.
+*Why:* BR-11 removes a closed vacancy from *active discovery*. A candidate who saved
+something needs to see that it closed - a saved item that silently vanished reads as a bug
+and loses the information the candidate wanted. Everything else in the discovery module
+starts from one shared `visible` fragment precisely so this exception is the only one, and
+is visible as such.
+
 ### 2026-08-05 (M5) - BR-12 overrides the missing-moderator flag, and that is the point
 A vacancy carrying an age or gender restriction goes to `under_moderation` **regardless
 of `MODERATION_ENABLED`**, so with no admin module it cannot be published at all.

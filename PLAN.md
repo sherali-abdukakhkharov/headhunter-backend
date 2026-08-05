@@ -19,11 +19,11 @@ a profile contract.
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
 | M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
-| M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access deferred to M4/M7, where its inputs exist |
+| M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access delivered in M6, once its inputs existed |
 | M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
 | M5 | Vacancies + moderation | M6, M7 | **done**; BR-12 restrictions wait for M10 by design |
-| M6 | Vacancy discovery + applications | M8 | next - **closes the MVP loop** |
-| M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
+| M6 | Vacancy discovery + applications | M8 | **done - the MVP loop closes here** |
+| M7 | Candidate search + invitations + shortlists | M8 | next |
 | M8 | Chat + interviews | - | after M6+M7 |
 | M10 | Admin module + audit | - | after M4+M5 |
 | M9 | Notifications + push | - | **last feature milestone**, after M10 |
@@ -263,6 +263,32 @@ Two decisions worth knowing before building on this:
 - Employer application management: grouping, filters, stage moves, internal notes
   not visible to candidates, hired-count against required worker count (§6.5).
 - `Idempotency-Key` support on apply (ARCHITECTURE.md §7).
+
+*Status: done. **The MVP core loop is complete*** - an employer publishes, a candidate
+finds and applies, the employer moves them through the stages to a hire. Verified end to
+end through hh.qitmir.uz.
+
+Four things worth carrying into M7:
+
+- **BR-09 is built**, and it is one pure function
+  (`infra/privacy/contact-exposure.ts`) taking (viewer, visibility, interaction). It
+  was deferred out of M3 for want of its inputs and landed here as soon as they existed.
+  M7's candidate search **must** build its cards from `expose()` and never from the
+  profile row: §11.1 forbids a phone number on a search card, and a card is not an
+  interaction. Adding invitations as the second interaction is one line in
+  `CandidateViewService`, not a change to the rule.
+- **The employer's file access is a separate route**,
+  `GET /applications/:id/files/:fileId/content`. `GET /files/:id/content` stays
+  owner-only: an employer's entitlement comes from the application, so the route that
+  serves them has to be the one that can see it. BR-09 is re-evaluated per download,
+  because a client may hold a path from a moment when the interaction still existed.
+- **Idempotency and BR-07 are both needed and do different jobs.** The index prevents a
+  duplicate but answers a retry with a conflict, indistinguishable from "somebody else
+  got there first". The key makes an interrupted-but-committed request replay as the
+  success it was. M7's invitations and M8's messages need the same treatment.
+- **One visibility fragment behind every discovery read.** BR-04, BR-06 and BR-11 live
+  in it, and a feed that advertised a vacancy the apply route refuses would look like a
+  bug in Apply. M7's candidate search wants the same discipline with BR-02's gate.
 
 ## M7 - Candidate search + invitations
 

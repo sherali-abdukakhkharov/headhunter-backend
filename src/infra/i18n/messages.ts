@@ -330,6 +330,12 @@ export const MESSAGES = {
     ru: 'Запись не найдена.',
     en: 'The record was not found.',
   },
+  'candidate.profile_not_found': {
+    'uz-Latn': 'Nomzod profili topilmadi.',
+    'uz-Cyrl': 'Номзод профили топилмади.',
+    ru: 'Профиль кандидата не найден.',
+    en: 'The candidate profile was not found.',
+  },
   'candidate.attachment_purpose_invalid': {
     'uz-Latn': 'Bu turdagi fayl profilga qoʻshilmaydi.',
     'uz-Cyrl': 'Бу турдаги файл профилга қўшилмайди.',
@@ -445,6 +451,76 @@ export const MESSAGES = {
     'uz-Cyrl': 'Рад этиш учун сабаб кўрсатилиши шарт.',
     ru: 'Для отказа необходимо указать причину.',
     en: 'A reason is required to reject a vacancy.',
+  },
+
+  // --- applications (§5.6, §8.1, BR-06, BR-07) -----------------------------
+  'application.not_found': {
+    'uz-Latn': 'Ariza topilmadi.',
+    'uz-Cyrl': 'Ариза топилмади.',
+    ru: 'Заявка не найдена.',
+    en: 'The application was not found.',
+  },
+  // BR-07. The candidate's fix is to look at the application they already have.
+  'application.already_applied': {
+    'uz-Latn': 'Siz bu vakansiyaga allaqachon ariza topshirgansiz.',
+    'uz-Cyrl': 'Сиз бу вакансияга аллақачон ариза топширгансиз.',
+    ru: 'Вы уже откликнулись на эту вакансию.',
+    en: 'You have already applied to this vacancy.',
+  },
+  // BR-06, and BR-04/BR-11 in the same message: from the candidate's side "closed",
+  // "paused" and "deadline passed" are one fact - applications are not being taken.
+  'application.vacancy_closed': {
+    'uz-Latn': 'Bu vakansiyaga arizalar qabul qilinmayapti.',
+    'uz-Cyrl': 'Бу вакансияга аризалар қабул қилинмаяпти.',
+    ru: 'Эта вакансия больше не принимает заявки.',
+    en: 'This vacancy is no longer accepting applications.',
+  },
+  'application.final': {
+    'uz-Latn': 'Ariza yakunlangan, uni oʻzgartirib boʻlmaydi.',
+    'uz-Cyrl': 'Ариза якунланган, уни ўзгартириб бўлмайди.',
+    ru: 'Заявка завершена и не может быть изменена.',
+    en: 'The application is final and cannot be changed.',
+  },
+  'application.transition_not_allowed': {
+    'uz-Latn': 'Bu bosqichga oʻtish mumkin emas.',
+    'uz-Cyrl': 'Бу босқичга ўтиш мумкин эмас.',
+    ru: 'Такой переход этапа невозможен.',
+    en: 'That stage change is not allowed.',
+  },
+  // §8.1's second column: each stage names who may set it.
+  'application.wrong_actor': {
+    'uz-Latn': 'Bu bosqichni siz oʻzgartira olmaysiz.',
+    'uz-Cyrl': 'Бу босқични сиз ўзгартира олмайсиз.',
+    ru: 'Этот этап меняет не ваша сторона.',
+    en: 'This stage is not yours to set.',
+  },
+  'candidate.profile_required': {
+    'uz-Latn': 'Ariza topshirish uchun avval profilni toʻldiring.',
+    'uz-Cyrl': 'Ариза топшириш учун аввал профилни тўлдиринг.',
+    ru: 'Чтобы откликнуться, сначала заполните профиль.',
+    en: 'Fill in your profile before applying.',
+  },
+  'complaint.already_reported': {
+    'uz-Latn': 'Siz bu haqda allaqachon xabar bergansiz.',
+    'uz-Cyrl': 'Сиз бу ҳақда аллақачон хабар бергансиз.',
+    ru: 'Вы уже пожаловались на это.',
+    en: 'You have already reported this.',
+  },
+
+  // --- idempotency (ARCHITECTURE.md §7) ------------------------------------
+  // The client reused a key for a different request, which is its bug: a key means
+  // "this one operation", so two operations under it is broken key generation.
+  'idempotency.key_reused': {
+    'uz-Latn': 'Bu soʻrov kaliti boshqa soʻrov uchun ishlatilgan.',
+    'uz-Cyrl': 'Бу сўров калити бошқа сўров учун ишлатилган.',
+    ru: 'Этот ключ запроса уже использован для другого запроса.',
+    en: 'That request key was already used for a different request.',
+  },
+  'idempotency.in_progress': {
+    'uz-Latn': 'Xuddi shu soʻrov bajarilmoqda. Birozdan soʻng tekshiring.',
+    'uz-Cyrl': 'Худди шу сўров бажарилмоқда. Бироздан сўнг текширинг.',
+    ru: 'Такой же запрос выполняется. Проверьте результат чуть позже.',
+    en: 'The same request is already in progress. Check the result shortly.',
   },
 
   // --- validation (§3.2 "validation messages shall be localized") --------

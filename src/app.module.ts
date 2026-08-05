@@ -12,7 +12,9 @@ import { type AppEnv, envSchema } from '@infra/env-schema';
 import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CandidatesModule } from '@modules/candidates/candidates.module';
+import { ApplicationsModule } from '@modules/applications/applications.module';
 import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
+import { DiscoveryModule } from '@modules/discovery/discovery.module';
 import { EmployersModule } from '@modules/employers/employers.module';
 import { FilesHttpModule } from '@modules/files/files.module';
 import { HealthModule } from '@modules/health/health.module';
@@ -63,6 +65,8 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     CandidatesModule,
     EmployersModule,
     VacanciesModule,
+    DiscoveryModule,
+    ApplicationsModule,
     FilesHttpModule,
     HealthModule,
   ],

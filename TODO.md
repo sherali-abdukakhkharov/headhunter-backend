@@ -322,14 +322,14 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [x] Cascade from `users` through the profile to every child table
 - [x] One candidate cannot read, update or delete another's records or files
 
-### Deferred out of M3, deliberately
-- [ ] **BR-09 employer access to a candidate CV.** The helper takes (viewer,
-      candidate, interaction state) and two of those three do not exist yet: there
-      is no employer profile until M4 and no application or invitation until
-      M6/M7, so "an allowed hiring interaction" has nothing to read. Today a CV is
-      reachable **only by its owner**, which is stricter than BR-09 requires, so
-      nothing is exposed in the meantime. Build it with M4's verified employer and
-      M7's candidate serializer, which is where its callers are.
+### Deferred out of M3, delivered in M6
+- [x] **BR-09 employer access to a candidate CV** - built once all three inputs
+      existed (a verified employer from M4, an application from M6). The rule is one
+      pure function, `infra/privacy/contact-exposure.ts`; `CandidateViewService`
+      gathers its inputs and `GET /applications/:id/files/:fileId/content` serves the
+      bytes. `GET /files/:id/content` stays **owner-only** - an employer's
+      entitlement comes from the application, so the route that serves them is the one
+      that can see it. Every access is logged with its decision reason (§11.1).
 - [ ] Flutter: mirror `CandidateProfileDto`, `FieldSchemaDto` and the history and
       attachment DTOs (the app repo's M3)
 
@@ -482,16 +482,49 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [x] One employer never sees another's vacancy (404, not 403)
 - [x] Cascade from the employer through vacancies to requirements and history
 
-## M6 - Discovery + applications
+## M6 - Discovery + applications *(done - the MVP loop closes here)*
 
-- [ ] Candidate feed: recommended (rule-based), recent, saved + §5.5 filters
-- [ ] `applications` + **BR-07 partial unique index**
-- [ ] `application_stage_history` written in the same transaction (BR-08)
-- [ ] BR-06 deadline check inside the insert transaction, vacancy read `FOR SHARE`
-- [ ] Apply / withdraw / save / report
-- [ ] Employer application management, internal notes, hired-vs-required counts
-- [ ] `Idempotency-Key` on apply
-- [ ] Test: concurrent double-apply produces exactly one application
+### Schema *(done - `20260805190000_create_applications`)*
+- [x] `applications` + **BR-07 partial unique index** (`WHERE status NOT IN
+      ('withdrawn','rejected')`), so a withdrawn or rejected candidate may apply again
+- [x] `application_stage_history` (BR-08), `application_notes` as **its own table**
+      so §6.5's internal note is never one forgotten `select` from the candidate
+- [x] `saved_vacancies`, keyed so saving twice is saving once
+- [x] `complaints` - generic `target_type` + `target_id` from the start, because
+      §5.6 needs vacancy reports now and §10 reviews four target kinds later
+- [x] `idempotency_keys` storing a fingerprint and the resource id, never a response
+      body - a cached body would go stale the moment the resource changed
+
+### Candidate side *(done)*
+- [x] Feed: recommended (rule-based on occupation, region and category), recent,
+      saved, with §5.5's filters. One visibility fragment behind all of them, so
+      BR-04, BR-06 and BR-11 cannot be forgotten by one query
+- [x] `GET /discovery/vacancies/:id` - §5.6's detail with the employer's verification
+      status and the structured requirements
+- [x] Apply / withdraw / save / unsave / report
+- [x] **Saved vacancies are deliberately not visibility-filtered**: a candidate who
+      saved something needs to see that it closed, not have it vanish. BR-11 removes a
+      closed vacancy from *discovery*, and a personal list is not discovery
+- [x] `Idempotency-Key` on apply (ARCHITECTURE.md §7): same key + same body replays
+      the original application, a different body is a 409
+
+### Employer side *(done)*
+- [x] Applications grouped by vacancy, filterable by status (§6.5)
+- [x] Stage moves with §8.1's who-may-set-what, forward-only, skipping allowed
+- [x] Internal notes, and `hired` incrementing the vacancy counter in the same
+      transaction (§6.5's hired-vs-required)
+- [x] `GET /applications/:id/candidate` - the applicant as much as BR-09 allows,
+      with the authorized CV download
+
+### Tests *(done - 19 unit, 30 integration)*
+- [x] **Test: concurrent double-apply produces exactly one application** - two applies
+      fired together, exactly one succeeds, one row in the table
+- [x] BR-06 after the deadline, BR-04/BR-11 for paused and closed
+- [x] The idempotent replay, and a 409 for a reused key with a different body
+- [x] Backwards moves refused; an employer cannot withdraw for a candidate
+- [x] BR-09 across the lifecycle: revealed on application, withdrawn on withdrawal
+- [x] The internal note appears in no candidate-facing read
+- [x] BR-07 counts only active applications, so re-applying after withdrawal works
 
 ## M7 - Candidate search + invitations
 

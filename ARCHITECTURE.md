@@ -360,6 +360,14 @@ This is separate from BR-07's unique index: the index prevents logical
 duplicates, idempotency keys make an interrupted-but-successful request safe to
 retry and let the client distinguish "already done" from "conflict".
 
+*Built in M6 (`infra/idempotency`), and two details of the implementation matter.*
+The key is **claimed before the work runs**, so two concurrent retries cannot both pass
+the check - the second conflicts on the primary key, waits, and then finds the first
+one's result. Checking first and inserting afterwards would leave exactly the window the
+mechanism exists to close. And what is stored is the **resource id, not the response
+body**: a cached body would go stale the moment the resource changed, and re-reading
+keeps one source of truth for what the client gets back.
+
 ---
 
 ## 8. Authorization
@@ -379,9 +387,20 @@ but "may this user, acting as role R, do this to resource X".
   message creation with a clear reason (§13.1 UAT-14).
 - **BR-03**: employer profile completeness is a precondition on invitation and
   vacancy-submit routes.
-- **BR-09**: contact-detail exposure is decided in one serializer helper that
-  takes (viewer, candidate, interaction state). Never inline this rule per
-  endpoint - it will drift, and drifting is a privacy incident.
+- **BR-09**: contact-detail exposure is decided in **one pure function**,
+  `infra/privacy/contact-exposure.ts`, taking (viewer, visibility, interaction state).
+  Never inline this rule per endpoint - it will drift, and drifting is a privacy
+  incident. Built in M6 rather than M3, because two of its three inputs did not exist
+  before then; until they did, a CV was owner-only, which is stricter than the rule.
+  Three properties to preserve:
+  - It returns a **reason code** as well as the two booleans, so §11.1's "access to
+    protected data is logged" produces a log that can distinguish an employer who was
+    entitled to a phone number from one who asked and was refused.
+  - **Files and contact details are one decision.** §5.4 and §11.1 draw the same line,
+    so a state where one is allowed and the other is not would be a rule nobody wrote.
+  - **A search card is not an interaction.** §11.1 forbids a phone number on one, so
+    M7's cards must be built from this function's output rather than from the profile
+    row.
 
 ### Auth flow
 

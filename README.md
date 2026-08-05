@@ -369,15 +369,19 @@ Every one of these was hit while setting the project up:
   closed-stays-in-history, and BR-12 as an enumerated, validated justification that
   **always** requires review. `MODERATION_ENABLED` is off until M10, so an ordinary
   vacancy publishes on submit.
+- **M6** discovery + applications — **the MVP loop closes here**: the candidate feed
+  (recommended, recent, saved) behind one visibility predicate, apply with BR-06 in a
+  `FOR SHARE` transaction and BR-07 as a partial unique index, `Idempotency-Key` on
+  apply, §8.1's stage machine with BR-08 history, §6.5's internal notes and
+  hired-vs-required counters, and **BR-09** deciding what an employer may see of an
+  applicant — including the authorized CV download.
 - **Cross-cutting**: every user-facing message localized into all four variants
   (`infra/i18n`), and Telegram-backed file storage with owner-scoped
   upload / download / delete (`infra/files`, `/files`).
 
 ## Not built yet
 
-Discovery, applications, search, chat, notifications, admin (M6 onward), plus BR-09's
-employer access to a candidate CV, which still needs a hiring interaction (M6/M7)
-before it has anything to evaluate — until then a CV is readable only by its owner.
+Candidate search and invitations, chat and interviews, notifications, admin (M7 onward).
 Smaller gaps worth knowing: CI,
 the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
 asks for it "where infrastructure permits"; Telegram does none on a bot upload, and

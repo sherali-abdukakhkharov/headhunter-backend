@@ -857,6 +857,106 @@ module (M10), so an unrestricted vacancy goes straight to `active` with an
 response shape is identical, and `under_moderation` starts appearing when the flag goes
 on — and already appears today for anything BR-12 touches.
 
+## 4d. Discovery and applications
+
+Built 2026-08-05 with M6. This is the loop: an employer publishes, a candidate finds and
+applies, the employer moves them through the stages.
+
+```
+GET   /discovery/recommended                  ->  { items: FeedItem[] }
+GET   /discovery/recent                       ->  { items: FeedItem[] }
+GET   /discovery/saved                        ->  { items: FeedItem[] }
+GET   /discovery/vacancies/{id}                ->  VacancyDetail
+PUT   /discovery/vacancies/{id}/saved          ->  204
+DELETE/discovery/vacancies/{id}/saved          ->  204
+POST  /discovery/vacancies/{id}/report         ->  { id }
+
+POST  /vacancies/{id}/applications             ->  Application    (candidate)
+GET   /applications/mine                        ->  { items: Application[] }
+POST  /applications/{id}/withdraw                ->  Application
+
+GET   /vacancies/{id}/applications               ->  { items: Application[] }   (employer)
+GET   /vacancies/{id}/applications/counts         ->  ApplicationCounts
+PUT   /applications/{id}/stage                    ->  Application
+GET   /applications/{id}/candidate                 ->  CandidateForEmployer
+GET   /applications/{id}/files/{fileId}/content     ->  bytes
+POST  /applications/{id}/notes                     ->  ApplicationNote
+GET   /applications/{id}/notes                     ->  { items: ApplicationNote[] }
+
+GET   /applications/{id}/history                    ->  { items: StageHistoryEntry[] }  (both)
+```
+
+### The feed
+
+All three lists share one card shape, and two of its fields save the client a round trip:
+`isSaved`, and `applicationStatus` — the caller's own stage for that vacancy, or null,
+so a card can show Apply or the current status directly (§5.6). The card also carries the
+employer's `isVerified`, which is what makes BR-03's badge worth having.
+
+Filters (§5.5) are query parameters, id lists comma-separated:
+`occupationIds`, `category`, `regionId`, `districtId`, `employmentTypeIds`,
+`workFormatIds`, `shiftIds`, `salaryFrom`, `publishedFrom`, plus `limit` (max 50)
+and `offset`.
+
+- **`recommended` is rule-based**, not a model: occupation counts double, region and
+  category one each, ties break on recency. A candidate with no profile gets the recent
+  feed rather than an empty one.
+- **`salaryFrom` keeps negotiable vacancies.** One has not said no to the figure, and
+  excluding them would hide much of the seasonal work.
+- **Everything except `saved` is filtered to visible vacancies** — active, deadline not
+  passed (BR-04, BR-06, BR-11). `saved` deliberately is not: a candidate who saved
+  something needs to see that it closed rather than have it vanish.
+
+### Applying
+
+`POST /vacancies/{id}/applications` with an optional `coverNote`, and an optional
+**`Idempotency-Key` header**. Send one: a retry with the same key and body returns the
+original application instead of failing, which is what makes a lost response safe (§12.4).
+A different body under the same key is `409 idempotency.key_reused`.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `candidate.profile_required` | 403 | BR-02 — fill in the profile first. |
+| `application.already_applied` | 409 | BR-07 — one active application per vacancy. |
+| `application.vacancy_closed` | 409 | BR-06, and BR-04/BR-11. From the candidate's side "paused", "closed" and "deadline passed" are one fact: applications are not being taken. |
+
+**Withdrawing frees the BR-07 slot**, so a candidate may apply again later. It is allowed
+up to an accepted offer, which `hired` being terminal expresses.
+
+### Stages (§8.1)
+
+`submitted` · `viewed` · `shortlisted` · `interview` · `offer` · `hired` ·
+`rejected` · `withdrawn`
+
+- **Forward moves may skip a stage** — real hiring does. Backwards moves are refused: a
+  candidate told they were shortlisted and then returned to `viewed` has been told
+  something false.
+- **`withdrawn` is the candidate's alone**; everything from `viewed` on is the
+  employer's. `hired`, `rejected` and `withdrawn` are terminal.
+- `hired` increments the vacancy's counter in the same transaction — read it from
+  `/counts` alongside `workerCount` (§6.5).
+- `GET /applications/{id}/history` is BR-08's trail and is readable by **both** sides.
+
+### What the employer may see of the applicant (BR-09)
+
+`GET /applications/{id}/candidate` returns the profile plus:
+
+- **`phone`** — present only where the candidate's privacy settings **and** a hiring
+  interaction both allow it. **Null is a normal answer, not an error.**
+- **`canViewFiles`** and **`files[]`**, each with a `downloadPath` pointing at
+  `/applications/{id}/files/{fileId}/content`. Not `/files/{id}/content`, which stays
+  owner-only: the entitlement comes from the application, so the route that serves it is
+  the one that can see it.
+- **`exposureReason`** — a stable code (`application`, `no_interaction`,
+  `hidden_by_candidate`, `not_verified_employer`, `accepted_invitation`, `admin`)
+  saying which rule decided. Every call is logged (§11.1).
+
+**A withdrawal revokes the exposure**, including in-flight download paths: BR-09 is
+re-evaluated per download rather than trusted from the listing.
+
+**Internal notes are employer-only** (§6.5). No candidate-facing response contains them,
+and they live in their own table so exposing one would take a deliberate new query.
+
 ---
 
 ## 5. Deferred

@@ -11,6 +11,20 @@ export type AccountStatus =
   | 'deletion_requested'
   | 'restricted';
 
+export type ApplicationStatus =
+  | 'hired'
+  | 'interview'
+  | 'offer'
+  | 'rejected'
+  | 'shortlisted'
+  | 'submitted'
+  | 'viewed'
+  | 'withdrawn';
+
+export type ComplaintStatus = 'actioned' | 'dismissed' | 'open';
+
+export type ComplaintTarget = 'message' | 'profile' | 'user' | 'vacancy';
+
 export type DictionaryCategory =
   | 'physical_industrial'
   | 'professional'
@@ -73,6 +87,36 @@ export interface AccountStatusHistory {
   reason: string | null;
   to_status: AccountStatus;
   user_id: string;
+}
+
+export interface ApplicationNotes {
+  application_id: string;
+  author_user_id: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  note: string;
+}
+
+export interface Applications {
+  candidate_user_id: string;
+  cover_note: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  rejection_reason: string | null;
+  status: Generated<ApplicationStatus>;
+  updated_at: Generated<Timestamp>;
+  vacancy_id: string;
+}
+
+export interface ApplicationStageHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  application_id: string;
+  created_at: Generated<Timestamp>;
+  from_status: ApplicationStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: ApplicationStatus;
 }
 
 export interface AppMeta {
@@ -179,6 +223,19 @@ export interface Companies {
   updated_at: Generated<Timestamp>;
 }
 
+export interface Complaints {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  reason: string;
+  reporter_user_id: string;
+  resolution: string | null;
+  reviewed_at: Timestamp | null;
+  reviewed_by_user_id: string | null;
+  status: Generated<ComplaintStatus>;
+  target_id: string;
+  target_type: ComplaintTarget;
+}
+
 export interface DeletionRequests {
   cancelled_at: Timestamp | null;
   confirmed_at: Timestamp | null;
@@ -248,6 +305,15 @@ export interface EmployerVerificationHistory {
   to_status: VerificationStatus;
 }
 
+export interface IdempotencyKeys {
+  created_at: Generated<Timestamp>;
+  fingerprint: string;
+  key: string;
+  operation: string;
+  resource_id: string | null;
+  user_id: string;
+}
+
 export interface OtpCodes {
   attempts: Generated<number>;
   code_hash: string;
@@ -265,6 +331,12 @@ export interface RateLimitCounters {
   hits: Generated<number>;
   subject: string;
   window_start: Timestamp;
+}
+
+export interface SavedVacancies {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  vacancy_id: string;
 }
 
 export interface SchemaVersions {
@@ -401,6 +473,9 @@ export interface VerificationSubmissions {
 export interface DB {
   account_status_history: AccountStatusHistory;
   app_meta: AppMeta;
+  application_notes: ApplicationNotes;
+  application_stage_history: ApplicationStageHistory;
+  applications: Applications;
   candidate_attributes: CandidateAttributes;
   candidate_education: CandidateEducation;
   candidate_experience: CandidateExperience;
@@ -409,14 +484,17 @@ export interface DB {
   candidate_profiles: CandidateProfiles;
   candidate_skills: CandidateSkills;
   companies: Companies;
+  complaints: Complaints;
   deletion_requests: DeletionRequests;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;
   dictionary_types: DictionaryTypes;
   employer_verification_history: EmployerVerificationHistory;
   employers: Employers;
+  idempotency_keys: IdempotencyKeys;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
+  saved_vacancies: SavedVacancies;
   schema_versions: SchemaVersions;
   sessions: Sessions;
   stored_files: StoredFiles;
