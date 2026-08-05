@@ -280,11 +280,87 @@ but "may this user, acting as role R, do this to resource X".
 
 ### Auth flow
 
-Phone + OTP only (§4.1). OTP records store a **hash**, never the code; TTL,
-resend delay and attempt limits are server config (§4.2). Rate limit per phone
-**and** per IP (§12.5). New device or phone-number change requires additional
-confirmation. Sessions are listed and individually revocable, plus
-"terminate all" (§4.2). Refresh tokens rotate on use with reuse detection.
+**Decided 2026-08-05 (client direction, second): login is §4.1's phone + OTP.** This
+supersedes the Telegram decision taken earlier the same day; that path is now
+deprecated but still working, and is documented below because its reasoning is worth
+keeping.
+
+The flow is `POST /auth/otp/send` then `POST /auth/otp/verify`, both public, both rate
+limited per phone and per IP. Registration and login are the same pair of calls — the
+client cannot know which it is performing, and a route that distinguished them would be
+a register of which numbers have accounts. Consuming a code is what verifies the
+number, so BR-01 holds by construction rather than by a separate check.
+
+**No SMS provider is bought yet, and that shaped exactly one line of code.**
+`OTP_STATIC_CODE` substitutes a fixed code at the point `generateOtpCode` would be
+called, inside the same transaction, and nowhere else. Everything downstream — the
+hash, the row, the TTL, supersession of the previous code, the attempt counter, the
+`FOR UPDATE` lock, single-use consumption — is the production path, exercised by the
+same tests.
+
+*Why the substitution goes there and not in `verify`:* a `verify` that accepted a magic
+value would be a second, simpler code path, and the day the provider arrives the branch
+that has actually been exercised is deleted and the one nobody has run becomes live.
+Putting it at generation means clearing one environment variable is the entire removal.
+
+*Why it is refused in production by Joi rather than by a note in a runbook:* a fixed
+code is a master key to every account on the instance. `NODE_ENV=production` with a
+non-empty `OTP_STATIC_CODE` fails at boot; a mismatch against `OTP_LENGTH` also fails
+at boot, because the alternative is a client rendering six input boxes for a code that
+does not fit them. And while it is set, every startup logs a warning.
+
+*What is still owed:* the provider itself — Eskiz.uz, per client direction — plus the
+delivery seam it plugs into. `OtpService.send` currently issues and stores a code and
+tells nobody; sending is additive, and the natural shape is one injected sender
+interface with a no-op implementation, added when there is a second implementation to
+justify it.
+
+#### Telegram login *(deprecated 2026-08-05, still working)*
+
+Kept rather than deleted: the verification is correct, its tests run, and it remains
+the cheapest way to re-add a verified-identity path. Setup guide:
+[docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
+
+The app uses Telegram's official native SDKs, which run OAuth2 + PKCE against
+`oauth.telegram.org` app-to-app and return an OpenID Connect `id_token`. The client
+posts that token to `POST /auth/telegram`; we verify it and issue our own session.
+
+Four checks decide whether a token is trusted, and the third is the load-bearing one:
+
+1. **Signature** against Telegram's JWKS — `jose` handles `kid` selection and key
+   rotation, which is the part not worth hand-rolling on a security path.
+2. **Issuer** is exactly `https://oauth.telegram.org`.
+3. **Audience is our bot id.** A genuine, correctly signed Telegram token issued for
+   any other application must not sign anyone in here, and this check is the only
+   thing preventing it. It is what makes accepting a client-supplied `id_token` sound
+   rather than merely convenient — the same reasoning as Google or Apple sign-in on
+   mobile.
+4. **Age** — `iat` within a short window, so a captured token is refused while `exp`
+   is still in the future. OIDC's `nonce` is the stronger defence but needs the client
+   SDK to accept a server-issued nonce, which the current Flutter package does not
+   expose; the claim is verified when present, ready for that.
+
+**Identity model consequences.** `telegram_user_id` becomes the credential and
+`users.phone` becomes nullable, with a CHECK that at least one is present — a row
+with neither is unreachable by every login path. The `phone` scope's
+`phone_number_verified` claim is what keeps the product's phone-based model working,
+and `TELEGRAM_REQUIRE_PHONE` (default on) refuses a login without it: BR-09 contact
+exposure has nothing to reveal without a phone number, and telling the user at login
+beats letting them discover it after building a profile.
+
+**Account linking** is what makes the switch survivable. A Telegram login carrying a
+verified phone that matches an unclaimed account attaches to it, with an audit row,
+rather than creating a duplicate. Only a Telegram-verified phone is ever matched on;
+matching an unverified one would be an account-takeover primitive. An account already
+claimed by a different Telegram user is never taken over — realistic rather than
+theoretical, since mobile numbers are recycled.
+
+Common to both paths: OTP records store a **hash**, never the code; TTL, resend delay
+and attempt limits are server config (§4.2). Rate limit per phone **and** per IP
+(§12.5). Sessions are listed and individually revocable, plus "terminate all" (§4.2).
+Refresh tokens rotate on use with reuse detection.
+
+Still owed from §4.2 either way: new-device and phone-change confirmation.
 
 ---
 
@@ -294,16 +370,46 @@ confirmation. Sessions are listed and individually revocable, plus
 with progress and retry; §12.5 requires type/size validation and malware scanning
 where infrastructure permits.
 
-Design: metadata row in `candidate_files` owned by this service; bytes in object
-storage; downloads via **short-lived signed URLs** issued only after an
-authorization check. Never store a durable public URL.
+**Decided 2026-08-04: storage is the Telegram Bot API.** Bytes are sent with
+`sendDocument` to one fixed chat; a `stored_files` row owned by this service holds
+the metadata; retrieval is `getFile` followed by a download. Client direction, and
+it removes an object-storage dependency from the deployment entirely.
 
-**Open decision (needs a call before M3):** this machine already hosts four
-candidate services - `d:\Dev\file-storage-service`,
-`d:\Dev\new-file-storage-service`, `d:\Dev\secure-file-router`,
-`d:\Dev\file-router`. Evaluate `secure-file-router` first, since authorized
-access is exactly the requirement. Do not build a fifth uploader before that
-review.
+What that choice forces, and why the code looks the way it does:
+
+- **Downloads are proxied, not redirected.** Telegram's file URL is
+  `api.telegram.org/file/bot<token>/<path>` — unauthenticated, and it contains the
+  bot token. It can never reach a client, so `GET /files/:id/content` streams the
+  bytes after an ownership check. This satisfies §11.1 more strictly than signed
+  URLs would: there is no URL to leak.
+- **The ceiling is 20 MB, not 50.** A bot may *send* 50 MB but `getFile` refuses to
+  *download* above 20 MB, so the upload limit is validated against the download
+  ceiling at boot. Above it, a file would store successfully and be permanently
+  unreadable. The client contract's 10 MB (§4.1) sits comfortably under.
+- **No path is ever persisted.** It expires in about an hour, so it is fetched per
+  download.
+- **`file_id` is per-bot.** Replacing `TELEGRAM_BOT_TOKEN` orphans every stored
+  file rather than merely re-authenticating, which makes the token part of the data
+  layer. `file_unique_id` is stored alongside because it is stable across bots and
+  is what a future migration would reconcile against.
+- **A SHA-256 of the uploaded bytes is stored and verified on read.** Serving an
+  employer a document that is not the one the candidate uploaded is worse than
+  serving none.
+- **Deletes are soft**, and Telegram's message deletion is best effort — it refuses
+  messages older than 48 hours. The metadata row is what every read goes through,
+  so a deleted row is unreachable regardless of the residue in the chat.
+
+Two consequences worth stating plainly, since they are properties of the storage
+choice rather than of the code: uploaded documents live in a Telegram chat, so that
+chat's membership is part of this product's privacy surface and it should be a
+private channel whose only other member is the bot; and file retention is bounded
+by that chat's existence, not by our database.
+
+Validation is content-based (§12.5): extension, declared MIME type and magic bytes
+must agree, which is what stops a renamed executable being accepted as a CV. A
+generic `application/octet-stream` is tolerated because mobile pickers send it.
+This is not malware scanning; §12.5 asks for that "where infrastructure permits",
+and Telegram performs none on a bot upload.
 
 ---
 
@@ -364,9 +470,12 @@ Answers change the schema, so raise them before the affected milestone:
    "the approved privacy policy", which we do not have yet.
 2. **Verification evidence** required for individual (non-company) employers
    (§6.1 says "if required by policy").
-3. **Time zone policy** - §8.3 says "the configured local time zone". Single
-   platform zone (Asia/Tashkent) or per-user?
-4. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
+3. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
    age/gender filtering need to be enumerated, since moderation must check them.
-5. **Push provider** - FCM for both platforms, or FCM + APNs directly.
-6. **File service** - reuse `secure-file-router` or build in-repo (§9).
+4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and
+   working, but four of them carry a conventional default rather than an approved
+   list, and the occupation set is a starting point rather than a classifier. See
+   `src/modules/dictionaries/seed/` - each type states its provenance.
+
+*Answered:* time zone (single platform zone `Asia/Tashkent`), push provider
+(deferred with M9), file service (Telegram Bot API, §9 above).

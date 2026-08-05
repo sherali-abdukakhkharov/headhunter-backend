@@ -41,6 +41,7 @@ cp .env.example .env      # already done for local dev
 pnpm install
 pnpm db:up                # Postgres 18 in Docker
 pnpm migrate:latest       # apply migrations
+pnpm seed                 # dictionary content - the app needs it, see below
 pnpm start:dev            # http://localhost:3001
 ```
 
@@ -48,7 +49,9 @@ Check it:
 
 ```sh
 curl http://localhost:3001/health
-# {"status":"ok","database":"up","version":"0.0.1","timestamp":"..."}
+# {"status":"ok","database":"up","version":"0.0.1","timestamp":"2026-08-04T15:00:00+05:00"}
+
+curl -H 'x-lang: ru' http://localhost:3001/dictionaries/region
 ```
 
 ## Commands
@@ -59,7 +62,8 @@ pnpm build                # SWC build + full type check
 pnpm typecheck            # tsc --noEmit
 pnpm lint                 # eslint --fix
 pnpm format               # biome format --write
-pnpm test                 # jest
+pnpm test                 # jest, database-free (DummyDriver)
+pnpm test:int             # *.int.spec.ts against the dev Postgres - needs db:up
 pnpm test:cov             # coverage
 
 pnpm db:up / db:down      # Postgres container up/down
@@ -72,7 +76,111 @@ pnpm migrate:status        # what is applied and what is pending
 pnpm migrate:typecheck    # type-check migrations without running them
 
 pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the live DB
+
+pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
+
+## Public URL
+
+Published at **https://hh.qitmir.uz** through a named Cloudflare tunnel — the same
+arrangement as the other bots on this machine. Nothing is exposed inbound. Setup,
+the production environment and the failure table are in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+One setting decides whether rate limiting works at all there:
+`CLIENT_IP_HEADER=cf-connecting-ip`. Without it every caller arrives as `127.0.0.1`
+and shares one bucket; with `X-Forwarded-For` instead, the value is the Cloudflare
+edge and is partly attacker-controlled. Boot warns if the combination is wrong.
+
+```sh
+pnpm tunnel:up / tunnel:logs / tunnel:down
+```
+
+## Login
+
+**Phone + OTP**, as §4.1 and UAT-01 specify. `POST /auth/otp/send` issues a code,
+`POST /auth/otp/verify` consumes it and opens a session; registration and login are
+the same pair of calls, because a client cannot know which one it is doing and
+asking it to would let anyone probe which numbers are registered.
+
+**No SMS provider is connected yet.** Two development-only settings stand in:
+
+| Variable | Effect |
+|---|---|
+| `OTP_STATIC_CODE=666666` | Issues this code instead of a random one |
+| `OTP_ECHO_IN_RESPONSE=true` | Returns the code as `devCode` in the send response |
+
+Boot refuses both when `NODE_ENV=production`, and logs a warning on every start
+while the static code is set. The substitution lives at the single point where the
+random code is generated, so the hash, the row, the TTL, code supersession, the
+attempt limit and single-use consumption are all identical to the real thing —
+clearing the variable is the entire removal, and connecting a provider adds delivery
+without touching a route, a DTO or the client.
+
+Treat the fixed code as what it is: **a master key to every account on the
+instance.** It must not be set on anything publicly reachable — see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+**Telegram login is deprecated** (client direction 2026-08-05) but still works at
+`POST /auth/telegram`, marked `deprecated` in Swagger. Nothing was deleted: the JWKS
+verification is correct, its 22 tests still run, and both paths converge on the same
+session issuance, so an account can hold both credentials. Details, and what it would
+take to make it primary again, are in
+[docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
+
+## File storage
+
+Bytes live in **Telegram**, not in object storage. A bot posts each upload to one
+fixed chat with `sendDocument`; `stored_files` keeps the metadata; retrieval is
+`getFile` plus a download. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_STORAGE_CHAT_ID`
+— boot logs whether the credentials work rather than failing, so a Telegram outage
+does not stop the rest of the API from serving.
+
+Three things to know before touching this code:
+
+- **Never hand a Telegram file URL to a client.** It is
+  `api.telegram.org/file/bot<token>/<path>` — unauthenticated, and it leaks the bot
+  token. Downloads are proxied through `GET /files/:id/content` after an ownership
+  check. That is also the §11.1 requirement: no permanently public links.
+- **20 MB is the hard ceiling**, because that is `getFile`'s *download* limit. A bot
+  can send 50 MB, so it is possible to store a file that can never be read back;
+  boot refuses a `FILE_MAX_SIZE_BYTES` above 20 MB for exactly that reason.
+- **The bot token is part of the data layer.** `file_id` values are per-bot, so
+  replacing the token orphans every stored file rather than re-authenticating.
+
+Whoever can read the storage chat can read every uploaded CV, so it should be a
+private channel whose only other member is the bot.
+
+## Seeding dictionaries
+
+`pnpm seed` applies `src/modules/dictionaries/seed/dictionary-seed.data.ts`. It is
+deliberately **not** a migration: dictionary content is reviewed and revised by
+the client (§13.2), so a corrected label has to be editable in place rather than
+needing a new migration file forever.
+
+It is idempotent in the strong sense — **a second run writes nothing at all**, not
+merely "creates no duplicates". Every item and translation write bumps the global
+revision by trigger, so a seeder that rewrote identical values would advance every
+dictionary's version on each deployment and make every client refetch everything.
+
+To add or correct content: edit the data file, run `pnpm seed`, and only the
+difference is applied. Each type is tagged with where its values come from —
+`spec` (enumerated in the specification), `default` (a compiled starting set that
+still needs client approval) or `awaiting`.
+
+Currently **487 items, 1 950 labels**. The four large lists are in `seed/data/`:
+
+| File | Contents |
+|---|---|
+| `locations.data.ts` | 14 regions and all 175 districts, by `parentCode` |
+| `occupations.data.ts` | 162 occupations across the five §2.1 categories |
+| `skills.data.ts` | 118 skills by family, and 32 industries |
+
+The content files use **positional** label helpers — `place(code, uzLatn, uzCyrl,
+ru, en)` — so a whole region stays reviewable at a glance. That makes a swapped
+column easy to write, which is why `dictionaries.int.spec.ts` asserts over the whole
+seed that no Latin-script slot contains Cyrillic and no Cyrillic slot lacks it,
+except where a label is deliberately untransliterated (`PostgreSQL`, `1C`).
 
 ## Structure
 
@@ -82,10 +190,24 @@ src/
   app.module.ts                  config + logging + database + feature modules
   infra/
     env-schema.ts                Joi schema; a bad env var fails the boot, not a request
+    api/
+      decorators/                @Public, @RequireRole, @RateLimit, @XLang, @ActiveUser
+      guards/                    the global stack: rate limit → auth → role → account status
+      filters/                   api-exception.filter.ts - the one error body, localized
+      exceptions/                LocalizedException subclasses, carrying a catalog key
+    crypto/hash.ts               HMAC hashing for OTP codes and refresh tokens
+    i18n/                        the message catalog, four variants per key
+    locale/locale.ts             x-lang normalization and the §3.2 fallback chain
+    files/                       Telegram-backed file storage
+    phone/phone.ts               E.164 normalization, log masking
+    rate-limit/                  §12.5 buckets over rate_limit_counters
+    time/format.ts               the one timestamp serializer (explicit offset, never Z)
     db/
       database.module.ts         global Kysely provider (KYSELY token), closes the pool on shutdown
       database.types.ts          Kysely schema types (regenerate with kysely:generate)
       migrate.ts                 standalone migration runner
+      seed.ts                    standalone dictionary seed runner
+      testing/int-db.ts          the pool every *.int.spec.ts connects with
   modules/<feature>/
     <feature>.controller.ts      HTTP layer, Swagger decorators
     <feature>.service.ts         business logic
@@ -141,8 +263,35 @@ Every one of these was hit while setting the project up:
 - **pnpm needs `CI=true`** to remove `node_modules` non-interactively, plus
   `--no-frozen-lockfile` alongside it when `package.json` has changed.
 
+- **A throw inside `db.transaction().execute()` rolls back the write that
+  preceded it.** This cost two security bugs in M1 (an OTP attempt counter and a
+  session-family revocation, both silently undone by the exception reporting
+  them). When a transaction has a side effect on its failure path, return an
+  outcome and throw after the commit — and assert the side effect in the test,
+  not just the error. See MEMORY.md.
+- **Postgres `bigint` arrives as a JavaScript string** through node-pg. The
+  dictionary revision columns are `bigint` and cast with `::int` in the SELECT so
+  the wire contract stays numeric.
+
+## Built so far
+
+- **M0** foundations: health, migrations, env validation, logging, Swagger.
+- **M1** auth: **phone + OTP login** (§4.1) on a fixed code until an SMS provider
+  exists, refresh rotation with reuse detection, sessions, multi-role with
+  `active_role`, account status guard (BR-10), rate limiting. Telegram login is
+  deprecated but still working.
+- **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
+  four-locale enforcement, the idempotent seeder, and the content — 487 items in
+  four variants including all 175 districts.
+- **Cross-cutting**: every user-facing message localized into all four variants
+  (`infra/i18n`), and Telegram-backed file storage with owner-scoped
+  upload / download / delete (`infra/files`, `/files`).
+
 ## Not built yet
 
-Auth (JWT), domain modules (users, vacancies, applications), rate limiting,
-e2e tests, Dockerfile, CI. The `/health` module is scaffolding that proves the
-API ↔ Postgres wiring — replace it with real features rather than building on it.
+Candidate and employer profiles, vacancies, applications, search, chat,
+notifications, admin (M3 onward). Smaller gaps worth knowing: a Dockerfile and CI,
+the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
+asks for it "where infrastructure permits"; Telegram does none on a bot upload, and
+the content checks in `FilesService` are type validation, not scanning). The
+`/health` module remains the wiring proof.

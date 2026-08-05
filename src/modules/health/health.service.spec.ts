@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import {
   DummyDriver,
@@ -45,6 +46,10 @@ async function buildService(
     providers: [
       HealthService,
       { provide: KYSELY, useValue: buildDb(behaviour) },
+      {
+        provide: ConfigService,
+        useValue: { get: () => 'Asia/Tashkent' },
+      },
     ],
   }).compile();
 
@@ -60,7 +65,13 @@ describe('HealthService', () => {
     expect(result.status).toBe('ok');
     expect(result.database).toBe('up');
     expect(result.version).toBeDefined();
-    expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
+    // docs/API_CONTRACTS.md §2: explicit numeric offset, never `Z`. Asserted
+    // here because health is the endpoint most likely to be written with a
+    // convenient `toISOString()`.
+    expect(result.timestamp).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?[+-]\d{2}:\d{2}$/,
+    );
+    expect(result.timestamp).not.toContain('Z');
   });
 
   it('reports degraded instead of throwing when the database is down', async () => {

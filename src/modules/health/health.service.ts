@@ -1,15 +1,24 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
+import type { AppEnv } from '@infra/env-schema';
+import { formatWithOffset } from '@infra/time/format';
 
 import type { HealthResponseDto } from './dto/health-response.dto';
 
 @Injectable()
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
+  private readonly timeZone: string;
 
-  constructor(@Inject(KYSELY) private readonly db: Database) {}
+  constructor(
+    @Inject(KYSELY) private readonly db: Database,
+    config: ConfigService<AppEnv, true>,
+  ) {
+    this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
+  }
 
   /**
    * Reports service and dependency health.
@@ -25,7 +34,11 @@ export class HealthService {
       status: database === 'up' ? 'ok' : 'degraded',
       database,
       version: process.env.npm_package_version ?? '0.0.1',
-      timestamp: new Date().toISOString(),
+      // Not `toISOString()`: that emits `Z`, and docs/API_CONTRACTS.md §2 freezes
+      // every timestamp in every response to an explicit numeric offset. Health
+      // is no exception - one endpoint allowed to differ is how the rule stops
+      // being a rule.
+      timestamp: formatWithOffset(new Date(), this.timeZone),
     };
   }
 

@@ -30,8 +30,10 @@ export class HealthResponseDto {
   version!: string;
 
   @ApiProperty({
-    description: 'ISO-8601 timestamp of when this response was produced.',
-    example: '2026-08-04T10:00:00.000Z',
+    description:
+      'When this response was produced. ISO-8601 with an explicit numeric ' +
+      'offset, never `Z` (docs/API_CONTRACTS.md §2).',
+    example: '2026-08-04T15:00:00+05:00',
   })
   timestamp!: string;
 }

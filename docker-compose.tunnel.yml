@@ -1,0 +1,34 @@
+# Cloudflare tunnel, published at hh.qitmir.uz.
+#
+# Separate from docker-compose.dev.yml on purpose: the database is always wanted
+# locally, whereas exposing the API to the internet is a deliberate act. Bring it up
+# only when you mean to.
+#
+#   pnpm tunnel:up      docker compose -f docker-compose.tunnel.yml up -d
+#   pnpm tunnel:logs
+#   pnpm tunnel:down
+#
+# Prerequisites are in docs/DEPLOYMENT.md - the tunnel must exist in Cloudflare and
+# its credentials JSON must sit in docker/cloudflared/ before this will start.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: headhunter-cloudflared
+    restart: unless-stopped
+    # Read-only: cloudflared never needs to write here, and the credentials JSON in
+    # this directory is a bearer credential for the tunnel.
+    volumes:
+      - ./docker/cloudflared:/home/nonroot/.cloudflared:ro
+    # host.docker.internal resolves to the host on Docker Desktop; the extra_hosts
+    # entry makes it work on Linux too, so the same file serves a Linux server.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command:
+      [
+        'tunnel',
+        '--no-autoupdate',
+        '--config',
+        '/home/nonroot/.cloudflared/config.yml',
+        'run',
+        'headhunter',
+      ]

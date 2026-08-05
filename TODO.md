@@ -13,13 +13,19 @@ decision (see the bottom section).
 These change schema or dependencies, so settle them before the milestone that
 needs them.
 
-- [?] **File service** - reuse `d:\Dev\secure-file-router` or implement in-repo?
-      Review `secure-file-router` first; authorized short-lived access is exactly
-      its purpose. *Blocks M3.*
-- [?] **Push provider** - FCM for both platforms, or FCM + APNs directly?
-      *Blocks M9.*
-- [?] **Time zone policy** - single platform zone (Asia/Tashkent) or per-user?
-      §8.3 only says "the configured local time zone". *Blocks M8 interviews.*
+- [x] ~~**File service**~~ - **Telegram Bot API**, decided 2026-08-04 (client
+      direction). Bytes go to one fixed chat with `sendDocument`; `stored_files`
+      holds the metadata; downloads are proxied through this API because the
+      Telegram file URL carries the bot token. Ceiling is 20 MB - `getFile`'s
+      download limit, not the 50 MB send limit. See ARCHITECTURE.md §9. *No longer
+      blocks M3.*
+- [x] ~~**Push provider**~~ - deferred with M9 to after M10 (client direction
+      2026-08-04). Recommendation stands: FCM only, APNs key uploaded to Firebase.
+      Not an MVP blocker.
+- [x] ~~**Time zone policy**~~ - single platform zone `Asia/Tashkent`, decided
+      2026-08-04 and agreed with the client. `timestamptz` storage, responses carry
+      offset + explicit `timeZone`. Per-user later is additive (`users.time_zone`)
+      and changes no wire format. See [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §2.
 - [?] **Retention periods** for deleted accounts and audit logs (BR-14 defers to
       an approved privacy policy we do not have). *Blocks M1 deletion flow and
       M10 audit.*
@@ -27,8 +33,14 @@ needs them.
       (§6.1 "if required by policy")? *Blocks M4.*
 - [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
       against an enumerated list. *Blocks M5.*
-- [?] **Approved dictionary value lists** from the client (§13.2). *Blocks M2
-      seeding, which is large - ask now.*
+- [?] **Approved dictionary value lists** from the client (§13.2). **No longer
+      blocking anything.** All 14 types are seeded and working - 487 items, 1 950
+      labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.
+      What remains is *review*, not delivery: `occupation` (162), `skill` (118),
+      `industry` (32), `language`, `skill_level`, `shift` and `education_level` are
+      compiled starting sets rather than client-approved lists, and each states so.
+      District-vs-city status and recent redistricting need checking against the
+      official register. A correction is one edit plus `pnpm seed`.
 
 ---
 
@@ -45,66 +57,191 @@ needs them.
 
 ## M1 - Auth, users, roles
 
-### Schema
-- [ ] `users` (id, phone unique, locale, status, created_at, ...)
-- [ ] `user_roles` (user_id, role) - many-to-many, **not** a column on users
-- [ ] `otp_codes` (phone, code_hash, purpose, expires_at, attempts, consumed_at)
-- [ ] `sessions` (id, user_id, device fingerprint, refresh token hash, revoked_at)
-- [ ] `account_status_history` (actor, from, to, reason) - feeds UAT-14 audit
-- [ ] `deletion_requests` (user_id, requested_at, confirmed_at, purge_after)
+### Schema *(done - `20260804130000_create_auth_tables`)*
+- [x] `users` (id, phone unique, locale, status, created_at, ...)
+- [x] `user_roles` (user_id, role) - many-to-many, **not** a column on users
+- [x] `otp_codes` (phone, code_hash, purpose, expires_at, attempts, consumed_at)
+      - `phone` is deliberately not a FK: a registration OTP precedes the user row
+      - partial unique index keeps **one unconsumed code per (phone, purpose)**, so
+        a retrying client supersedes rather than accumulates
+- [x] `sessions` (id, user_id, device fingerprint, refresh token hash, revoked_at)
+      - plus `family_id` and `replaced_by_session_id`: reuse detection revokes the
+        whole rotation family in one statement instead of walking the chain
+- [x] `account_status_history` (actor, from, to, reason) - feeds UAT-14 audit
+- [x] `deletion_requests` (user_id, requested_at, confirmed_at, purge_after)
+      - partial unique index allows one open request per user
+      - `purge_after` stays nullable until BR-14 retention is answered
+- [x] Native enums `locale_code`, `user_role`, `account_status`, `otp_purpose` -
+      kysely-codegen turns these into string-literal unions rather than `string`
 
-### Endpoints
-- [ ] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
-- [ ] `POST /auth/refresh` with rotation + reuse detection
-- [ ] `POST /auth/logout`, `POST /auth/logout-all`
-- [ ] `GET /auth/sessions`, `DELETE /auth/sessions/:id`
-- [ ] `POST /auth/roles` (select roles at onboarding), `POST /auth/active-role`
-- [ ] `POST /users/me/deletion-request`
-- [ ] `PATCH /users/me/locale`
+### Login: phone + OTP *(the live path - client direction 2026-08-05, second)*
+`OTP_LOGIN_ENABLED=true` (now the default). Telegram login is deprecated, below.
+
+- [x] `POST /auth/otp/send`, `/auth/otp/resend`, `/auth/otp/verify` serving again
+- [x] `OTP_STATIC_CODE=666666` so login works with **no SMS provider bought**. It
+      substitutes at code generation only, so TTL, supersession, the resend delay,
+      the attempt limit and single-use consumption are the production path. Joi
+      refuses a non-empty value when `NODE_ENV=production`, and a length that
+      disagrees with `OTP_LENGTH` fails at boot
+- [x] Tests: the fixed code verifies, is consumed on first use, does not make wrong
+      codes pass, and a wrong-length value refuses to boot
+- [ ] **Connect Eskiz.uz** - the one thing standing between this and real users.
+      Shape, constraints and the questions to ask on purchase:
+      [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md). *Blocked: not bought yet.*
+- [ ] Submit the OTP message for template approval (four interface variants, or a
+      client decision to use one). Approval turnaround is the long pole, not the code
+- [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` once a provider sends -
+      production boot already refuses both, so this is a staging-hygiene item
+- [ ] Flutter client: replace the Telegram sign-in screen with phone + code entry
+
+### Login: Telegram *(deprecated 2026-08-05, still working)*
+Superseded by the above after one day as the MVP path. Kept whole: the verification
+is correct, the tests still run, and `POST /auth/telegram` still issues sessions
+through the same `AuthService`, so an account can hold both credentials. Marked
+`deprecated` in Swagger.
+
+- [x] `POST /auth/telegram` - verifies a Telegram OIDC `id_token` against JWKS with
+      **audience = our bot id**, the check that stops a token minted for another app
+      signing someone in here
+- [x] `iat` age window as the replay defence; `nonce` verified when present
+- [x] `telegram_user_id` as the credential, `phone` nullable, CHECK requiring one
+- [x] Account linking on a **Telegram-verified** phone, with a BR-08 audit row; never
+      takes over an account another Telegram user already holds
+- [x] `TELEGRAM_REQUIRE_PHONE` (default on) - BR-09 has nothing to reveal without one
+- [x] Setup guide for BotFather + Flutter: [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md)
+- [x] 22 tests with real RSA keys and a local JWKS: forged signature, wrong audience,
+      wrong issuer, expired, stale-but-unexpired, unknown `kid`, linking, takeover
+- [~] Bind an OIDC `nonce`, verify on a device **without** Telegram installed, and
+      complete one real end-to-end login against the live bot. All three were the
+      open items when Telegram was primary; they are **parked**, not dropped, and
+      only matter if it is made primary again
+
+### Endpoints *(sessions, roles, users)*
+
+- [x] `POST /auth/refresh` with rotation + reuse detection
+- [x] `POST /auth/logout`, `POST /auth/logout-all`
+- [x] `GET /auth/sessions`, `DELETE /auth/sessions/:id`
+- [x] `POST /auth/roles` (select roles at onboarding), `POST /auth/active-role`
+- [x] `POST /users/me/deletion-request` - in `users`, not `auth`: the module map
+      gives account state to `users` (ARCHITECTURE.md §2)
+- [x] `PATCH /users/me/locale`, plus `GET /users/me`
 
 ### Cross-cutting
-- [ ] Store OTP as a **hash**; never log codes or full phone numbers
-- [ ] Server-config TTL / resend delay / attempt limits via env + Joi
-- [ ] Rate limit OTP and auth per phone **and** per IP
-- [ ] `active_role` claim; server validates the role is actually granted
-- [ ] Guard stack: authenticated → role → ownership → account status
-- [ ] **BR-10 blocked-account guard on every mutating route** (do this now, not
-      later - retrofitting means auditing every endpoint)
-- [ ] Localized error messages, keys present in all four variants
-- [ ] Tests: OTP expiry, attempt lockout, refresh reuse detection, role switch to
-      an ungranted role is refused, blocked user refused on each mutation kind
+- [x] Store OTP as a **hash**; never log codes or full phone numbers
+- [x] Server-config TTL / resend delay / attempt limits via env + Joi
+- [x] Rate limit OTP and auth per phone **and** per IP - `rate_limit_counters`,
+      fixed window in Postgres so replicas cannot each grant the full budget.
+      Phone subjects stored hashed; every 429 carries `Retry-After`
+- [x] `TRUSTED_PROXY_HOPS` - per-IP limits need the real caller behind a proxy,
+      and trusting `X-Forwarded-For` without one is a bypass. Default trusts
+      nothing
+- [x] `active_role` claim; server validates the role is actually granted
+- [x] Guard stack: rate limit → authenticated → role → account status.
+      *Ownership* is per-resource and arrives with the first owned resource (M3)
+- [x] **BR-10 blocked-account guard on every mutating route**, by HTTP method in
+      one global guard
+- [x] Localized error messages, keys present in all four variants -
+      `infra/i18n/messages.ts` is the only place a user-facing string is written,
+      and the type makes a missing locale a compile error. `ApiExceptionFilter`
+      renders per request `x-lang`; validation messages too (§3.2 names them
+      explicitly). The catalog key doubles as a stable machine-readable `code`
+- [x] Tests: OTP expiry, attempt lockout, code supersession, refresh reuse
+      detection and family revocation, concurrent-rotation single winner, role
+      switch to an ungranted role refused, blocked user refused at login
+- [ ] Test: blocked user refused on each *mutation kind* - can only be written
+      once there are mutations beyond auth itself (M3)
 
 ## M2 - Dictionaries
 
-### Schema
-- [ ] `dictionary_types` (code)
-- [ ] `dictionary_items` (id, type_code, code, category, parent_id, sort_order,
-      is_active, merged_into_id)
-- [ ] `dictionary_item_translations` (item_id, locale, label) - unique per pair
-- [ ] Index `dictionary_item_translations(item_id, locale)`
+Wire shapes are frozen in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §3.
 
-### Endpoints
-- [ ] `GET /dictionaries/:type` with locale resolution + ETag/version
-- [ ] `GET /dictionaries/regions` returning the region→district tree
-- [ ] `GET /dictionaries/version` so the client knows when to refetch
+### Schema *(done - `20260804150000_create_dictionary_tables`)*
+- [x] `dictionary_types` (code, `has_rank`)
+- [x] `dictionary_items` (id, type_code, code, category, `item_group`, parent_id,
+      sort_order, `rank`, is_active, merged_into_id, `revision`)
+      - `item_group` is a second grouping used by `attribute` items only; it is an
+        additive contract field, see API_CONTRACTS.md §3.4
+- [x] `dictionary_item_translations` (item_id, locale, label, `revision`) - the
+      pair is the primary key, so no separate uniqueness index is needed
+- [x] Monotonic global `revision` sequence, **bumped by trigger** on every item
+      and translation write. A write path that forgets to bump raises no error at
+      all - the client simply never learns of the change - so it cannot be left to
+      service code
+- [x] A merge bumps the revision of **both** rows, so one delta carries the loser
+      in `removed` (with `mergedIntoId`) and the survivor in `items`
+- [x] `schema_versions`, ten rows generated from the two enums, so the manifest
+      can publish them before the field schemas exist (M3/M5)
+
+### Endpoints *(done)*
+- [x] `GET /dictionaries/manifest` - per-type versions **and** the 10 schema
+      versions. Locale-independent, so no `Vary`
+- [x] `GET /dictionaries/{type}?since=<version>` with locale resolution, ETag,
+      `Vary: x-lang`, 304 on `If-None-Match`, 404 on an unknown type
+- [x] `GET /dictionaries/items?ids=` resolving inactive and merged ids, for
+      historical records
+- [x] Regions come from `type=region` via `parentId`, not a bespoke tree endpoint
+- [x] All three are `@Public()`: the language and its pickers are chosen *before*
+      registration (§3.2, §4.1)
 
 ### Cross-cutting
-- [ ] `x-lang` normalization to `uz-Latn | uz-Cyrl | ru | en`, accepting `uz`/`oz`
-      aliases (ARCHITECTURE.md §3.1) - strict allow-list, unknown → default
-- [ ] Fallback chain `uz-Cyrl→uz-Latn`, any→`en`, **with a warning log**
-- [ ] Reject activation of an item missing any of the four locales
-- [ ] Test: no dictionary endpoint can ever return a bare code as a label
-- [ ] Test: same occupation selected via each locale resolves to one ID (UAT-13)
+- [x] `x-lang` normalization to `uz-Latn | uz-Cyrl | ru | en`, accepting `uz`/`oz`
+      aliases - strict allow-list, unknown → default
+- [x] Responses always **emit** canonical casing, in `locale` and in the ETag
+- [x] Fallback chain `uz-Cyrl→uz-Latn`, any→`en`, **with a warning log** (once per
+      response, not once per row)
+- [x] Reject activation of an item missing any of the four locales - a deferrable
+      constraint trigger, so it holds against any write path including a manual
+      SQL fix, and the required count is derived from the `locale_code` enum
+- [x] Test: no dictionary endpoint can ever return a bare code as a label
+- [x] Test: the same item resolves to one id via each locale (UAT-13)
+- [x] Test: emitted locale casing is exactly the four canonical codes
+- [x] Test: a second identical seed run bumps no revision - otherwise every
+      deployment would make every client refetch every dictionary
 
-### Seed content *(large; needs client input)*
-- [ ] Occupations / work types across all five §2.1 categories, with `category`
-- [ ] Skills, industries
-- [ ] Regions + districts/cities of Uzbekistan
-- [ ] Languages + CEFR levels `A1..C2` + `native` as an **ordered** enum
-- [ ] Employment types, work formats, shift values
-- [ ] Tool / transport / physical attributes
+### Seed content
+`pnpm seed` applies [dictionary-seed.data.ts](src/modules/dictionaries/seed/dictionary-seed.data.ts),
+idempotently. Not a migration: content is revised by the client far more often
+than schema changes, and a migration could never correct a label in place.
+
+Each type is tagged `spec` (enumerated in the specification), `default` (a
+conventional list seeded so dependent milestones can be built - **client still
+has to approve it**) or `awaiting` (a large list only the client can supply).
+
+All 14 types are populated - **487 items, 1 950 labels**. The four large lists live
+in `seed/data/`.
+
+- [x] `region` - 14 first-level units **plus all 175 districts** by `parent_id`
+      *(spec)*
+- [x] `language_level` `A1..C2` + `native` with `rank` *(spec)*
+- [x] `employment_type`, `work_format`, `payment_period`, `file_purpose`,
+      `attribute` (licence / transport / tools / readiness groups) *(spec)*
+- [x] `language`, `skill_level` with `rank`, `shift`, `education_level`
+      *(default - needs client approval)*
+- [x] `occupation` - 162 across all five §2.1 categories, each with its `category`
+      *(default - starting set, needs client approval)*
+- [x] `skill` - 118, grouped by family; `industry` - 32 *(default)*
+- [ ] Client review of the four `default` lists, and of district-vs-city status
+      against the official register. Content review, not a build task
+
+### Seed invariants asserted by tests
+- [x] Every item has all four labels, and no active item can exist without them
+- [x] No Cyrillic in a `uz-Latn` or `en` label, and none missing from `uz-Cyrl` or
+      `ru` - the content files use positional label helpers to stay reviewable at
+      175 rows, so a swapped column has to be caught mechanically
+- [x] Codes unique per type - a duplicate would silently overwrite the first row
+- [x] Every district resolves to one of the 14 regions
+- [x] Every occupation carries one of the five §2.1 categories
 
 ## M3 - Candidate profile + files
+
+Storage is done (`infra/files`, Telegram-backed) with owner-scoped
+upload / list / download / delete at `/files`. What M3 adds is the candidate-facing
+part: attaching a file to a profile, the `attachments[]` schema block, and BR-09's
+rule for when an employer may read a candidate's CV.
+
+- [x] File upload / download / delete with type and size validation
+- [x] Authorized access without a public link - proxied, ownership-checked
+- [ ] BR-09 employer access to a candidate CV, via the one contact-exposure helper
 
 - [ ] `candidate_profiles` with `visibility`, `completeness_percent`,
       `is_complete`, `last_meaningful_update_at`
@@ -116,8 +253,11 @@ needs them.
 - [ ] Recompute completeness on write; expose the missing-field list
 - [ ] BR-02: searchable only when `is_complete AND visibility='searchable'`
 - [ ] `last_meaningful_update_at` must **not** move on a privacy-toggle-only change
-- [ ] `candidate_files`: upload, replace, download, delete; PDF/DOC/DOCX for CV
-- [ ] Type + size validation; short-lived signed download URLs; no public links
+- [ ] Attach a stored file to the profile as its CV; replace supersedes the old one
+- [x] ~~Type + size validation; no public links~~ - done in `infra/files`. Note the
+      shape changed from the original plan: **no signed URLs**. The Telegram file
+      URL carries the bot token, so downloads are proxied through this API instead,
+      which is a stronger reading of §11.1 than a short-lived URL
 - [ ] Tests: completeness maths, BR-02 gate, privacy toggle does not refresh
       the update timestamp, unauthorized file access refused
 
@@ -175,12 +315,16 @@ needs them.
 - [ ] Interviews with type-dependent required fields + candidate response
 - [ ] `Idempotency-Key` on message send
 
-## M9 - Notifications
+## M9 - Notifications *(deferred: last feature milestone, after M10)*
+
+Client direction 2026-08-04: MVP first, notifications last to build and test.
 
 - [ ] `notifications` rows for all nine §9.2 events with correct recipients
 - [ ] Unread count, mark read, preferences
 - [ ] Security/account notices not disableable
 - [ ] Device token registration + push dispatch, independent of the stored row
+- [?] Push provider - FCM only (recommended) vs FCM + APNs. No longer urgent;
+      needed before this milestone opens, not before the MVP.
 
 ## M10 - Admin + audit
 

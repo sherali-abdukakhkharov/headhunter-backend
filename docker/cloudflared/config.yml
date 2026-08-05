@@ -1,0 +1,40 @@
+# Cloudflare tunnel for hh.qitmir.uz
+#
+# Tunnel `headhunter` (id below) was created 2026-08-05. cert.pem is deliberately NOT
+# here: a tunnel only needs its credentials JSON to *run*. Management commands
+# (create / delete / route dns) need the account-level cert, which stays where it
+# already lived rather than being copied into a third directory.
+#
+# Same shape as the sahih-bot and kirill-lotin-bot tunnels: a named tunnel with its
+# credentials JSON beside this file. Create both with the commands in
+# docs/DEPLOYMENT.md - `cloudflared tunnel create` writes the JSON and prints the id
+# that goes below.
+#
+# The origin is `host.docker.internal` because the API runs on the host via
+# `pnpm start:dev` while Postgres runs in Docker; there is no Dockerfile yet. Once
+# the API is containerised, change this to its service name (`http://api:3001`) and
+# add the tunnel to the same compose network.
+#
+# Why a tunnel and not a port forward: the origin is never publicly reachable. There
+# is no inbound port to firewall, no origin certificate to manage, and nothing to
+# scan - cloudflared holds an outbound connection to Cloudflare instead.
+
+tunnel: 3d0cec91-0f40-4f1d-848a-76c4c952142b
+credentials-file: /home/nonroot/.cloudflared/3d0cec91-0f40-4f1d-848a-76c4c952142b.json
+
+ingress:
+  - hostname: hh.qitmir.uz
+    service: http://host.docker.internal:3001
+    originRequest:
+      # The API answers /health in well under a second; a long timeout here only
+      # delays the failure when the origin is down.
+      connectTimeout: 10s
+      # File uploads and downloads are proxied through this API (a CV is up to
+      # 10 MB), so the default 30s read timeout is too tight on a slow handset.
+      tcpKeepAlive: 30s
+      noHappyEyeballs: true
+
+  # Anything else addressed at this tunnel is refused rather than falling through to
+  # the API - a tunnel with a catch-all origin serves every hostname anyone points
+  # at it.
+  - service: http_status:404

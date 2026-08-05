@@ -1,0 +1,567 @@
+# Client-facing API contracts
+
+Frozen contracts the Flutter client builds against. Agreed with the mobile
+engineer on 2026-08-04 in the HeadHunter channel; this file is the source of
+truth, not the chat thread.
+
+Design rationale lives in [../ARCHITECTURE.md](../ARCHITECTURE.md); spec
+citations are `§n`, `BR-nn`, `UAT-nn` against [SPEC.md](SPEC.md).
+
+Changing anything marked **frozen** is a coordinated release with the client.
+
+---
+
+## 1. Locale on the wire
+
+`x-lang` header on every request. Canonical codes, **frozen casing**:
+
+`uz-Latn` · `uz-Cyrl` · `ru` · `en`
+
+BCP-47 rules: lowercase language subtag, title-case script subtag.
+
+- Input is accepted case-insensitively and the house aliases `uz`/`oz` normalize
+  to `uz-Latn`/`uz-Cyrl` (§3.1, and alignment with `d:\Dev\digital-edo-api`).
+- Responses **always emit the canonical form**, in the body's `locale` field and
+  in the `ETag`. The client keys its cache off the response `locale`, never off
+  the string it sent — otherwise an alias or a casing slip silently splits the
+  cache and every read is a permanent miss.
+- Asserted by test: emitted casing is exactly the four codes above.
+
+## 1a. Login — phone + OTP
+
+Client direction, 2026-08-05 (second, superseding the Telegram period below):
+**login is §4.1's phone + OTP**, which is also what UAT-01 walks.
+
+```
+POST /auth/otp/send     { phone, purpose? }         ->  OtpSent
+POST /auth/otp/resend   { phone, purpose? }         ->  OtpSent
+POST /auth/otp/verify   { phone, code, ... }        ->  AuthTokens
+```
+
+All three are `@Public()` and rate limited — `send`/`resend` on the `otp` bucket,
+`verify` on the `auth` bucket — per phone **and** per IP, with `Retry-After` on
+every 429.
+
+**`OtpSent`** — `{ expiresAt, resendAvailableAt, devCode? }`. Both timestamps are
+§2 offset strings. `devCode` appears only while `OTP_ECHO_IN_RESPONSE` is on, which
+boot refuses in production; a client must never depend on it existing.
+
+**`AuthTokens`** is unchanged and stays **frozen**: `accessToken`, `refreshToken`,
+`expiresInSeconds`, `roles`, `activeRole`, `isNewUser`. Telegram login returns the
+same shape, so everything after login is identical whichever path was used.
+
+### The flow
+
+1. The user picks an interface language, then enters a phone number (§3.1, §4.1).
+2. `POST /auth/otp/send`. Registration and login are the **same call**: the client
+   cannot know which one it is doing, and a route that told it would let anyone probe
+   which numbers are registered.
+3. The user types the code. `POST /auth/otp/verify` consumes it and returns tokens.
+4. `isNewUser: true` routes into role selection (`POST /auth/roles`) rather than the
+   home screen.
+
+Verifying a code is what makes the number verified, so every account that reaches a
+session this way satisfies **BR-01** by construction.
+
+### What the client must send
+
+- `phone` — E.164 preferred. The server normalizes, so `+998 90 123 45 67` and
+  `998901234567` reach the same account; `auth.phone_invalid` rejects the rest.
+- `code` — as typed, `OTP_LENGTH` digits (6).
+- `purpose` — omit it. Defaults to `login`, which covers registration too. Send
+  `phone_change` only from the authenticated phone-change flow.
+- `locale` on **verify** — the interface language stored on a newly created account,
+  defaulting to `uz-Latn`. This is the one place a body field carries the locale
+  rather than `x-lang`: registration is the only moment the value is *written*, and
+  the account is created inside this call. Send both and keep them equal; change it
+  later with `PATCH /users/me/locale`.
+- Optional device fields (`deviceName`, `platform`, `appVersion`,
+  `deviceFingerprint`) on verify, which populate the §4.2 session list.
+
+### No SMS is sent yet
+
+No provider is bought, so nothing leaves the server. Until one is connected:
+
+| Variable | Effect | In production |
+|---|---|---|
+| `OTP_STATIC_CODE=666666` | every issued code is `666666` | boot refuses a non-empty value |
+| `OTP_ECHO_IN_RESPONSE=true` | the code comes back as `devCode` | boot refuses `true` |
+
+**Nothing else about the flow is relaxed.** The fixed code is substituted at the one
+point a random code would be generated, so it is hashed into the same row, expires on
+the same TTL, is superseded by the next send, counts against the same
+`OTP_MAX_ATTEMPTS`, and is **consumed on first use** — it is not a standing password.
+Three integration tests hold that shape. Connecting a provider therefore changes
+delivery only: no route, no DTO, no client change, and nothing the client has already
+exercised can behave differently.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `auth.phone_invalid` | 400 | Not a usable phone number. |
+| `auth.otp_invalid` | 401 | Wrong code, expired code, or no code outstanding. One code for all three on purpose — distinguishing them reveals which numbers have a pending code. |
+| `auth.otp_too_many_attempts` | 429 | `OTP_MAX_ATTEMPTS` reached. The code is consumed; request a new one. **No `Retry-After`** — it is not waiting on a clock. |
+| `auth.otp_resend_too_soon` | 429 | Inside `OTP_RESEND_DELAY_SECONDS`. Carries `Retry-After`. |
+| `account.blocked` | 403 | BR-10 — a blocked account cannot authenticate at all. |
+| `error.too_many_requests` | 429 | The bucket limit, with `Retry-After`. |
+| `error.not_found` | 404 | `OTP_LOGIN_ENABLED` is off. Not a client-handled case: it means the deployment closed the route. |
+
+## 1b. Login — Telegram *(deprecated 2026-08-05)*
+
+**The app no longer calls this.** It is kept working rather than deleted: the JWKS
+verification is correct, its 22 integration tests still run, and Telegram stays the
+obvious cheap-verification path if it is wanted again. `POST /auth/telegram` is marked
+`deprecated` in Swagger and converges on the same session issuance as OTP, so an
+account can hold both credentials — a Telegram login carrying a Telegram-verified
+phone links to the account the OTP flow created rather than duplicating it.
+
+Everything below documents that path as built.
+
+```
+POST /auth/telegram      { idToken }  ->  AuthTokens
+```
+
+### The flow
+
+1. The app calls the official Telegram Login SDK ([iOS](https://github.com/TelegramMessenger/telegram-login-ios),
+   [Android](https://github.com/TelegramMessenger/telegram-login-android); wrapped
+   for Flutter by [`telegram_login`](https://pub.dev/packages/telegram_login)).
+2. Telegram opens app-to-app — or a web sheet when Telegram is not installed — and
+   the user approves the scopes **inside Telegram**. There is no password and no
+   OTP anywhere in this flow.
+3. The SDK completes the OAuth2 authorization-code exchange with PKCE and returns a
+   signed `id_token`.
+4. The app posts that token to `POST /auth/telegram` and receives our own tokens.
+
+### What the client must send
+
+- `idToken` — the SDK's `result.idToken`, verbatim. **Never** the raw OAuth `code`;
+  the SDK owns that exchange.
+- `x-lang` — becomes the account's stored locale when this login creates it. There
+  is deliberately no `locale` body field: two ways to state the interface language
+  is two ways for them to disagree.
+- Optional device fields (`deviceName`, `platform`, `appVersion`,
+  `deviceFingerprint`), which populate the §4.2 session list.
+
+### Scopes the app must request
+
+`openid profile phone`
+
+The `phone` scope is **required** in practice: while `TELEGRAM_REQUIRE_PHONE` is on,
+a token with no `phone_number` is refused with `401` and
+`code: "auth.telegram_phone_required"`, plus a localized message telling the user to
+allow it. The reason is BR-09 — contact exposure to an employer has nothing to reveal
+without a phone number, so an account created without one silently cannot take part
+in hiring.
+
+Consider adding `telegram:bot_access` too. It lets the bot message the user directly,
+which is a candidate delivery channel for M9's notifications — and asking for it at
+login is far easier than asking again later.
+
+### Claims Telegram actually sends
+
+Verified against `https://oauth.telegram.org/.well-known/openid-configuration`:
+
+```
+aud  preferred_username  phone_number  exp  iat  iss  name  picture  sub
+```
+
+Two things follow, and both bit us:
+
+- **There is no `phone_number_verified`.** The prose docs mention it; the discovery
+  document does not list it. A `phone_number` from Telegram is treated as verified
+  unless the claim is explicitly `false` — sound, because a Telegram account *is* a
+  confirmed phone number: Telegram will not issue one without verifying it, so the
+  only way it can name a user's phone is that the user proved control of it.
+- **No `id`, `given_name` or `family_name`** either. The user id comes from `sub`.
+
+Signing algorithms offered are `RS256 ES256 EdDSA ES256K`; we accept the first two.
+**Do not select EdDSA or ES256K in BotFather** — they restrict the token to the
+`openid` scope, so it could not carry the phone number.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `auth.telegram_token_invalid` | 401 | Bad signature, wrong audience, wrong issuer, expired, or older than the age window. One code for all of them on purpose. |
+| `auth.telegram_phone_required` | 401 | The `phone` scope was not granted. Re-run login and allow it. |
+| `account.blocked` | 403 | BR-10 — a blocked account cannot authenticate at all. |
+| `error.too_many_requests` | 429 | The `auth` bucket, with `Retry-After`. |
+
+### Token freshness
+
+An `id_token` is accepted for `TELEGRAM_ID_TOKEN_MAX_AGE_SECONDS` (default 300) from
+its `iat`, not merely until `exp`. **The app must post it promptly** — do not stash
+one and reuse it later; run the SDK again instead.
+
+## 2. Timestamps — frozen format
+
+Every timestamp in every response is ISO-8601 with an **explicit numeric offset
+resolved for that instant**:
+
+```
+2026-08-12T14:00:00+05:00
+```
+
+Never `Z`, never offsetless. Interview-bearing payloads also carry the zone name:
+
+```json
+{ "scheduledAt": "2026-08-12T14:00:00+05:00", "timeZone": "Asia/Tashkent" }
+```
+
+Why this is a contract and not an implementation detail: Dart's
+`DateTime.parse` discards the offset and normalizes to UTC, and `toLocal()` then
+re-renders in the *device* zone. The client therefore reads the wall-clock
+components straight off the string and labels them with `timeZone`. A stray
+`Z` from our side would silently shift every displayed interview time for any
+user outside Uzbekistan.
+
+Implementation consequence on our side: `Date.prototype.toISOString()` emits
+`Z`, so serialization goes through one deliberate formatter with a test — not
+per-DTO `toISOString()` calls.
+
+Platform zone is `Asia/Tashkent` (single zone, §8.3). Storage is `timestamptz`.
+Going per-user later adds `users.time_zone` defaulting to the platform zone and
+does not change the wire format.
+
+## 3. Dictionaries
+
+```
+GET /dictionaries/manifest
+GET /dictionaries/{type}?since=<version>
+GET /dictionaries/items?ids=<uuid,uuid>
+```
+
+### 3.1 Types — frozen
+
+`occupation` · `skill` · `industry` · `region` · `language` · `employment_type` ·
+`work_format` · `shift` · `attribute` · `skill_level` · `language_level` ·
+`education_level` · `payment_period` · `file_purpose`
+
+Everything selectable anywhere in the product is one of these. There is no
+inline enum in any contract: BR-13 requires a stable id plus four locales, and
+§10.3 requires admin management — both of which only the dictionary tables
+provide.
+
+### 3.2 Categories — frozen
+
+`professional` · `service_operations` · `physical_industrial` ·
+`seasonal_agricultural` · `temporary_shift`
+
+Closed enum from §2.1. Safe to key client layouts and icons off these.
+
+### 3.3 Manifest
+
+`count` is the number of **active** items — what a picker would show. An
+inactive item still resolves through `/dictionaries/items` but is not counted.
+
+```json
+{
+  "version": 1187,
+  "types": [
+    { "type": "occupation", "version": 1187, "count": 412 },
+    { "type": "region", "version": 1150, "count": 212 }
+  ],
+  "schemas": [
+    { "target": "candidate_profile", "category": "professional", "version": 7 },
+    { "target": "vacancy", "category": "professional", "version": 7 }
+  ]
+}
+```
+
+`schemas` is 10 entries (5 categories × 2 targets). Versions are
+locale-independent: a label edit in any locale bumps the version for all four.
+That over-invalidates slightly and is chosen deliberately over per-locale
+versions. A client only ever needs its active locale, so a cold revalidation is
+at most 10 conditional GETs and normally zero.
+
+### 3.4 Items and deltas
+
+`version` is a **monotonic global revision counter** bumped on every item or
+translation write. A type's version is the max revision across its rows.
+
+```json
+{
+  "type": "skill",
+  "locale": "uz-Latn",
+  "version": 1187,
+  "since": 1150,
+  "isFull": false,
+  "items": [
+    {
+      "id": "b1f2…",
+      "code": "call_centre_operator",
+      "label": "Call-markaz operatori",
+      "category": "service_operations",
+      "group": null,
+      "parentId": null,
+      "sortOrder": 120,
+      "rank": null,
+      "isActive": true,
+      "mergedIntoId": null
+    }
+  ],
+  "removed": [
+    { "id": "9ac4…", "reason": "inactive", "mergedIntoId": null },
+    { "id": "7de1…", "reason": "merged", "mergedIntoId": "b1f2…" }
+  ]
+}
+```
+
+- `ETag: W/"skill:1187:uz-Latn"`, `Vary: x-lang`,
+  `Cache-Control: private, max-age=0, must-revalidate`. `If-None-Match` → `304`
+  with no body.
+- `since` omitted → full set, `isFull: true`.
+- `rank` is a non-null integer **only on the level types** (`skill_level`,
+  `language_level`). It is the ordering used for `>= C1` range comparisons, is
+  uniform per type, and never varies per item.
+- `group` is a non-null string **only on `attribute` items**, and is what a
+  schema field's `group` (§4.1) selects on: `licence`, `transport`, `tools`,
+  `readiness`. **Added 2026-08-04, during M2 implementation** — it is additive,
+  so no existing field changed, but without it the `"group": "tools"` in a
+  schema field has nothing to match and that field cannot be rendered.
+  `category` could not carry it: that column holds the five closed §2.1 work
+  categories and client layouts are keyed off them.
+- **Deactivated ≠ deleted.** A `removed` entry means "drop from pickers"; the id
+  still resolves forever.
+- **Merges reach the client in one round trip.** A merge writes `merged_into_id`
+  on the losing row and bumps the revision of *both* rows, so the same delta
+  carries the loser in `removed` with `mergedIntoId` inline **and** the surviving
+  item in `items`. No follow-up `/items?ids=` call is needed to repoint local
+  references (§10.3).
+- `GET /dictionaries/items?ids=…` resolves any id including inactive and merged
+  ones. Its purpose is rendering historical records that reference values the
+  client never cached — never showing a raw code (§3.2).
+- Labels are display-only. Every filter and every write body carries ids
+  (BR-13). If a label ever needs to travel client → server, the contract is
+  wrong.
+
+## 4. Field schemas
+
+```
+GET /schemas/candidate-profile?category=<code>
+GET /schemas/vacancy?category=<code>
+```
+
+`ETag: W/"schema:candidate-profile:seasonal_agricultural:7:ru"`.
+
+### 4.1 The schema is the complete form
+
+`sections[]` contains **core sections and category sections together**,
+distinguished by `source`. Core fields are backed by fixed columns; category
+fields by `candidate_attributes` rows. The client does not care which.
+
+This exists so that **every code in `requiredForSearchable` resolves to a field
+in `sections[].fields[]`** — a completeness prompt can always focus something.
+Asserted by a contract test: no unresolvable code, in any category, in either
+target.
+
+```json
+{
+  "target": "candidate_profile",
+  "category": "seasonal_agricultural",
+  "schemaVersion": 7,
+  "locale": "ru",
+  "sections": [
+    {
+      "code": "location",
+      "source": "core",
+      "label": "Локация",
+      "repeating": false,
+      "editor": "engine",
+      "fields": [
+        { "code": "region_id", "kind": "dictionary_single",
+          "dictionaryType": "region", "label": "Регион", "required": true }
+      ]
+    },
+    {
+      "code": "availability",
+      "source": "category",
+      "label": "Доступность",
+      "repeating": false,
+      "editor": "engine",
+      "fields": [
+        { "code": "available_from", "kind": "date", "label": "Доступен с",
+          "required": true, "validation": { "notBefore": "today" } },
+        { "code": "own_transport", "kind": "bool", "label": "Свой транспорт",
+          "required": false },
+        { "code": "tools", "kind": "dictionary_multi",
+          "dictionaryType": "attribute", "group": "tools",
+          "label": "Инструменты", "required": false,
+          "validation": { "maxItems": 10 } },
+        { "code": "crew_size", "kind": "int", "label": "Размер бригады",
+          "required": false, "validation": { "min": 1, "max": 200 } }
+      ]
+    },
+    {
+      "code": "experience",
+      "source": "core",
+      "label": "Опыт работы",
+      "repeating": true,
+      "editor": "bespoke",
+      "endpoint": "/candidates/me/experience",
+      "fields": []
+    }
+  ],
+  "attachments": [
+    { "purposeId": "c3a1…", "code": "cv", "label": "Резюме", "required": false,
+      "accept": ["pdf", "doc", "docx"], "maxSizeBytes": 10485760, "maxCount": 1 },
+    { "purposeId": "d4b2…", "code": "certificate", "label": "Сертификаты",
+      "required": false, "accept": ["pdf", "jpg", "png"],
+      "maxSizeBytes": 10485760, "maxCount": 10 }
+  ],
+  "requiredForSearchable": ["region_id", "occupation_ids", "available_from"]
+}
+```
+
+`editor: "bespoke"` marks a repeating section the form engine hands off to a
+purpose-built widget (experience, education). `fields` is empty there and
+`endpoint` names its own sub-resource. This is the boundary the mobile
+architecture asks for: the engine handles the generic remainder, bespoke layout
+stays bespoke.
+
+### 4.2 `kind` — frozen closed union, 13 members
+
+| `kind` | Value shape |
+|---|---|
+| `text` | `string` |
+| `long_text` | `string` |
+| `int` | `number` |
+| `decimal` | `number` |
+| `bool` | `boolean` |
+| `date` | `"2026-08-12"` |
+| `date_range` | `{ from, to }`, either side nullable |
+| `url` | `string` |
+| `phone` | `string`, E.164 |
+| `money_range` | see §4.3 |
+| `dictionary_single` | `uuid` |
+| `dictionary_multi` | `uuid[]` |
+| `dictionary_leveled` | see §4.4 |
+
+There is no `enum` and no file kind. Both were considered and rejected — §3.1
+and §4.5.
+
+Rules that make the union safe to extend:
+
+1. **Unknown `kind` → skip the field and log.** Never crash. This is what lets
+   the server add a field type without a lockstep app release.
+2. **Adding a *field* is not breaking; adding a *kind* is.** New fields of
+   existing kinds are picked up for free. A new kind is announced and released
+   together.
+3. **The server re-validates every write against the same schema.** Client
+   validation is UX. A stale client schema produces a clean `422`, never corrupt
+   data.
+
+### 4.3 `money_range`
+
+§6.3 requires "Range, daily/monthly/per-task, or negotiable" — one field with
+one label and one required flag, not two `decimal`s stapled together.
+
+```json
+{ "code": "salary", "kind": "money_range", "label": "Оплата", "required": false,
+  "currency": "UZS", "periodDictionaryType": "payment_period",
+  "allowNegotiable": true,
+  "validation": { "min": 0, "max": 500000000, "requireFromLteTo": true } }
+```
+
+```json
+{ "salary": { "from": 5000000, "to": 8000000, "periodId": "aa11…",
+              "currency": "UZS", "isNegotiable": false } }
+```
+
+- The period is a **dictionary** (`payment_period`), not an inline enum — same
+  rule as everything else selectable.
+- `isNegotiable: true` requires `from` and `to` both null. "Negotiable, 5–8M" is
+  a contradiction the salary filter cannot rank, so it is rejected, not
+  normalized.
+- Single-sided ranges are valid (`from` only = "from 5M").
+- `from <= to` is a CHECK constraint, not only a service check.
+- `currency` is carried in the field so it is never hardcoded client-side.
+  Single currency in v1.
+
+### 4.4 `dictionary_leveled`
+
+The level scale is its own dictionary type, referenced explicitly. Per-row
+extras are declared by the field and limited to `bool` and `text` — depth 1, no
+further nesting.
+
+```json
+{ "code": "languages", "kind": "dictionary_leveled",
+  "dictionaryType": "language", "levelDictionaryType": "language_level",
+  "label": "Языки", "required": false,
+  "extras": [
+    { "code": "has_certificate", "kind": "bool", "label": "Есть сертификат" }
+  ] }
+```
+
+```json
+{ "languages": [
+  { "itemId": "…", "levelId": "…", "has_certificate": true }
+] }
+```
+
+Extras exist because the spec forces them: candidate languages carry optional
+certificate details (§5.4) and vacancy language requirements carry a
+mandatory/preferred flag (§6.3).
+
+Level comparison (`>= C1`, §7.4) is a `rank` range test server-side, which is
+why level items carry `rank`.
+
+### 4.5 Attachments live outside the field union
+
+CV and evidence files are **never** a schema field. Reasons: uploads need signed
+URLs, progress, cancel, retry and malware scanning (§5.4, §9, §12.5); they are
+authorized per viewer (BR-09); and the file-service decision is still open.
+A dynamic form field cannot carry that lifecycle.
+
+They are still **declarative** — the `attachments[]` block above is
+category-scoped and driven by the `file_purpose` dictionary. So a new required
+evidence type is a dictionary row plus a schema entry, not a renderer change and
+not a coordinated release. The client renders one purpose-built upload widget
+over that list.
+
+`accept` and `maxSizeBytes` are advisory mirrors of the server rules; the server
+rejects violations regardless.
+
+### 4.6 Profile writes
+
+One uniform write for every engine-rendered field, keyed by field code:
+
+```
+PATCH /candidates/me/profile
+{ "fields": { "region_id": "…", "available_from": "2026-08-12", "crew_size": 12 } }
+```
+
+The server routes each code to its column or attribute row. Bespoke repeating
+sections use their own `endpoint`. Attachments use the file endpoints.
+
+Validation failures:
+
+```json
+{ "statusCode": 422,
+  "errors": [
+    { "code": "salary", "rule": "requireFromLteTo", "message": "…" }
+  ] }
+```
+
+`code` is the field code from the schema, so the client can attach the message
+to the field that produced it.
+
+`completenessPercent` and `isComplete` are computed and stored server-side
+(§7.1 filters on them). Read them from the profile response; recomputing
+client-side guarantees the two disagree.
+
+---
+
+## 5. Deferred
+
+- **No `visibleIf` / conditional field visibility in v1.** Category-scoped
+  schemas already satisfy §5.2's "irrelevant fields shall not be mandatory".
+  The mobile `hh_conditional_field` rail is satisfied with the category as its
+  trigger. If a real case appears it becomes an explicit versioned change.
+- **Push and device registration are last** (client direction, 2026-08-04:
+  MVP first, notifications last to build and test). Note the split: in-app
+  notification *rows* are the record and are written by the flows that generate
+  them from M6 onward; the dispatch adapter, device registration and the
+  notification screen are the deferred part.

@@ -17,17 +17,41 @@ a profile contract.
 | # | Milestone | Blocks | State |
 |---|---|---|---|
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
-| M1 | Auth, users, roles, sessions | all authenticated work | next |
-| M2 | Dictionaries + seed data | M3, M5, M6, M7 | next (parallel with M1) |
-| M3 | Candidate profile + files | M6, M7 | after M1+M2 |
+| M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
+| M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
+| M3 | Candidate profile + files | M6, M7 | next - file storage already done |
 | M4 | Employer profile + verification | M5, M7 | after M1 |
 | M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
 | M6 | Vacancy discovery + applications | M8 | after M3+M5 |
 | M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
 | M8 | Chat + interviews | - | after M6+M7 |
-| M9 | Notifications + push | - | after M6 (events exist) |
 | M10 | Admin module + audit | - | after M4+M5 |
+| M9 | Notifications + push | - | **last feature milestone**, after M10 |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
+
+---
+
+## MVP scope
+
+Client direction, 2026-08-04: **MVP first, notifications last to build and test.**
+M9 therefore moves behind M10 despite its events existing from M6.
+
+MVP is the core loop — employer posts, candidate applies: **M1 · M2 · M3 · M4 ·
+M5 · M6**. Outside it: M7, M8, M9, M10.
+
+Two consequences worth holding onto:
+
+- **BR-04 has no enforcer inside the MVP.** "A vacancy requiring moderation is
+  not visible until approved" needs the admin moderation screen, which is M10.
+  Without it a submitted vacancy parks in `under_moderation` forever and the loop
+  never closes. Resolved by `MODERATION_ENABLED` (see M5) rather than by pulling
+  M10 forward.
+- **Dropping M7 costs the spec's flagship scenario.** §7.4 / UAT-06 - "20 Russian
+  C1 operators" - is employer-side candidate search, and §1 frames
+  discovery-without-a-CV as the product's differentiator. A demo without M7 cannot
+  walk the client's own controlled example. Recommendation on record: keep a
+  reduced M7 (filters + result list + count-before-open) in the MVP and defer
+  saved searches and shortlists.
 
 ---
 
@@ -43,6 +67,13 @@ and `GET /health` verified end-to-end from the Flutter client.
 
 - Phone + OTP: send, verify, resend. Hashed OTP storage; server-configured TTL,
   resend delay, attempt limits. Rate limited per phone and per IP.
+  - *Delivery is the one gap.* No SMS provider is bought, so `OTP_STATIC_CODE`
+    issues a fixed code and production boot refuses it. Eskiz.uz is the intended
+    provider ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)); connecting it is
+    additive — a sender behind the existing transaction, no route or DTO change.
+  - Telegram login (`POST /auth/telegram`) was primary for one day on 2026-08-05
+    and is now **deprecated but still working**. Both paths converge on the same
+    session issuance, so an account can hold both credentials.
 - Access/refresh tokens with rotation and reuse detection; `active_role` claim.
 - Sessions: list, revoke one, revoke all. New-device and phone-change
   confirmation.
@@ -78,6 +109,14 @@ mutation with a clear reason.
 **Done when:** selecting an occupation in any of the four variants yields the same
 ID, and no endpoint can return a raw code as a label.
 
+*Status: the mechanism is complete and tested; the content is not, and cannot be
+without the client.* `pnpm seed` is idempotent, so the lists can arrive in
+batches. `occupation`, `skill`, `industry` and the districts under each region
+serve empty sets until they do — which means the pickers M3 and M5 build against
+work, but have nothing meaningful to offer yet. Four further types
+(`language`, `skill_level`, `shift`, `education_level`) carry a conventional
+default that still needs sign-off.
+
 > Seeding is the largest single content task in the project and needs client
 > input on the approved value lists. Start it early; it is not a day of work.
 
@@ -93,9 +132,12 @@ ID, and no endpoint can return a raw code as a label.
   list for the client's prompts.
 - `visibility` enum; BR-02 gate on searchability.
 - `last_meaningful_update_at` distinct from `updated_at`.
-- File upload/replace/download/delete with type and size validation, authorized
-  access via short-lived signed URLs. **Resolve the file-service decision first**
-  (ARCHITECTURE.md §9).
+- ~~File upload/replace/download/delete with type and size validation~~ **done**,
+  on the Telegram Bot API (ARCHITECTURE.md §9). Note the shape differs from the
+  original plan: **no signed URLs**, because Telegram's file URL carries the bot
+  token. Bytes are proxied through this API after an ownership check, which is a
+  stricter reading of §11.1. What M3 adds is attaching a file to a profile and
+  BR-09's rule for employer access.
 
 **Done when:** a profile with occupation, experience, Russian C1, location and
 preferences saves, reports completeness, becomes searchable only when complete
@@ -125,6 +167,15 @@ and visible, and its CV is reachable only by an authorized employer.
   (BR-12).
 - Seasonal/agricultural shape verified explicitly: work type, date range, worker
   count, hours, transport, payment method (§7.5, UAT-10).
+- **`MODERATION_ENABLED` env flag.** With the admin module out of the MVP there is
+  nothing that can approve a vacancy, so submit would strand every vacancy in
+  `under_moderation` and BR-04 would silently block the whole loop. When the flag
+  is off, submit transitions `draft → active` directly. The status enum,
+  `under_moderation`, `rejected` and the BR-04 visibility rule all stay
+  implemented; only the queue is absent. The transition **still writes its audit
+  row** (BR-08) with a system actor and an `auto_approved_no_moderator` reason, so
+  the history never claims a human approved it. Flipping the flag on when M10
+  lands needs no client change.
 
 ## M6 - Discovery + applications
 
