@@ -196,8 +196,9 @@ export class AuthService {
    * a phone-only identity (§4.1): the client cannot know which one it is doing,
    * and asking it to would create a way to probe which numbers are registered.
    *
-   * **Reachable only when `OTP_LOGIN_ENABLED` is on.** Telegram is the MVP login
-   * path; this is kept whole, with its tests, because §4.1 still specifies it.
+   * **The MVP login path**, reached from `POST /auth/otp/verify`. The phone is
+   * verified by the fact that a code sent to it came back, so every account
+   * created here satisfies BR-01 by construction.
    */
   async completePhoneVerification(
     phone: string,

@@ -27,20 +27,100 @@ BCP-47 rules: lowercase language subtag, title-case script subtag.
   cache and every read is a permanent miss.
 - Asserted by test: emitted casing is exactly the four codes above.
 
-## 1a. Login — Telegram, MVP
+## 1a. Login — phone + OTP
 
-Client direction, 2026-08-05: **the MVP logs in with Telegram.** §4.1's phone + OTP
-is built and tested but switched off (`OTP_LOGIN_ENABLED=false`), so `/auth/otp/*`
-answers `404` — a disabled endpoint should be indistinguishable from one that was
-never built.
+Client direction, 2026-08-05 (second, superseding the Telegram period below):
+**login is §4.1's phone + OTP**, which is also what UAT-01 walks.
+
+```
+POST /auth/otp/send     { phone, purpose? }         ->  OtpSent
+POST /auth/otp/resend   { phone, purpose? }         ->  OtpSent
+POST /auth/otp/verify   { phone, code, ... }        ->  AuthTokens
+```
+
+All three are `@Public()` and rate limited — `send`/`resend` on the `otp` bucket,
+`verify` on the `auth` bucket — per phone **and** per IP, with `Retry-After` on
+every 429.
+
+**`OtpSent`** — `{ expiresAt, resendAvailableAt, devCode? }`. Both timestamps are
+§2 offset strings. `devCode` appears only while `OTP_ECHO_IN_RESPONSE` is on, which
+boot refuses in production; a client must never depend on it existing.
+
+**`AuthTokens`** is unchanged and stays **frozen**: `accessToken`, `refreshToken`,
+`expiresInSeconds`, `roles`, `activeRole`, `isNewUser`. Telegram login returns the
+same shape, so everything after login is identical whichever path was used.
+
+### The flow
+
+1. The user picks an interface language, then enters a phone number (§3.1, §4.1).
+2. `POST /auth/otp/send`. Registration and login are the **same call**: the client
+   cannot know which one it is doing, and a route that told it would let anyone probe
+   which numbers are registered.
+3. The user types the code. `POST /auth/otp/verify` consumes it and returns tokens.
+4. `isNewUser: true` routes into role selection (`POST /auth/roles`) rather than the
+   home screen.
+
+Verifying a code is what makes the number verified, so every account that reaches a
+session this way satisfies **BR-01** by construction.
+
+### What the client must send
+
+- `phone` — E.164 preferred. The server normalizes, so `+998 90 123 45 67` and
+  `998901234567` reach the same account; `auth.phone_invalid` rejects the rest.
+- `code` — as typed, `OTP_LENGTH` digits (6).
+- `purpose` — omit it. Defaults to `login`, which covers registration too. Send
+  `phone_change` only from the authenticated phone-change flow.
+- `locale` on **verify** — the interface language stored on a newly created account,
+  defaulting to `uz-Latn`. This is the one place a body field carries the locale
+  rather than `x-lang`: registration is the only moment the value is *written*, and
+  the account is created inside this call. Send both and keep them equal; change it
+  later with `PATCH /users/me/locale`.
+- Optional device fields (`deviceName`, `platform`, `appVersion`,
+  `deviceFingerprint`) on verify, which populate the §4.2 session list.
+
+### No SMS is sent yet
+
+No provider is bought, so nothing leaves the server. Until one is connected:
+
+| Variable | Effect | In production |
+|---|---|---|
+| `OTP_STATIC_CODE=666666` | every issued code is `666666` | boot refuses a non-empty value |
+| `OTP_ECHO_IN_RESPONSE=true` | the code comes back as `devCode` | boot refuses `true` |
+
+**Nothing else about the flow is relaxed.** The fixed code is substituted at the one
+point a random code would be generated, so it is hashed into the same row, expires on
+the same TTL, is superseded by the next send, counts against the same
+`OTP_MAX_ATTEMPTS`, and is **consumed on first use** — it is not a standing password.
+Three integration tests hold that shape. Connecting a provider therefore changes
+delivery only: no route, no DTO, no client change, and nothing the client has already
+exercised can behave differently.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `auth.phone_invalid` | 400 | Not a usable phone number. |
+| `auth.otp_invalid` | 401 | Wrong code, expired code, or no code outstanding. One code for all three on purpose — distinguishing them reveals which numbers have a pending code. |
+| `auth.otp_too_many_attempts` | 429 | `OTP_MAX_ATTEMPTS` reached. The code is consumed; request a new one. **No `Retry-After`** — it is not waiting on a clock. |
+| `auth.otp_resend_too_soon` | 429 | Inside `OTP_RESEND_DELAY_SECONDS`. Carries `Retry-After`. |
+| `account.blocked` | 403 | BR-10 — a blocked account cannot authenticate at all. |
+| `error.too_many_requests` | 429 | The bucket limit, with `Retry-After`. |
+| `error.not_found` | 404 | `OTP_LOGIN_ENABLED` is off. Not a client-handled case: it means the deployment closed the route. |
+
+## 1b. Login — Telegram *(deprecated 2026-08-05)*
+
+**The app no longer calls this.** It is kept working rather than deleted: the JWKS
+verification is correct, its 22 integration tests still run, and Telegram stays the
+obvious cheap-verification path if it is wanted again. `POST /auth/telegram` is marked
+`deprecated` in Swagger and converges on the same session issuance as OTP, so an
+account can hold both credentials — a Telegram login carrying a Telegram-verified
+phone links to the account the OTP flow created rather than duplicating it.
+
+Everything below documents that path as built.
 
 ```
 POST /auth/telegram      { idToken }  ->  AuthTokens
 ```
-
-The response is the **same `AuthTokens` shape** the OTP flow returned, so
-everything after login is unchanged: `accessToken`, `refreshToken`,
-`expiresInSeconds`, `roles`, `activeRole`, `isNewUser`.
 
 ### The flow
 

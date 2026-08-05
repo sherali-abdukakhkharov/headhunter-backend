@@ -30,6 +30,48 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-05 (later the same day) - Login reverts to phone + OTP; Telegram is deprecated
+Client direction, superseding the two Telegram entries below after one day: the app logs
+in with §4.1's phone + OTP, which is what the specification and UAT-01 said all along.
+`OTP_LOGIN_ENABLED` now defaults to **true**; `POST /auth/telegram` is marked
+`deprecated` in Swagger but still works.
+*Why the reversal was cheap:* the OTP flow had been switched off behind a flag rather
+than deleted, so its schema, service and 12 integration tests were still compiling and
+running the whole time. Turning it back on was one environment variable. **This is the
+payoff for that decision, and the reason to keep making it** - had the flow been
+commented out or reverted, one day of Telegram would have cost a rebuild.
+*Why neither path was deleted even now:* both converge on the same `AuthService` session
+issuance and an account can hold both credentials, so a Telegram login carrying a
+verified phone links to the account OTP created. Account linking is what makes the
+switch survivable **in either direction**.
+*The Telegram reasoning below is not obsolete* - it records why that particular one of
+four Telegram flows was chosen, which is not recoverable from code that nobody calls.
+
+### 2026-08-05 - A fixed OTP code belongs at code generation, not in `verify`
+No SMS provider is bought (Eskiz.uz is the intended one), so `OTP_STATIC_CODE=666666`
+substitutes for the random code - **at the single line where `generateOtpCode` would be
+called**, inside the same transaction, and nowhere else.
+*Why not a magic value accepted in `verify`:* that is a second code path. Everything
+exercised during development would be the shortcut, and the day the provider arrives the
+branch nobody has run becomes the live one. At generation, the hash, the row, the TTL,
+supersession, the attempt counter, the `FOR UPDATE` lock and single-use consumption are
+all the production path - clearing one environment variable is the entire removal.
+*Why Joi refuses it in production rather than a runbook note:* it is a master key to
+every account on the instance. `NODE_ENV=production` plus a non-empty value fails at
+boot. A length disagreeing with `OTP_LENGTH` also fails at boot, because the alternative
+is a client rendering six input boxes for a code that does not fit them - silent and
+baffling. And every startup logs a warning while it is set.
+*The exposure this creates is real, not theoretical:* `hh.qitmir.uz` is public, so two
+unauthenticated calls with any phone number currently get a session. Intended for now -
+the mobile devs need a working login - but it is a property of the deployment, recorded
+in docs/DEPLOYMENT.md §3a, and the reason to be deliberate about who knows the hostname.
+*What is still owed:* delivery. `OtpService.send` issues and stores a code and tells
+nobody. The send must happen **after** the transaction commits - an HTTP call inside it
+holds a row lock for the provider's latency, and a timeout would roll back a code that
+was already sent. See docs/SMS_PROVIDER.md, including the constraint that Eskiz approves
+message templates and a fresh account accepts only three fixed test strings, so the OTP
+text needs approval before it can be sent at all.
+
 ### 2026-08-05 - Behind Cloudflare, the client IP is `CF-Connecting-IP`, not `X-Forwarded-For`
 Published at hh.qitmir.uz through a named Cloudflare tunnel. Per-IP rate limiting reads
 the header named by `CLIENT_IP_HEADER` via one helper, never `req.ip` directly.
@@ -50,6 +92,9 @@ because that combination silently breaks per-IP limits.
 
 
 ### 2026-08-05 - Login is Telegram OIDC; the audience check is what makes it safe
+**Superseded the same day** by the reversal to phone + OTP, above. The endpoint still
+exists and still works, so the reasoning below still governs it.
+
 Client direction: the MVP logs in with Telegram, not §4.1's phone + OTP. The app runs
 Telegram's official native SDK (OAuth2 + PKCE, app-to-app) and posts the resulting
 `id_token`; we verify signature, issuer, **audience = our bot id**, and `iat` age.
@@ -98,6 +143,10 @@ that case is real, not theoretical. It also has to be handled explicitly because
 a 500 on somebody's first login.
 
 ### 2026-08-05 - Disabling a flow means a flag and a 404, not commented-out code
+**The flag is back on** (see the reversal at the top), which is precisely what this
+entry predicted would be cheap. The mechanism and its reasoning stand unchanged, and
+`OtpEnabledGuard` still answers 404 when the flag is off.
+
 Phone + OTP is switched off with `OTP_LOGIN_ENABLED=false`, its routes moved to their
 own controller behind a guard that answers **404**.
 *Why 404 and not 403:* a disabled endpoint should be indistinguishable from one that
@@ -318,8 +367,21 @@ ones most likely to bite again:
 
 - **The public URL is https://hh.qitmir.uz** — named Cloudflare tunnel `headhunter`,
   id `3d0cec91-0f40-4f1d-848a-76c4c952142b`, created 2026-08-05. Origin is
-  `host.docker.internal:3001`, so it serves whatever runs under `pnpm start:dev`.
+  `host.docker.internal:3001`, so it serves whatever is listening on 3001.
   Bring it up with `pnpm tunnel:up`.
+  *Trap paid for on 2026-08-05:* that process has been `node dist/main.js`, a
+  **compiled build and not a watcher**, so it kept serving hours-old code while the
+  source and `.env` had both moved on. The symptom was a correct-looking 404 from
+  `/auth/otp/send` — the guard reading an `OTP_LOGIN_ENABLED` that was false when the
+  build was made. Check `(Get-CimInstance Win32_Process -Filter "ProcessId=$pid").CommandLine`
+  before believing a live response; `pnpm build` then restart is what picks up a change.
+  *Also worth knowing:* the tunnel drops its QUIC connection when the origin goes
+  away and takes a few seconds to re-register, so the first call after a restart can
+  fail once through `hh.qitmir.uz` while `127.0.0.1:3001` is already fine.
+- **The dev server and `pnpm test:int` share one database.** Driving live requests
+  while the integration suite runs is cross-talk: one `auth.int.spec.ts` failure
+  appeared during exactly that overlap and did not reproduce in four clean runs
+  afterwards. Not a known-flaky test — a known-flaky *arrangement*.
 - **`cert.pem` is shared across the qitmir.uz tunnels and is deliberately not in this
   repo.** A tunnel needs only its credentials JSON to *run*; the account-level cert is
   needed only to create, delete or route, and authorizes the whole zone. The existing

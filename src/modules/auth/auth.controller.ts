@@ -67,9 +67,14 @@ export class AuthController {
   @RateLimit('auth')
   @Post('telegram')
   @ApiOperation({
-    summary: 'Log in with Telegram',
+    deprecated: true,
+    summary: 'Log in with Telegram (deprecated - use POST /auth/otp/verify)',
     description:
-      'The MVP login path. Send the `id_token` the Telegram Login SDK returned; ' +
+      '**Deprecated 2026-08-05.** The client reverted to §4.1 phone + OTP, and ' +
+      'the app no longer calls this. It is kept working, not deleted: the JWKS ' +
+      'verification and 22 integration tests are correct, and Telegram remains ' +
+      'the obvious cheap-verification path if it is wanted again.\n\n' +
+      'Send the `id_token` the Telegram Login SDK returned; ' +
       'it is verified against Telegram’s JWKS with this bot’s id as the audience ' +
       'before any account is touched.\n\n' +
       'Registration and login are the same call - the client cannot know which ' +

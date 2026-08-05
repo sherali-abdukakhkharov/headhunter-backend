@@ -20,21 +20,22 @@ import { OtpService } from './otp.service';
 import type { DeviceInfo } from './session.service';
 
 /**
- * Phone + OTP login (§4.1).
+ * Phone + OTP login (§4.1) — **the MVP login path.**
  *
- * **Switched off for the MVP.** The client chose Telegram login instead
- * (2026-08-05), so every route here answers 404 unless `OTP_LOGIN_ENABLED=true`.
+ * Client direction 2026-08-05 (second): Telegram login is deprecated and phone +
+ * OTP is what ships, which is what §4.1 and UAT-01 specified all along. The flow
+ * was kept whole behind `OTP_LOGIN_ENABLED` through the Telegram period, so
+ * turning it back on was one environment variable rather than a revert.
  *
- * Kept whole rather than deleted, and in its own controller rather than commented
- * out, for three reasons: §4.1 still specifies phone + OTP, so this is a deferral
- * and not a removal; the schema, service and 12 integration tests all still run, so
- * it cannot rot silently while switched off; and turning it back on is one
- * environment variable rather than a revert.
+ * **There is no SMS provider yet.** `OTP_STATIC_CODE` fixes the issued code so the
+ * flow is end-to-end testable in the meantime; see `OtpService.send` for why that
+ * backdoor sits at the code-generation step and nowhere else. Connecting a
+ * provider is a change to delivery only — no route, DTO or client change.
  *
- * It is a second front door when it *is* on - both paths converge on the same
- * `AuthService` session issuance, and an account can hold both credentials.
+ * `POST /auth/telegram` still works and still converges on the same `AuthService`
+ * session issuance; an account can hold both credentials.
  */
-@ApiTags('auth (otp - disabled for MVP)')
+@ApiTags('auth (otp)')
 @Controller('auth')
 @UseGuards(OtpEnabledGuard)
 export class OtpController {
@@ -52,14 +53,14 @@ export class OtpController {
   @RateLimit('otp')
   @Post('otp/send')
   @ApiOperation({
-    deprecated: true,
-    summary:
-      'Send a login or registration code (disabled unless OTP_LOGIN_ENABLED)',
+    summary: 'Send a login or registration code',
     description:
       'Registration and login are one flow for a phone-only identity (§4.1). ' +
       'TTL, resend delay and attempt limits are server configuration (§4.2). ' +
       'Rate limited per phone and per IP; a 429 carries `Retry-After`.\n\n' +
-      '**Not part of the MVP.** Use `POST /auth/telegram`.',
+      '**No SMS is sent yet** - no provider is connected. Set `OTP_STATIC_CODE` ' +
+      'to issue a fixed code, and `OTP_ECHO_IN_RESPONSE` to return it as ' +
+      '`devCode`. Both are refused when `NODE_ENV=production`.',
   })
   @ApiOkResponse({ type: OtpSentResponseDto })
   async sendOtp(
@@ -86,8 +87,7 @@ export class OtpController {
   @RateLimit('otp')
   @Post('otp/resend')
   @ApiOperation({
-    deprecated: true,
-    summary: 'Resend the code (disabled unless OTP_LOGIN_ENABLED)',
+    summary: 'Resend the code',
     description:
       'Identical to send: the resend delay is enforced there, and a new code ' +
       'supersedes the previous one so only one is ever valid.',
@@ -104,12 +104,12 @@ export class OtpController {
   @RateLimit('auth')
   @Post('otp/verify')
   @ApiOperation({
-    deprecated: true,
-    summary:
-      'Verify a code and open a session (disabled unless OTP_LOGIN_ENABLED)',
+    summary: 'Verify a code and open a session',
     description:
       'Creates the account when the phone is new. `isNewUser` tells the client ' +
-      'to route into role selection rather than the home screen.',
+      'to route into role selection rather than the home screen.\n\n' +
+      'Verifying a code is what makes the phone number verified, so an account ' +
+      'reaching a session through this route always satisfies **BR-01**.',
   })
   @ApiOkResponse({ type: AuthTokensResponseDto })
   async verifyOtp(@Body() dto: VerifyOtpDto): Promise<AuthTokensResponseDto> {

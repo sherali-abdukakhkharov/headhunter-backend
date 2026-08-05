@@ -17,7 +17,7 @@ a profile contract.
 | # | Milestone | Blocks | State |
 |---|---|---|---|
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
-| M1 | Auth, users, roles, sessions | all authenticated work | **done** (localized error messages open) |
+| M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
 | M3 | Candidate profile + files | M6, M7 | next - file storage already done |
 | M4 | Employer profile + verification | M5, M7 | after M1 |
@@ -67,6 +67,13 @@ and `GET /health` verified end-to-end from the Flutter client.
 
 - Phone + OTP: send, verify, resend. Hashed OTP storage; server-configured TTL,
   resend delay, attempt limits. Rate limited per phone and per IP.
+  - *Delivery is the one gap.* No SMS provider is bought, so `OTP_STATIC_CODE`
+    issues a fixed code and production boot refuses it. Eskiz.uz is the intended
+    provider ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)); connecting it is
+    additive — a sender behind the existing transaction, no route or DTO change.
+  - Telegram login (`POST /auth/telegram`) was primary for one day on 2026-08-05
+    and is now **deprecated but still working**. Both paths converge on the same
+    session issuance, so an account can hold both credentials.
 - Access/refresh tokens with rotation and reuse detection; `active_role` claim.
 - Sessions: list, revoke one, revoke all. New-device and phone-change
   confirmation.

@@ -98,22 +98,35 @@ pnpm tunnel:up / tunnel:logs / tunnel:down
 
 ## Login
 
-**Telegram, for the MVP.** The app runs Telegram's official native SDK (OAuth2 +
-PKCE, app-to-app) and posts the resulting OpenID Connect `id_token` to
-`POST /auth/telegram`; we verify it and issue our own session. Setup for the parts
-outside this repo — BotFather, Flutter, platform manifests — is in
+**Phone + OTP**, as §4.1 and UAT-01 specify. `POST /auth/otp/send` issues a code,
+`POST /auth/otp/verify` consumes it and opens a session; registration and login are
+the same pair of calls, because a client cannot know which one it is doing and
+asking it to would let anyone probe which numbers are registered.
+
+**No SMS provider is connected yet.** Two development-only settings stand in:
+
+| Variable | Effect |
+|---|---|
+| `OTP_STATIC_CODE=666666` | Issues this code instead of a random one |
+| `OTP_ECHO_IN_RESPONSE=true` | Returns the code as `devCode` in the send response |
+
+Boot refuses both when `NODE_ENV=production`, and logs a warning on every start
+while the static code is set. The substitution lives at the single point where the
+random code is generated, so the hash, the row, the TTL, code supersession, the
+attempt limit and single-use consumption are all identical to the real thing —
+clearing the variable is the entire removal, and connecting a provider adds delivery
+without touching a route, a DTO or the client.
+
+Treat the fixed code as what it is: **a master key to every account on the
+instance.** It must not be set on anything publicly reachable — see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+**Telegram login is deprecated** (client direction 2026-08-05) but still works at
+`POST /auth/telegram`, marked `deprecated` in Swagger. Nothing was deleted: the JWKS
+verification is correct, its 22 tests still run, and both paths converge on the same
+session issuance, so an account can hold both credentials. Details, and what it would
+take to make it primary again, are in
 [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
-
-The check that matters is **audience = our bot id**. A genuine, correctly signed
-Telegram token issued for any other application must not sign anyone in here, and
-that check is the only thing preventing it. Signature, issuer and `iat` age are
-verified too — the age window is the replay defence, so the app must post a token
-promptly and never cache one.
-
-§4.1's **phone + OTP is built and tested but switched off** (`OTP_LOGIN_ENABLED=false`,
-routes answer 404). It was not deleted: the spec still specifies it, and one
-environment variable brings it back. A Telegram login carrying a Telegram-verified
-phone links to the account the OTP flow created rather than duplicating it.
 
 ## File storage
 
@@ -263,9 +276,10 @@ Every one of these was hit while setting the project up:
 ## Built so far
 
 - **M0** foundations: health, migrations, env validation, logging, Swagger.
-- **M1** auth: **Telegram login** (MVP), refresh rotation with reuse detection,
-  sessions, multi-role with `active_role`, account status guard (BR-10), rate
-  limiting. Phone + OTP is built and switched off behind `OTP_LOGIN_ENABLED`.
+- **M1** auth: **phone + OTP login** (§4.1) on a fixed code until an SMS provider
+  exists, refresh rotation with reuse detection, sessions, multi-role with
+  `active_role`, account status guard (BR-10), rate limiting. Telegram login is
+  deprecated but still working.
 - **M2** dictionaries: manifest / delta / by-id reads with ETag revalidation,
   four-locale enforcement, the idempotent seeder, and the content — 487 items in
   four variants including all 175 districts.

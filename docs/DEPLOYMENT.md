@@ -141,18 +141,26 @@ web build ever appears.
 
 ## 3a. Live right now, and worth knowing
 
-`hh.qitmir.uz` is reachable with `NODE_ENV=development`. Nothing is leaking, but two
-things are true of that state:
+`hh.qitmir.uz` is reachable with `NODE_ENV=development`. Three things are true of that
+state, and the first one changed on 2026-08-05:
 
+- **Anyone who can reach this URL can log in as any phone number.** Login is now
+  phone + OTP, `OTP_LOGIN_ENABLED=true`, and there is no SMS provider — so
+  `OTP_STATIC_CODE=666666` issues a known code and `OTP_ECHO_IN_RESPONSE=true` returns
+  it in the send response as well. Two public calls with any number get a valid session.
+  That is **intended for now**: the mobile devs need a working login and no SMS can be
+  sent. It is not a bug and not a code fix — it is a property of this deployment, and
+  the reason to be deliberate about who knows the hostname.
+  *What removes it:* `NODE_ENV=production`, which makes boot **refuse** both variables,
+  by which point a provider must be connected. Nothing else needs changing.
+  *What reduces it meanwhile:* a Cloudflare Access policy in front of the hostname, or
+  taking the tunnel down between sessions (`pnpm tunnel:down`) — this is a dev URL, not
+  an environment that needs to be up.
 - **`/docs`, `/reference` and `/docs-json` answer 200 publicly.** Every endpoint and
   payload is described to anyone who asks. Deliberate for now — the mobile devs are
-  working against it — but it is the first thing to put a Cloudflare Access policy on.
-- **The production guards are not being enforced**, because they key off
-  `NODE_ENV=production`. In particular `OTP_ECHO_IN_RESPONSE=true` is still set. It is
-  harmless *only* because `OTP_LOGIN_ENABLED=false` makes those routes 404 — flip OTP
-  back on while public and that flag hands any caller a login code for any phone
-  number. Set `NODE_ENV=production` before the URL carries real users and boot will
-  refuse the combination for you.
+  working against it — but it belongs behind the same Access policy.
+- **The production guards are not being enforced generally**, because they key off
+  `NODE_ENV=production`. The two OTP flags above are the ones that matter today.
 - **Port 3001 is still bound on all interfaces.** With
   `CLIENT_IP_HEADER=cf-connecting-ip` set, anyone who can reach the origin directly on
   the LAN can send that header and bypass per-IP limits. Not reachable from the
@@ -162,6 +170,10 @@ things are true of that state:
 
 Not blockers for a staging URL; each is a real gap for production.
 
+- **No SMS provider.** Login codes are not delivered anywhere; `OTP_STATIC_CODE` and
+  `OTP_ECHO_IN_RESPONSE` stand in, and production boot refuses both. Connecting
+  Eskiz.uz is therefore a hard prerequisite for real users, not a nice-to-have — see
+  [SMS_PROVIDER.md](SMS_PROVIDER.md).
 - **Rate limits are per instance-independent but the counter table is never pruned.**
   `rate_limit_counters` holds one row per phone and per IP seen. Bounded, but it only
   grows — the maintenance job is an M11 ops task.
@@ -188,4 +200,7 @@ Not blockers for a staging URL; each is a real gap for production.
 | Cloudflare 1016 / DNS error | `cloudflared tunnel route dns` was not run, or the CNAME was removed |
 | Everything rate-limited at once | `CLIENT_IP_HEADER` is unset — every caller is sharing the loopback bucket |
 | Boot refuses to start | Joi rejected a variable; the message names it and says why |
+| No SMS arrives after `/auth/otp/send` | Expected — no provider is connected. The code is `OTP_STATIC_CODE`, and `devCode` in the response |
+| `/auth/otp/*` returns 404 | `OTP_LOGIN_ENABLED` is false. The 404 is deliberate; see `OtpEnabledGuard` |
+| Boot logs `OTP_STATIC_CODE is set` | Not an error. It warns on every start because a fixed code is a master key |
 | Telegram login fails, nothing in our logs | The redirect URI is not registered in BotFather. It fails on the client, before reaching us |

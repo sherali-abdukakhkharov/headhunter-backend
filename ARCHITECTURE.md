@@ -280,10 +280,46 @@ but "may this user, acting as role R, do this to resource X".
 
 ### Auth flow
 
-**Decided 2026-08-05 (client direction): the MVP logs in with Telegram.** §4.1
-specifies phone + OTP; that flow is built and tested but switched off behind
-`OTP_LOGIN_ENABLED`, because §4.1 still specifies it and this is a deferral rather
-than a removal. Setup guide: [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
+**Decided 2026-08-05 (client direction, second): login is §4.1's phone + OTP.** This
+supersedes the Telegram decision taken earlier the same day; that path is now
+deprecated but still working, and is documented below because its reasoning is worth
+keeping.
+
+The flow is `POST /auth/otp/send` then `POST /auth/otp/verify`, both public, both rate
+limited per phone and per IP. Registration and login are the same pair of calls — the
+client cannot know which it is performing, and a route that distinguished them would be
+a register of which numbers have accounts. Consuming a code is what verifies the
+number, so BR-01 holds by construction rather than by a separate check.
+
+**No SMS provider is bought yet, and that shaped exactly one line of code.**
+`OTP_STATIC_CODE` substitutes a fixed code at the point `generateOtpCode` would be
+called, inside the same transaction, and nowhere else. Everything downstream — the
+hash, the row, the TTL, supersession of the previous code, the attempt counter, the
+`FOR UPDATE` lock, single-use consumption — is the production path, exercised by the
+same tests.
+
+*Why the substitution goes there and not in `verify`:* a `verify` that accepted a magic
+value would be a second, simpler code path, and the day the provider arrives the branch
+that has actually been exercised is deleted and the one nobody has run becomes live.
+Putting it at generation means clearing one environment variable is the entire removal.
+
+*Why it is refused in production by Joi rather than by a note in a runbook:* a fixed
+code is a master key to every account on the instance. `NODE_ENV=production` with a
+non-empty `OTP_STATIC_CODE` fails at boot; a mismatch against `OTP_LENGTH` also fails
+at boot, because the alternative is a client rendering six input boxes for a code that
+does not fit them. And while it is set, every startup logs a warning.
+
+*What is still owed:* the provider itself — Eskiz.uz, per client direction — plus the
+delivery seam it plugs into. `OtpService.send` currently issues and stores a code and
+tells nobody; sending is additive, and the natural shape is one injected sender
+interface with a no-op implementation, added when there is a second implementation to
+justify it.
+
+#### Telegram login *(deprecated 2026-08-05, still working)*
+
+Kept rather than deleted: the verification is correct, its tests run, and it remains
+the cheapest way to re-add a verified-identity path. Setup guide:
+[docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
 
 The app uses Telegram's official native SDKs, which run OAuth2 + PKCE against
 `oauth.telegram.org` app-to-app and return an OpenID Connect `id_token`. The client

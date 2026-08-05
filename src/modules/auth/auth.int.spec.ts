@@ -107,6 +107,44 @@ describe('OtpService', () => {
     ).rejects.toMatchObject({ messageKey: 'auth.otp_invalid' });
   });
 
+  it('issues OTP_STATIC_CODE instead of a random code when it is set', async () => {
+    const { otp } = services({ OTP_STATIC_CODE: '666666' });
+    const phone = testPhone();
+
+    const sent = await otp.send(phone, 'login', null);
+    expect(sent.devCode).toBe('666666');
+
+    await expect(otp.verify(phone, 'login', '666666')).resolves.toBeUndefined();
+  });
+
+  // The whole justification for putting the backdoor at code generation rather
+  // than inside `verify`: nothing else about the flow changes, so removing it
+  // cannot break a path that was only ever exercised with it on.
+  it('a static code is still single-use and still wrong codes are refused', async () => {
+    const { otp } = services({ OTP_STATIC_CODE: '666666' });
+    const phone = testPhone();
+
+    await otp.send(phone, 'login', null);
+
+    await expect(otp.verify(phone, 'login', '111111')).rejects.toMatchObject({
+      messageKey: 'auth.otp_invalid',
+    });
+
+    await expect(otp.verify(phone, 'login', '666666')).resolves.toBeUndefined();
+
+    // Consumed, exactly as a random code would be - the fixed code is not a
+    // standing password.
+    await expect(otp.verify(phone, 'login', '666666')).rejects.toMatchObject({
+      messageKey: 'auth.otp_invalid',
+    });
+  });
+
+  it('refuses a static code whose length disagrees with OTP_LENGTH', () => {
+    expect(() => services({ OTP_STATIC_CODE: '6666' })).toThrow(
+      /OTP_STATIC_CODE is 4 digits but OTP_LENGTH is 6/,
+    );
+  });
+
   it('supersedes the previous code so only one is ever valid', async () => {
     const { otp } = services();
     const phone = testPhone();

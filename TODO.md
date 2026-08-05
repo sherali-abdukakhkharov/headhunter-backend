@@ -74,7 +74,32 @@ needs them.
 - [x] Native enums `locale_code`, `user_role`, `account_status`, `otp_purpose` -
       kysely-codegen turns these into string-literal unions rather than `string`
 
-### Login: Telegram *(MVP path, done - client direction 2026-08-05)*
+### Login: phone + OTP *(the live path - client direction 2026-08-05, second)*
+`OTP_LOGIN_ENABLED=true` (now the default). Telegram login is deprecated, below.
+
+- [x] `POST /auth/otp/send`, `/auth/otp/resend`, `/auth/otp/verify` serving again
+- [x] `OTP_STATIC_CODE=666666` so login works with **no SMS provider bought**. It
+      substitutes at code generation only, so TTL, supersession, the resend delay,
+      the attempt limit and single-use consumption are the production path. Joi
+      refuses a non-empty value when `NODE_ENV=production`, and a length that
+      disagrees with `OTP_LENGTH` fails at boot
+- [x] Tests: the fixed code verifies, is consumed on first use, does not make wrong
+      codes pass, and a wrong-length value refuses to boot
+- [ ] **Connect Eskiz.uz** - the one thing standing between this and real users.
+      Shape, constraints and the questions to ask on purchase:
+      [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md). *Blocked: not bought yet.*
+- [ ] Submit the OTP message for template approval (four interface variants, or a
+      client decision to use one). Approval turnaround is the long pole, not the code
+- [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` once a provider sends -
+      production boot already refuses both, so this is a staging-hygiene item
+- [ ] Flutter client: replace the Telegram sign-in screen with phone + code entry
+
+### Login: Telegram *(deprecated 2026-08-05, still working)*
+Superseded by the above after one day as the MVP path. Kept whole: the verification
+is correct, the tests still run, and `POST /auth/telegram` still issues sessions
+through the same `AuthService`, so an account can hold both credentials. Marked
+`deprecated` in Swagger.
+
 - [x] `POST /auth/telegram` - verifies a Telegram OIDC `id_token` against JWKS with
       **audience = our bot id**, the check that stops a token minted for another app
       signing someone in here
@@ -86,16 +111,13 @@ needs them.
 - [x] Setup guide for BotFather + Flutter: [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md)
 - [x] 22 tests with real RSA keys and a local JWKS: forged signature, wrong audience,
       wrong issuer, expired, stale-but-unexpired, unknown `kid`, linking, takeover
-- [ ] Bind an OIDC `nonce` - waiting on the client SDK to accept a server-issued one
-- [ ] Verify on a device **without** Telegram installed (the SDK's web-sheet fallback)
-- [ ] One real end-to-end login against the live Telegram bot; everything so far is
-      against a local key set
+- [~] Bind an OIDC `nonce`, verify on a device **without** Telegram installed, and
+      complete one real end-to-end login against the live bot. All three were the
+      open items when Telegram was primary; they are **parked**, not dropped, and
+      only matter if it is made primary again
 
-### Endpoints *(phone + OTP - built, switched off for the MVP)*
-`OTP_LOGIN_ENABLED=false`, so these answer 404. Nothing was deleted: §4.1 still
-specifies the flow, and the service, schema and tests all still run.
+### Endpoints *(sessions, roles, users)*
 
-- [x] `POST /auth/otp/send`, `/auth/otp/verify`, `/auth/otp/resend`
 - [x] `POST /auth/refresh` with rotation + reuse detection
 - [x] `POST /auth/logout`, `POST /auth/logout-all`
 - [x] `GET /auth/sessions`, `DELETE /auth/sessions/:id`

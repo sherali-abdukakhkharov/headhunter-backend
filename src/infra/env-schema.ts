@@ -31,9 +31,9 @@ export interface AppEnv {
   /**
    * Whether the phone + OTP routes exist.
    *
-   * Off for the MVP: the client chose Telegram login (2026-08-05). §4.1 still
-   * specifies phone + OTP, so the flow is kept whole behind this flag rather than
-   * deleted. When off, every `/auth/otp/*` route answers 404.
+   * **On for the MVP** (client direction 2026-08-05, superseding the brief
+   * Telegram-login period): §4.1's phone + OTP is the login path. When off, every
+   * `/auth/otp/*` route answers 404.
    */
   OTP_LOGIN_ENABLED: boolean;
 
@@ -43,6 +43,17 @@ export interface AppEnv {
   OTP_MAX_ATTEMPTS: number;
   /** Development only: return the OTP in the send response instead of an SMS. */
   OTP_ECHO_IN_RESPONSE: boolean;
+  /**
+   * A fixed code issued instead of a random one, so the flow is testable before
+   * an SMS provider exists.
+   *
+   * Empty disables it. When set, `OtpService.send` stores **this** code's hash in
+   * exactly the place a random code's hash would go — TTL, supersession, the
+   * resend delay, the attempt limit and single-use consumption all still apply.
+   * That is the point: connecting a real SMS provider and clearing this variable
+   * changes no code path, so nothing that worked here can break there.
+   */
+  OTP_STATIC_CODE: string;
 
   /**
    * Bot id the Telegram `id_token` must be addressed to - its `aud` claim.
@@ -180,9 +191,9 @@ export const envSchema = Joi.object<AppEnv, true>({
 
   TOKEN_HASH_PEPPER: Joi.string().min(32).required(),
 
-  // Defaults to off. Telegram login is the MVP path; leaving a second, unwatched
-  // way into every account switched on by default would be the wrong default.
-  OTP_LOGIN_ENABLED: Joi.boolean().default(false),
+  // The MVP login path (§4.1), so it defaults to on. It stays a flag because the
+  // routes still need to be closable without a revert - see OtpEnabledGuard.
+  OTP_LOGIN_ENABLED: Joi.boolean().default(true),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.
@@ -199,6 +210,21 @@ export const envSchema = Joi.object<AppEnv, true>({
       then: Joi.valid(false).messages({
         'any.only':
           'OTP_ECHO_IN_RESPONSE must be false when NODE_ENV=production',
+      }),
+    }),
+  // Refused in production for the same reason as the echo above, and by the same
+  // mechanism rather than a checklist item: a fixed code is a master key to every
+  // account on the instance. The digits-only pattern is not cosmetic - the value
+  // is hashed and compared against user input, so a stray quote or trailing space
+  // would produce a code nobody can type.
+  OTP_STATIC_CODE: Joi.string()
+    .allow('')
+    .pattern(/^\d{4,8}$/)
+    .default('')
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.valid('').messages({
+        'any.only': 'OTP_STATIC_CODE must be empty when NODE_ENV=production',
       }),
     }),
 

@@ -1,11 +1,21 @@
 # Telegram login — setup
 
+> **Deprecated 2026-08-05.** Client direction reverted login to §4.1's phone + OTP, so
+> the app no longer calls `/auth/telegram`. The endpoint still works, still verifies
+> correctly and still has its 22 integration tests; only the client stopped using it.
+>
+> This document is kept for two reasons: the setup steps below are what re-enabling it
+> would need, and §1 records why *this* Telegram flow was chosen over the other three,
+> which is not re-derivable from the code. Nothing here needs doing today.
+>
+> Current login: README "Login", [API_CONTRACTS.md](API_CONTRACTS.md) §1a.
+
 Everything the flow needs that is **not** in this repository: the BotFather
 registration, the Flutter integration, and the platform manifest entries.
 
 The backend half is done and tested. Design rationale is in
 [../ARCHITECTURE.md](../ARCHITECTURE.md) §8; the wire contract is
-[API_CONTRACTS.md](API_CONTRACTS.md) §1a.
+[API_CONTRACTS.md](API_CONTRACTS.md) §1b.
 
 ---
 
@@ -186,10 +196,16 @@ signing keys fetched over plaintext can be substituted, which forges every login
 
 ---
 
-## 6. Turning phone + OTP back on
+## 6. Coexistence with phone + OTP
 
-It was not deleted. `OTP_LOGIN_ENABLED=true` restores `/auth/otp/send`,
-`/auth/otp/resend` and `/auth/otp/verify`; the schema, service and integration tests
-were never removed. Both paths issue sessions through the same `AuthService`, and an
-account can hold both credentials — a Telegram login carrying a verified phone links
-to the account the OTP flow created rather than duplicating it.
+Phone + OTP is now the live path (`OTP_LOGIN_ENABLED=true`, the default), and this one
+still answers. Both issue sessions through the same `AuthService`, so an account can
+hold both credentials — a Telegram login carrying a Telegram-verified phone links to
+the account the OTP flow created rather than duplicating it. That linking is what makes
+either direction of this switch survivable, and it is why neither path was deleted.
+
+**If Telegram is ever made primary again**, the open items from that period are still
+open: bind an OIDC `nonce` once the client SDK accepts a server-issued one, verify on a
+device without Telegram installed (the SDK's web-sheet fallback), and complete one real
+end-to-end login against the live bot — everything tested so far runs against a local
+key set.

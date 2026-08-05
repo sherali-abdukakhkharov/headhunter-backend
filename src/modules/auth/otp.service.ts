@@ -29,6 +29,7 @@ export class OtpService {
   private readonly resendDelaySeconds: number;
   private readonly maxAttempts: number;
   private readonly echoInResponse: boolean;
+  private readonly staticCode: string;
 
   constructor(
     @Inject(KYSELY) private readonly db: Database,
@@ -42,6 +43,27 @@ export class OtpService {
     });
     this.maxAttempts = config.get('OTP_MAX_ATTEMPTS', { infer: true });
     this.echoInResponse = config.get('OTP_ECHO_IN_RESPONSE', { infer: true });
+    // `?? ''` rather than trusting the schema's default: the integration tests
+    // build a ConfigService from a plain object that Joi never saw.
+    this.staticCode = config.get('OTP_STATIC_CODE', { infer: true }) ?? '';
+
+    if (this.staticCode) {
+      // A length mismatch is otherwise silent and baffling: the client renders
+      // OTP_LENGTH boxes and the code that works does not fit in them. Fail at
+      // boot, where the person who set the variable is still looking.
+      if (this.staticCode.length !== this.length) {
+        throw new Error(
+          `OTP_STATIC_CODE is ${this.staticCode.length} digits but OTP_LENGTH ` +
+            `is ${this.length}; they must match.`,
+        );
+      }
+
+      // Loud, once, at startup. This is a master key for every account on the
+      // instance, so its presence should be impossible to miss in a log.
+      this.logger.warn(
+        'OTP_STATIC_CODE is set: every login code is fixed. Development only.',
+      );
+    }
   }
 
   /**
@@ -97,7 +119,11 @@ export class OtpService {
         .where('consumed_at', 'is', null)
         .execute();
 
-      const code = generateOtpCode(this.length);
+      // The only place the backdoor exists. Everything downstream - the hash,
+      // the row, the TTL, the attempt counter, `verify` - is identical either
+      // way, so clearing OTP_STATIC_CODE once an SMS provider is connected
+      // changes no behaviour that has been exercised.
+      const code = this.staticCode || generateOtpCode(this.length);
 
       const inserted = await trx
         .insertInto('otp_codes')

@@ -17,7 +17,8 @@ Code session rooted there can edit this repo too (see that repo's
 | [MEMORY.md](MEMORY.md) | Why decisions were made; traps already paid for. |
 | [README.md](README.md) | Stack, commands, structure, environment gotchas. |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The Cloudflare tunnel at hh.qitmir.uz, and what changes when the API is public. |
-| [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login. |
+| [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: what OTP delivery will need, and what to ask on purchase. |
+| [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 
 Before implementing anything from the spec, check ARCHITECTURE.md first — several
 requirements have already been designed against, and the reasoning is not
@@ -44,12 +45,18 @@ re-derivable from the text.
   request's `x-lang`. The key is also the client-visible error `code`.
 - **Never give a client a Telegram file URL.** It embeds the bot token. File bytes
   are proxied through this API after an ownership check (ARCHITECTURE.md §9).
-- **Login is Telegram OIDC, and the audience check is the security.** An `id_token`
-  is trusted only after signature, issuer, `aud` = our bot id, and `iat` age all
-  pass. Never match an account on a phone Telegram did not mark verified.
-- **Phone + OTP is switched off, not deleted** (`OTP_LOGIN_ENABLED`). §4.1 still
-  specifies it; its routes answer 404 so a disabled endpoint is indistinguishable
-  from one that never existed.
+- **Login is phone + OTP** (§4.1), and **no SMS provider is connected yet**.
+  `OTP_STATIC_CODE` substitutes a fixed code at the one line a random one would be
+  generated, so everything downstream is the production path — never add a second
+  acceptance path in `verify`, and never relax the TTL, the attempt limit or
+  single-use consumption because "it's only the dev code". Boot refuses the variable
+  in production. Delivery is still owed: [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md).
+- **Telegram login is deprecated but still works** (`POST /auth/telegram`). If you
+  touch it: an `id_token` is trusted only after signature, issuer, `aud` = our bot id
+  and `iat` age all pass, and an account is never matched on a phone Telegram did not
+  mark verified. Both paths issue sessions through the same `AuthService`.
+- **`OTP_LOGIN_ENABLED` off answers 404, not 403** — a disabled endpoint should be
+  indistinguishable from one that never existed.
 - **The caller's IP comes from `resolveClientIp`, never `req.ip` directly.** Behind
   Cloudflare, `X-Forwarded-For` has the user first and the edge second - the opposite
   of what Express's hop count reads - so per-IP limits must key off
