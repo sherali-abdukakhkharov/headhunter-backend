@@ -30,6 +30,68 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M7) - An interaction is derived from data, never from the id in the URL
+`CandidateViewService.read` used to take the application id the route was called with and
+treat it as the interaction BR-09 needs. Wiring §7.3's "View profile" onto the same method
+exposed what that meant: a withdrawn application is still addressable, so requesting the
+view *through the application the candidate withdrew* would have re-granted the exposure
+the withdrawal took back.
+*The fix is one line and the shape is the lesson:* the interaction comes from
+`applicationWith(employer, candidate)` - the query that already knows withdrawn ones do not
+count - and the path is derived from what that returns, not the other way round. A URL is a
+request, not a fact.
+*What caught it:* M6's own "a withdrawal revokes the exposure" integration test, which
+asserted the *side effect* rather than the exception. That is the second time in this
+project a test written that way has caught a real regression.
+
+### 2026-08-07 (M7) - The strongest way to keep a phone number off a card is not to select it
+§11.1 forbids contact details on a candidate search card, and ARCHITECTURE.md §8 asked for
+the card to be built from `expose()`'s output. What shipped is stricter: the card query
+never joins `users` at all, `CandidateCard` has no field for a phone number, and a unit
+test asserts over the *compiled SQL* that neither `users` nor `phone` appears.
+*Why that beats calling the rule:* a serializer that fetches a phone number and then nulls
+it is one careless edit from leaking it, and the rule would return "no" every time anyway -
+a card is not a hiring interaction, whatever else exists between those two people. A
+constant answer is not a decision worth making at runtime.
+*Where BR-09 still decides:* the profile view, which goes through M6's single gatherer and
+can legitimately return a phone number when an application or an accepted invitation
+exists.
+
+### 2026-08-07 (M7) - The score's weights and the client's explanation come from one function
+§7.3's match score is a weighted average of `matched / asked` over the groups the filters
+actually asked about. `scoreGroups(filters)` is the only source of the weights, of what
+each group was asked for, and of which groups take part; the SQL expression is built by
+iterating that list and the response's breakdown reports the same objects.
+*Why one function rather than a scoring expression plus a breakdown query:* the two would
+drift, and the failure is invisible - a ranking that no longer matches the explanation
+shown beside it. "Why did this candidate rank here" is the first question an employer asks.
+*A property worth keeping:* a search with no filters scores everyone 100 rather than
+dividing by zero. Nothing was asked, so everyone matched what was asked.
+
+### 2026-08-07 (M7) - The profile photo is a deliberate hole in BR-09's file gate
+§7.3 puts a photo on the candidate card; §5.4 keeps candidate files behind an authorized
+hiring interaction. Both are satisfied by treating the *purpose* as the distinction: a file
+whose purpose is `photo` is served to a verified employer for a searchable profile, and
+every other file still needs an application or an accepted invitation.
+*Why not treat the photo as a document:* §7.3 would be unimplementable, and the client's
+own specification asks for the card to show one. *Why not widen the gate instead:* BR-09
+would mean nothing. The seam is one route with one purpose check, which is the smallest
+shape this can have. It wants client sign-off, like the other decisions this project
+answers as data.
+
+### 2026-08-07 (M7) - Two §7.1 filters could not be built as worded, and were not faked
+"Specialization" and "remote-work readiness" are listed as filters in §7.1. Neither shipped
+in that form: a free-text specialization filter is a substring match on prose, which cannot
+behave identically in four interface variants (§3.3, BR-13), and remote work is a
+`work_format` dictionary item rather than a boolean.
+*The same reasoning killed a sort option:* §7.3 offers "location proximity where permission
+exists", and this data model has region and district **ids**, not coordinates. A distance
+invented from the region tree would be a made-up number in a control an employer would read
+as real.
+*Why this is recorded rather than quietly omitted:* each is a client conversation, not a
+bug - a dictionary for specializations would make it work, and so would storing
+coordinates. The gap is in the specification's assumptions, not in the build.
+
 ### 2026-08-05 (M6) - BR-09 was worth waiting for, and the wait is the lesson
 The contact-exposure rule was on M3's checklist and deliberately not built there. It
 landed in M6, unchanged in shape from what M3 would have written, because that is when its

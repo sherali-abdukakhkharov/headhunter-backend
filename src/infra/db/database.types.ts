@@ -45,6 +45,12 @@ export type Int8 = ColumnType<
   bigint | number | string
 >;
 
+export type InvitationStatus =
+  | 'accepted'
+  | 'declined'
+  | 'details_requested'
+  | 'sent';
+
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
 
 export type Numeric = ColumnType<string, number | string, number | string>;
@@ -314,6 +320,38 @@ export interface IdempotencyKeys {
   user_id: string;
 }
 
+export interface Invitations {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  district_id: string | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  message: string | null;
+  occupation_id: string | null;
+  region_id: string | null;
+  responded_at: Timestamp | null;
+  response_note: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  schedule_note: string | null;
+  status: Generated<InvitationStatus>;
+  updated_at: Generated<Timestamp>;
+  vacancy_id: string | null;
+}
+
+export interface InvitationStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: InvitationStatus | null;
+  id: Generated<string>;
+  invitation_id: string;
+  reason: string | null;
+  to_status: InvitationStatus;
+}
+
 export interface OtpCodes {
   attempts: Generated<number>;
   code_hash: string;
@@ -506,6 +544,8 @@ export interface DB {
   employer_verification_history: EmployerVerificationHistory;
   employers: Employers;
   idempotency_keys: IdempotencyKeys;
+  invitation_status_history: InvitationStatusHistory;
+  invitations: Invitations;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
   saved_candidates: SavedCandidates;

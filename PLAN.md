@@ -23,8 +23,8 @@ a profile contract.
 | M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
 | M5 | Vacancies + moderation | M6, M7 | **done**; BR-12 restrictions wait for M10 by design |
 | M6 | Vacancy discovery + applications | M8 | **done - the MVP loop closes here** |
-| M7 | Candidate search + invitations + shortlists | M8 | next |
-| M8 | Chat + interviews | - | after M6+M7 |
+| M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
+| M8 | Chat + interviews | - | next |
 | M10 | Admin module + audit | - | after M4+M5 |
 | M9 | Notifications + push | - | **last feature milestone**, after M10 |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
@@ -303,6 +303,32 @@ Four things worth carrying into M7:
 - Invitations: to a vacancy or general; accept / decline / request details.
 - **BR-09 contact-exposure helper** applied to every candidate serializer; cards
   never carry phone numbers (§11.1).
+
+*Status: done.* §7.4's controlled example is walkable end to end - open the search from a
+vacancy, review the ranked operators, save the good ones, invite them, and read the invited
+and accepted counts against the target. Five things to carry into M8:
+
+- **The query is four stages and the order is the performance story**: filter and count,
+  score, sort and take the page, and only then build the cards. The card's aggregates run
+  for at most one page. M8's message lists should be shaped the same way.
+- **A card carries no contact details and BR-09 is not asked about it.** §11.1 is
+  unconditional for cards, so the query does not join `users` and the type has no field for
+  a phone number; a test asserts that over the compiled SQL. The rule still decides the
+  profile view, through M6's single gatherer.
+- **Both of BR-09's interactions now exist.** An accepted invitation was the second, and
+  adding it was one line in the gatherer - which is what passing both flags explicitly was
+  for. M8's chat gate (§9.1) should read applications and invitations rather than invent a
+  third notion of "may these two talk"; §8.2 already says acceptance "enables the
+  corresponding communication flow".
+- **An interaction is derived from data, never from an id in the URL.** Wiring the second
+  entry point onto M6's reader exposed that trusting the path would let a view requested
+  through a *withdrawn* application re-grant what the withdrawal took back. M6's own test
+  caught it because it asserted the side effect rather than the exception.
+- **Three §7.1/§7.3 items could not be built as worded** and are documented rather than
+  faked: a free-text specialization filter (a substring match on prose cannot behave
+  identically in four variants), remote-work readiness as a boolean (it is a `work_format`
+  id), and sorting by location proximity (there are no coordinates in this data model).
+  Each is a client conversation, not a bug.
 
 ## M8 - Chat + interviews
 

@@ -1074,6 +1074,84 @@ re-justify a restriction the platform has reviewed.
 
 ---
 
+## 4f. Invitations
+
+Built 2026-08-07 with M7. §8.2, and the third action on §7.3's candidate card.
+
+```
+POST  /invitations                                 ->  Invitation      (employer)
+GET   /invitations/sent?vacancyId=&status=          ->  { items: Invitation[] }
+GET   /invitations/counts/{vacancyId}                ->  { byStatus }
+GET   /invitations/{id}/files/{fileId}/content         ->  bytes
+
+GET   /invitations/received                           ->  { items: Invitation[] }  (candidate)
+POST  /invitations/{id}/respond                        ->  Invitation
+
+GET   /invitations/{id}                                 ->  Invitation   (both)
+GET   /invitations/{id}/history                          ->  { items }
+```
+
+### The two shapes, and why they are exclusive
+
+§8.2: an employer may invite a candidate **to an active vacancy** or send a **general work
+invitation** carrying occupation, location, schedule, payment and contact context. Exactly
+one of `vacancyId` and `occupationId` must be present — `invitation.shape_invalid`
+otherwise, and a CHECK constraint underneath. A vacancy invitation reads its details from
+the vacancy; a general one carries `occupationId`, `regionId`, `districtId`, the four
+salary fields, `scheduleNote` and `message` itself.
+
+`scheduleNote` is free text on purpose: a general invitation is a message, and the
+structured version of it is what publishing a vacancy is for.
+
+### What sending one requires
+
+- **A verified employer** (BR-03), the same gate as candidate search.
+- **A search-visible candidate** (§8.2) — BR-02's gate again, so hiding a profile stops
+  invitations and not merely search results. `candidate.profile_not_found`.
+- **An active vacancy**, checked with the same definition of "open" the apply route uses
+  (BR-06). An invitation must not advertise something the application would be refused
+  for. `invitation.vacancy_not_open`.
+- **One open invitation** per employer, candidate and vacancy — a partial unique index,
+  BR-07's shape. Answering frees the slot, so an employer may invite again after a decline.
+  `invitation.already_invited`.
+
+Send an **`Idempotency-Key`**: a retry with the same key and body returns the original
+invitation rather than that conflict, which is what makes a lost response safe (§12.4).
+
+### Statuses
+
+`sent` · `details_requested` · `accepted` · `declined`
+
+Every transition is the candidate's — that is the whole of §8.2's "Accept, Decline, or
+Request details" — so there is one response route and it is candidate-only.
+`details_requested` is a **question, not an ending**: accepting or declining afterwards is
+allowed, asking twice is not. `accepted` and `declined` are terminal. There is no
+`withdrawn` and no `expired`: neither is in the specification, and a status nothing sets is
+a state every client has to handle for nothing.
+
+Every change writes a `GET /invitations/{id}/history` row with its time and actor (BR-08's
+rule, applied beyond applications), and the candidate's `note` is kept as that row's
+reason.
+
+### Accepting opens BR-09's second interaction
+
+Until the candidate accepts, an employer who invited them sees exactly what a stranger
+sees: `phone: null`, `canViewFiles: false`, `exposureReason: 'no_interaction'`. Inviting
+somebody is not an interaction they agreed to. On acceptance the reason becomes
+`accepted_invitation` and the files arrive with `downloadPath` pointing at
+`/invitations/{id}/files/{fileId}/content` — the invitation's counterpart to the
+application-scoped download, for the same reason: the entitlement comes from the
+interaction, so the route that serves the bytes is the one that can see it. Re-evaluated
+per download.
+
+### Counts
+
+`GET /invitations/counts/{vacancyId}` answers the first half of §7.4's "track invited,
+accepted, interviewed and hired counts against the target of 20". The other half is
+application stages, from `/vacancies/{id}/applications/counts`.
+
+---
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped

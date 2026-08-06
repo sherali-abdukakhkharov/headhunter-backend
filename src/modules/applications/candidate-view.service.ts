@@ -18,10 +18,14 @@ import { ApplicationsService } from './applications.service';
  *
  * The `kind` is the URL segment on purpose: BR-09 grants access through an interaction,
  * and the path a client is handed has to name the interaction it came from so the check
- * can be repeated on every download. M7 adds `invitations` as the second member.
+ * can be repeated on every download.
+ *
+ * An application outranks an accepted invitation when both exist, for no deeper reason
+ * than that the application is the stronger claim - the candidate asked - and the two
+ * routes serve identical bytes.
  */
 interface GrantingInteraction {
-  kind: 'applications';
+  kind: 'applications' | 'invitations';
   id: string;
 }
 
@@ -144,9 +148,14 @@ export class CandidateViewService {
       employerUserId,
       candidateUserId,
     );
+    const invitation = application
+      ? null
+      : await this.acceptedInvitationWith(employerUserId, candidateUserId);
     const interaction: GrantingInteraction | null = application
       ? { kind: 'applications', id: application }
-      : null;
+      : invitation
+        ? { kind: 'invitations', id: invitation }
+        : null;
 
     // BR-02's gate decides *readability*, and an interaction overrides it: a candidate
     // who hides their profile leaves search, not the conversation they started by
@@ -163,9 +172,9 @@ export class CandidateViewService {
       profile.visibility,
       {
         hasApplication: interaction?.kind === 'applications',
-        // M7's invitations. Passed explicitly rather than defaulted inside the rule, so
-        // that adding the second interaction is one line here and no change there.
-        hasAcceptedInvitation: false,
+        // M7's invitations, and adding them was one line here and no change to the rule -
+        // which is what passing both flags explicitly was for.
+        hasAcceptedInvitation: interaction?.kind === 'invitations',
       },
     );
 
@@ -223,6 +232,74 @@ export class CandidateViewService {
     this.logger.log(
       `Employer ${employerUserId} downloaded file ${fileId} of candidate ` +
         `${view.candidateUserId} via application ${applicationId}`,
+    );
+
+    return this.files.readAsAuthorized(view.candidateUserId, fileId);
+  }
+
+  /**
+   * BR-09's second interaction (§8.2): did this employer invite the candidate, and did
+   * they accept?
+   *
+   * Read as a query here rather than through `InvitationsService`, deliberately. The
+   * invitations module imports this one - it serves the invitation-scoped download route -
+   * and injecting it back would be a circular dependency for one `SELECT`. Reading another
+   * module's table is what every service in this codebase already does; a module cycle is
+   * a structural problem.
+   */
+  private async acceptedInvitationWith(
+    employerUserId: string,
+    candidateUserId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('invitations')
+      .select('id')
+      .where('employer_user_id', '=', employerUserId)
+      .where('candidate_user_id', '=', candidateUserId)
+      .where('status', '=', 'accepted')
+      .orderBy('responded_at', 'desc')
+      .executeTakeFirst();
+
+    return row?.id ?? null;
+  }
+
+  /**
+   * Streams a file to an employer whose entitlement came from an **accepted invitation**
+   * (§8.2, BR-09).
+   *
+   * The invitation's counterpart to `downloadForApplication`, and separate for the same
+   * reason: the entitlement comes from the interaction, so the route that serves the bytes
+   * has to be the one that can see it. Re-evaluated per download, so a rule that stops
+   * holding stops the download - the path a client is holding is not the authorization.
+   */
+  async downloadForInvitation(
+    employerUserId: string,
+    invitationId: string,
+    fileId: string,
+  ): Promise<{ file: StoredFile; bytes: Buffer }> {
+    const invitation = await this.db
+      .selectFrom('invitations')
+      .select('candidate_user_id')
+      .where('id', '=', invitationId)
+      .where('employer_user_id', '=', employerUserId)
+      .where('status', '=', 'accepted')
+      .executeTakeFirst();
+
+    // One 404 for "no such invitation", "not yours" and "not accepted": which it was is
+    // not information we owe (§11.1).
+    if (!invitation) {
+      throw new NotFoundError('file.not_found');
+    }
+
+    const view = await this.read(employerUserId, invitation.candidate_user_id);
+
+    if (!view.canViewFiles || !view.files.some((file) => file.id === fileId)) {
+      throw new NotFoundError('file.not_found');
+    }
+
+    this.logger.log(
+      `Employer ${employerUserId} downloaded file ${fileId} of candidate ` +
+        `${view.candidateUserId} via invitation ${invitationId}`,
     );
 
     return this.files.readAsAuthorized(view.candidateUserId, fileId);

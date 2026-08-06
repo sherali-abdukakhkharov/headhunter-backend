@@ -525,6 +525,52 @@ export const MESSAGES = {
     en: 'Choose an occupation to filter by experience in it.',
   },
 
+  // --- invitations (§8.2) --------------------------------------------------
+  'invitation.not_found': {
+    'uz-Latn': 'Taklif topilmadi.',
+    'uz-Cyrl': 'Таклиф топилмади.',
+    ru: 'Приглашение не найдено.',
+    en: 'The invitation was not found.',
+  },
+  'invitation.already_invited': {
+    'uz-Latn': 'Bu nomzod allaqachon taklif qilingan va javob kutilmoqda.',
+    'uz-Cyrl': 'Бу номзод аллақачон таклиф қилинган ва жавоб кутилмоқда.',
+    ru: 'Этот кандидат уже приглашён, ответ ещё не получен.',
+    en: 'This candidate already has an invitation awaiting a reply.',
+  },
+  'invitation.final': {
+    'uz-Latn': 'Taklifga allaqachon javob berilgan.',
+    'uz-Cyrl': 'Таклифга аллақачон жавоб берилган.',
+    ru: 'На приглашение уже дан ответ.',
+    en: 'This invitation has already been answered.',
+  },
+  'invitation.response_not_allowed': {
+    'uz-Latn': 'Bu javob taklifning joriy holatida mumkin emas.',
+    'uz-Cyrl': 'Бу жавоб таклифнинг жорий ҳолатида мумкин эмас.',
+    ru: 'Такой ответ невозможен в текущем состоянии приглашения.',
+    en: 'That reply is not possible in the invitation’s current state.',
+  },
+  // Either a vacancy or a general invitation's own details, never both and never neither.
+  'invitation.shape_invalid': {
+    'uz-Latn':
+      'Taklif yoki vakansiyaga, yoki kasb koʻrsatilgan holda yuboriladi.',
+    'uz-Cyrl': 'Таклиф ёки вакансияга, ёки касб кўрсатилган ҳолда юборилади.',
+    ru: 'Приглашение отправляется либо на вакансию, либо с указанием профессии.',
+    en: 'An invitation is either to a vacancy or states an occupation of its own.',
+  },
+  'invitation.dictionary_item_invalid': {
+    'uz-Latn': 'Taklifdagi tanlangan qiymatlardan biri notoʻgʻri.',
+    'uz-Cyrl': 'Таклифдаги танланган қийматлардан бири нотўғри.',
+    ru: 'Одно из выбранных значений приглашения недопустимо.',
+    en: 'One of the values chosen for the invitation is not valid.',
+  },
+  'invitation.vacancy_not_open': {
+    'uz-Latn': 'Bu vakansiyaga taklif yuborib boʻlmaydi: u faol emas.',
+    'uz-Cyrl': 'Бу вакансияга таклиф юбориб бўлмайди: у фаол эмас.',
+    ru: 'Пригласить на эту вакансию нельзя: она не активна.',
+    en: 'You cannot invite anyone to this vacancy: it is not active.',
+  },
+
   // --- idempotency (ARCHITECTURE.md §7) ------------------------------------
   // The client reused a key for a different request, which is its bug: a key means
   // "this one operation", so two operations under it is broken key generation.

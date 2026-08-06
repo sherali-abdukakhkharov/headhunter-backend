@@ -369,6 +369,27 @@ Enforcement points:
 - **BR-11** closed vacancies leave active discovery but stay in history - a
   status filter, never a delete.
 
+**Invitations** (§8.2, built in M7) are the fourth machine, and the smallest:
+`sent → accepted | declined | details_requested`, then `details_requested → accepted |
+declined`. Four things about it are decisions rather than transcription.
+
+- **Every transition is the candidate's.** Unlike §8.1's stages there is no "who may set
+  this" column, because there is one answer - so the response route is candidate-only and
+  the service checks ownership instead of consulting a table.
+- **`details_requested` is a question, not an ending**, and asking twice is refused: a
+  second identical row would record that nothing happened.
+- **No `withdrawn`, no `expired`.** Neither is in the specification, and a status nothing
+  can set is a state every reader has to consider for nothing.
+- **The two shapes are exclusive in the schema.** A CHECK requires exactly one of
+  `vacancy_id` and `occupation_id`, so "an invitation to a vacancy that also states a
+  different occupation" is unrepresentable - the same move as M4's `employers` /
+  `companies` split, which makes "which fields must be filled" a property of the schema.
+
+One open invitation per (employer, candidate, vacancy) is a partial unique index with
+**`NULLS NOT DISTINCT`**, which is load-bearing: without it two general invitations - both
+with a null `vacancy_id` - would count as different rows and an employer could send
+unlimited ones.
+
 ---
 
 ## 7. Offline-safe writes and idempotency
@@ -427,9 +448,20 @@ but "may this user, acting as role R, do this to resource X".
     entitled to a phone number from one who asked and was refused.
   - **Files and contact details are one decision.** §5.4 and §11.1 draw the same line,
     so a state where one is allowed and the other is not would be a rule nobody wrote.
-  - **A search card is not an interaction.** §11.1 forbids a phone number on one, so
-    M7's cards must be built from this function's output rather than from the profile
-    row.
+  - **A search card is not an interaction.** §11.1 forbids a phone number on one, and M7
+    took the stricter route than nulling one: the card query never joins `users` and the
+    card type has no field for a phone number, asserted over the compiled SQL. A rule
+    whose answer is always "no" is not a decision worth making at runtime.
+  - **The interaction is derived from data, never from an id in the URL.** M7 found this
+    the hard way while adding the second entry point: a withdrawn application is still
+    addressable, so trusting the path would have let a view requested *through* the
+    withdrawn application re-grant the exposure the withdrawal took back.
+  - Both interactions now exist. An accepted invitation (§8.2) is the second, and adding
+    it was one line in the gatherer and no change to the rule - which is what passing both
+    flags explicitly bought. The gatherer reads the `invitations` table directly rather
+    than injecting that module, because the invitations module imports *it* for the
+    invitation-scoped download route; a module cycle for one `SELECT` would be a worse
+    trade.
 
 ### Auth flow
 

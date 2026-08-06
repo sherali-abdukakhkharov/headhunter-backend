@@ -528,9 +528,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [x] The internal note appears in no candidate-facing read
 - [x] BR-07 counts only active applications, so re-applying after withdrawal works
 
-## M7 - Candidate search + invitations
+## M7 - Candidate search + invitations *(done)*
 
-Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e.
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
 
 ### Schema *(done - `20260806120000_create_candidate_saves`)*
 - [x] `saved_candidates`, with §7.3's private employer note **on the save** - one note per
@@ -575,12 +575,32 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e.
       answered as data*
 - [x] `search` rate-limit bucket (§12.5) with `RATE_LIMIT_SEARCH_PER_IP`
 
-### Invitations *(next)*
-- [ ] Invitations + accept/decline/request-details
-- [ ] `hasAcceptedInvitation` wired into the BR-09 helper, and the invitation-scoped file
-      route that serves what it grants
+### Invitations *(done - `20260806130000_create_invitations`)*
+- [x] `invitations` with the two §8.2 shapes made exclusive by a CHECK - a vacancy
+      invitation or a general one carrying its own occupation, place, schedule and pay -
+      plus `invitation_status_history` for BR-08 and a response note, because "Request
+      details" without room for the question is a button that says nothing
+- [x] One open invitation per employer, candidate and vacancy: a partial unique index with
+      **`NULLS NOT DISTINCT`**, without which two general invitations (both with a null
+      `vacancy_id`) would count as different rows
+- [x] `POST /invitations` with BR-03, BR-02's gate on who may be invited, M5's
+      `isOpenForApplications` on the vacancy, and `Idempotency-Key`
+- [x] Accept / decline / request-details in one method: the three differ only in the status
+      they set, and splitting them is how one ends up without its audit row.
+      `details_requested` is a question, not an ending; asking twice is refused
+- [x] `hasAcceptedInvitation` wired into the BR-09 helper - one line, no change to the rule
+      - plus `GET /invitations/:id/files/:fileId/content`, the invitation's counterpart to
+      the application-scoped download, re-evaluated per download
+- [x] §7.4's invited/accepted counts per vacancy; the interviewed and hired halves are
+      application stages and stay where they are
+- [x] Test: unverified employer cannot invite (§7) - the second half of M4's outstanding
+      test
+- [x] Tests: the transition table pinned exactly, a concurrent double-tap producing one
+      invitation, the idempotent replay and the 409 for a reused key, inviting a hidden
+      candidate refused, a paused and an expired vacancy refused, contact details closed
+      while only sent and open on acceptance, and the download refused for another employer
 
-### Tests *(done for the search half - 56 unit, 40 integration)*
+### Tests *(done - 85 unit, 66 integration across both halves)*
 - [x] Test: search result cards never contain a phone number - asserted twice, once
       mechanically over the compiled SQL (no `users`, no `phone`) and once over a real
       response body
