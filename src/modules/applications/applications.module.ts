@@ -17,11 +17,16 @@ import { CandidateViewService } from './candidate-view.service';
  *
  * Exported because M8's chat is gated on an interaction existing (§9.1), and that gate
  * reads the same applications rather than a second notion of "may these two talk".
+ *
+ * `CandidateViewService` is exported for M7's candidate search, whose §7.3 "View profile"
+ * action is the same read from a different starting point. One gatherer for BR-09's three
+ * inputs, not two: ARCHITECTURE.md §8 is explicit that a privacy rule with two
+ * implementations is a privacy rule that drifts.
  */
 @Module({
   imports: [IdempotencyModule, EmployersModule, FilesModule],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, CandidateViewService],
-  exports: [ApplicationsService],
+  exports: [ApplicationsService, CandidateViewService],
 })
 export class ApplicationsModule {}

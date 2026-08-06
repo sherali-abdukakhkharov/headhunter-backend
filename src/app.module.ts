@@ -11,6 +11,7 @@ import { DatabaseModule } from '@infra/db/database.module';
 import { type AppEnv, envSchema } from '@infra/env-schema';
 import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { CandidateSearchModule } from '@modules/candidate-search/candidate-search.module';
 import { CandidatesModule } from '@modules/candidates/candidates.module';
 import { ApplicationsModule } from '@modules/applications/applications.module';
 import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
@@ -67,6 +68,7 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     VacanciesModule,
     DiscoveryModule,
     ApplicationsModule,
+    CandidateSearchModule,
     FilesHttpModule,
     HealthModule,
   ],

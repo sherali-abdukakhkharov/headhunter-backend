@@ -959,6 +959,121 @@ and they live in their own table so exposing one would take a deliberate new que
 
 ---
 
+## 4e. Candidate search
+
+Built 2026-08-07 with M7. The employer's half of discovery: §7's structured search over
+the candidate database, and what an employer keeps from it.
+
+```
+POST  /candidate-search                             ->  { items: CandidateCard[], groups }
+POST  /candidate-search/count                        ->  { count, isExact }
+GET   /candidate-search/prefill/{vacancyId}           ->  CandidateSearchFilters
+GET   /candidate-search/candidates/{id}                ->  CandidateForEmployer
+GET   /candidate-search/candidates/{id}/photo           ->  bytes
+
+GET   /candidate-search/saved                          ->  { items: CandidateCard[] }
+PUT   /candidate-search/saved/{id}                      ->  204
+DELETE/candidate-search/saved/{id}                      ->  204
+PUT   /candidate-search/saved/{id}/note                 ->  204
+
+GET   /vacancies/{id}/shortlist                          ->  { items: CandidateCard[] }
+PUT   /vacancies/{id}/shortlist/{candidateUserId}         ->  204
+DELETE/vacancies/{id}/shortlist/{candidateUserId}         ->  204
+```
+
+**Every route requires a verified employer** (§7, BR-03), including the saved list: an
+employer who loses verification loses the candidate database, not just the search box.
+`employer.profile_incomplete` and `employer.not_verified` are separate refusals because
+they have different fixes.
+
+### Why search is a POST
+
+The filter set is nested — `languages` is an array of `{itemId, minLevelRank,
+requireCertificate}` — and §7.1 has eleven groups. Encoding that into a query string
+would trade a documented DTO for hand-rolled parsing on both sides. Both routes are
+reads with no side effects; they are rate limited as §12.5 requires of search.
+
+### The filters (§7.1)
+
+All optional, all **dictionary ids** (BR-13). Two of §7.1's entries deliberately do not
+appear as they are worded:
+
+- **No `specialization` text filter.** It would be a substring match on prose, which
+  cannot behave identically in four interface variants (§3.3). Education level and
+  occupation are the id-shaped ways to ask the same question; if the client wants
+  specialization, it needs a dictionary.
+- **Remote-work readiness is `workFormatIds`**, not a boolean — remote is a
+  `work_format` item, and every selectable value in this product is a row.
+
+`skillsMatchMode` and `attributesMatchMode` are §7.1's "match all or match any", `any`
+by default. `languages` are always **all** of them: two language requirements are two
+requirements, and a level is a floor (`minLevelRank`), not an equality.
+
+BR-12's `ageMin` / `ageMax` / `genderId` need `restrictionJustificationId` — an id from
+the `restriction_justification` dictionary that the declaration permits for the kinds of
+restriction present, the same rule a vacancy's restriction is held to.
+`search.restriction_not_justified` otherwise, and every accepted use is logged.
+
+### The card (§7.3)
+
+**No phone number and no CV.** §11.1 forbids contact details on a search card, so the
+card has no field for one and the query does not read `users` at all. `photoPath` is the
+single candidate file a card carries, argued below. To reach contact details, open
+`/candidate-search/candidates/{id}`, which is the same BR-09 answer
+`/applications/{id}/candidate` gives — `phone`, `canViewFiles`, `files[]` and
+`exposureReason` — and it is readable while the candidate is **findable** (searchable and
+complete) or while an interaction exists. An applicant who then hides their profile stays
+readable to the employer they wrote to.
+
+`matchScore` is 0–100 and `matchBreakdown` says how it was reached: per group, `asked`
+against `matched`. Only the groups the filters asked about take part, so a search for one
+skill scores purely on that skill, and a search with no filters scores everyone 100.
+`groups` on the response is the same list with the weights, so a client can render the
+explanation without hardcoding them.
+
+Sorts: `match` (default), `recent`, `experience`, `salary`. **Location proximity is not
+offered** even though §7.3 allows it "where permission exists": places are dictionary ids
+here, not coordinates, and a distance derived from a region tree would be a made-up
+number in a control the employer would read as real.
+
+### The profile photo is the one exception to BR-09's file gate
+
+§7.3 puts a photo on the card; §5.4 keeps candidate files behind an authorized hiring
+interaction. Both hold, because a profile photo is not a document: only the file whose
+purpose is `photo`, only for a searchable profile, only for a verified employer, on one
+route. A CV still needs an application or an accepted invitation.
+
+### Saved candidates and shortlists (§7.3)
+
+- `PUT .../saved/{id}` is idempotent — saving twice is saving once.
+- The **private note lives on the save**, so writing one saves the candidate. It is
+  never in a candidate-facing response.
+- The shortlist is **per vacancy**, which is what "vacancy-specific" means; its owner is
+  the vacancy's owner, so there is no second notion of who may edit it.
+- **The saved list is still behind BR-02's gate**: a candidate who hides their profile
+  leaves every employer's saved list, because otherwise "hide me from search" would be
+  defeated by whoever saved them first. The row survives, so they come back if they
+  choose to.
+
+### Count-before-open (§7.2)
+
+`{count, isExact}`. The count stops at `SEARCH_COUNT_CAP` (200 by default) and answers
+`isExact: false`, so the client renders "200+" rather than a number presented as the
+truth. §7.2 asks for this "where technically reasonable"; an exact count of a huge set is
+the part that is not.
+
+### Prefill from a vacancy (UAT-06)
+
+`GET /candidate-search/prefill/{vacancyId}` returns a filter set the client may edit and
+post back. **Mandatory requirements become filters; preferred ones do not** — a
+preference that excluded candidates would not be a preference, and the score rewards it
+instead. Mandatory skills prefill as match-all, which may match nobody: that is the
+honest starting point, and it is what the count is for. A BR-12 restriction comes across
+**with the justification the vacancy already carries**, so the employer is not asked to
+re-justify a restriction the platform has reviewed.
+
+---
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped

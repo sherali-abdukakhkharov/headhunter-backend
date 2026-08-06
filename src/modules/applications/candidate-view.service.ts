@@ -12,6 +12,19 @@ import { EmployersService } from '@modules/employers/employers.service';
 
 import { ApplicationsService } from './applications.service';
 
+/**
+ * What entitled this employer to the candidate's files, and therefore which route serves
+ * them.
+ *
+ * The `kind` is the URL segment on purpose: BR-09 grants access through an interaction,
+ * and the path a client is handed has to name the interaction it came from so the check
+ * can be repeated on every download. M7 adds `invitations` as the second member.
+ */
+interface GrantingInteraction {
+  kind: 'applications';
+  id: string;
+}
+
 export interface CandidateForEmployer {
   candidateUserId: string;
   fullName: string | null;
@@ -71,17 +84,32 @@ export class CandidateViewService {
       throw new NotFoundError('application.not_found');
     }
 
-    return this.read(
-      employerUserId,
-      application.candidate_user_id,
-      applicationId,
-    );
+    return this.read(employerUserId, application.candidate_user_id);
+  }
+
+  /**
+   * §7.3's "View profile", reached from a candidate search rather than an application.
+   *
+   * Readable in two cases and no others: the profile is **findable** (BR-02's gate -
+   * searchable and complete, the same predicate the search itself starts from), or a
+   * hiring interaction already exists. The second case is what keeps an applicant
+   * readable after they hide their profile: they applied, and §5.3's "hide from global
+   * search" was never a promise to stop the employer they wrote to from reading them.
+   *
+   * BR-09 still decides the contact details and the files - being *readable* and being
+   * *contactable* are different questions, and a card-shaped read of a searchable
+   * stranger yields no phone number at all (§11.1).
+   */
+  async forCandidate(
+    employerUserId: string,
+    candidateUserId: string,
+  ): Promise<CandidateForEmployer> {
+    return this.read(employerUserId, candidateUserId);
   }
 
   private async read(
     employerUserId: string,
     candidateUserId: string,
-    applicationId: string,
   ): Promise<CandidateForEmployer> {
     const profile = await this.db
       .selectFrom('candidate_profiles')
@@ -93,6 +121,7 @@ export class CandidateViewService {
         'candidate_profiles.district_id',
         'candidate_profiles.available_from',
         'candidate_profiles.visibility',
+        'candidate_profiles.is_complete',
         'candidate_profiles.completeness_percent',
         'users.phone',
       ])
@@ -103,15 +132,37 @@ export class CandidateViewService {
       throw new NotFoundError('candidate.profile_not_found');
     }
 
+    // The interaction, and the route that may serve its files: an employer's entitlement
+    // comes from the interaction, so whatever granted it is what the download path is
+    // scoped to.
+    //
+    // Derived from the data every time, **never from the application id in the URL**: a
+    // withdrawn application is still addressable, and trusting the path would let a
+    // candidate's withdrawal be undone by requesting the view through the application
+    // they withdrew. `applicationWith` is the one place that decides what counts.
+    const application = await this.applications.applicationWith(
+      employerUserId,
+      candidateUserId,
+    );
+    const interaction: GrantingInteraction | null = application
+      ? { kind: 'applications', id: application }
+      : null;
+
+    // BR-02's gate decides *readability*, and an interaction overrides it: a candidate
+    // who hides their profile leaves search, not the conversation they started by
+    // applying. Without either, this employer should not learn the profile exists.
+    if (!(profile.visibility === 'searchable' && profile.is_complete)) {
+      if (!interaction) {
+        throw new NotFoundError('candidate.profile_not_found');
+      }
+    }
+
     const gate = await this.employers.gate(employerUserId);
     const decision = expose(
       { isVerifiedEmployer: gate.isVerified, isAdmin: false },
       profile.visibility,
       {
-        hasApplication: await this.applications.hasApplicationWith(
-          employerUserId,
-          candidateUserId,
-        ),
+        hasApplication: interaction?.kind === 'applications',
         // M7's invitations. Passed explicitly rather than defaulted inside the rule, so
         // that adding the second interaction is one line here and no change there.
         hasAcceptedInvitation: false,
@@ -134,9 +185,12 @@ export class CandidateViewService {
       completenessPercent: profile.completeness_percent,
       phone: exposedPhone(profile.phone, decision),
       canViewFiles: decision.files,
-      files: decision.files
-        ? await this.filesOf(candidateUserId, applicationId)
-        : [],
+      // `decision.files` cannot be true without an interaction (that is the rule), so
+      // the path base always exists when there is something to serve.
+      files:
+        decision.files && interaction
+          ? await this.filesOf(candidateUserId, interaction)
+          : [],
       exposureReason: decision.reason,
     };
   }
@@ -178,11 +232,15 @@ export class CandidateViewService {
    * The candidate's attachments, as paths on this API.
    *
    * Never a storage URL - Telegram's carries the bot token (ARCHITECTURE.md §9). The
-   * paths point at the application-scoped download route, not at `/files/:id/content`,
-   * which stays owner-only: an employer's entitlement comes from the application, so the
-   * route that serves them has to be the one that can see it.
+   * paths are scoped to the **interaction that granted them**, not to
+   * `/files/:id/content`, which stays owner-only: an employer's entitlement comes from
+   * the application or the accepted invitation, so the route that serves them has to be
+   * the one that can see it.
    */
-  private async filesOf(candidateUserId: string, applicationId: string) {
+  private async filesOf(
+    candidateUserId: string,
+    interaction: GrantingInteraction,
+  ) {
     const rows = await this.db
       .selectFrom('stored_files')
       .innerJoin(
@@ -204,7 +262,7 @@ export class CandidateViewService {
       id: row.id,
       purposeCode: row.code,
       fileName: row.file_name,
-      downloadPath: `/applications/${applicationId}/files/${row.id}/content`,
+      downloadPath: `/${interaction.kind}/${interaction.id}/files/${row.id}/content`,
     }));
   }
 }

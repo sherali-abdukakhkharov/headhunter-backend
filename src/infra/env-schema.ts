@@ -178,6 +178,17 @@ export interface AppEnv {
   RATE_LIMIT_AUTH_PER_PHONE: number;
   RATE_LIMIT_AUTH_PER_IP: number;
   RATE_LIMIT_FILES_PER_IP: number;
+  /** §12.5's search bucket. A search is a heavy read, so it gets its own budget. */
+  RATE_LIMIT_SEARCH_PER_IP: number;
+
+  /**
+   * How far §7.2's count-before-open counts before answering "n+".
+   *
+   * Configuration rather than a constant for the reason every other limit here is: the
+   * number at which an exact count stops being "technically reasonable" depends on the
+   * size of the database it runs against.
+   */
+  SEARCH_COUNT_CAP: number;
 
   /**
    * Bot token for the file store. Also the download credential: Telegram's
@@ -322,6 +333,13 @@ export const envSchema = Joi.object<AppEnv, true>({
   RATE_LIMIT_AUTH_PER_PHONE: Joi.number().integer().min(1).default(20),
   RATE_LIMIT_AUTH_PER_IP: Joi.number().integer().min(1).default(120),
   RATE_LIMIT_FILES_PER_IP: Joi.number().integer().min(1).default(120),
+  // Looser than files and tighter than auth: a search is one deliberate action per
+  // screen, but an employer refining filters legitimately fires several per minute.
+  RATE_LIMIT_SEARCH_PER_IP: Joi.number().integer().min(1).default(240),
+
+  // §7.2: "the current number of matching candidates ... where technically reasonable".
+  // 200 is where a client renders "200+" rather than a number anyone reads.
+  SEARCH_COUNT_CAP: Joi.number().integer().min(1).default(200),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

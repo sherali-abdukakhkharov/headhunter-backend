@@ -64,6 +64,14 @@ export interface RequirementRow {
   fieldCode: string;
   itemId: string | null;
   levelId: string | null;
+  /**
+   * The level's rank, copied from the dictionary item when the requirement was written.
+   *
+   * Read by M7's UAT-06 prefill, which turns "Russian at C1" into a candidate filter -
+   * and a filter on a level is a `>=` comparison, so it needs the rank rather than the
+   * id. Null for a requirement with no level.
+   */
+  levelRank: number | null;
   isMandatory: boolean;
   valueBool: boolean | null;
   valueInt: number | null;
@@ -130,6 +138,7 @@ export async function loadVacancy(
       'field_code',
       'item_id',
       'level_id',
+      'level_rank',
       'is_mandatory',
       'value_bool',
       'value_int',
@@ -147,6 +156,7 @@ export async function loadVacancy(
       fieldCode: requirement.field_code,
       itemId: requirement.item_id,
       levelId: requirement.level_id,
+      levelRank: requirement.level_rank,
       isMandatory: requirement.is_mandatory,
       valueBool: requirement.value_bool,
       valueInt: requirement.value_int,

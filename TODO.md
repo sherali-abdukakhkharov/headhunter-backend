@@ -387,9 +387,10 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
       separately, because "finish your profile" and "wait for verification" are
       different refusals with different fixes. `canPublish` on the profile response
       is BR-03 in one field so no client re-implements it
-- [ ] Apply it at the call sites, which arrive with the routes: vacancy submit (M5),
-      candidate search and invitations (M7). Deliberately not a guard yet - a guard
-      with no route to guard is an abstraction with no caller
+- [x] Applied at the call sites as they arrived: vacancy submit (M5) and candidate search
+      (M7, on every method of `CandidateSearchService`). Invitations are the last caller.
+      Still not a guard, deliberately: the two conditions are different refusals and the
+      routes want to say which
 
 ### Tests *(done - 10 unit, 21 integration)*
 - [x] Completeness measured against that type's requirements only; missing-field list
@@ -401,8 +402,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [x] Rejection and changes-required with a mandatory reason, then a resubmission
       keeping both attempts and three history rows
 - [x] BR-03's gate across the whole lifecycle
-- [ ] Test: unverified employer cannot search candidates (§7) or invite - written
-      with those routes, in M7
+- [x] Test: unverified employer cannot search candidates (§7) - written in M7 with the
+      route it guards (`candidate-search.int.spec.ts`). The invitation half lands with
+      invitations
 
 ### Noticed while building, worth knowing before BR-14
 - [ ] `verification_submission_files.file_id` is `RESTRICT` on purpose: evidence must
@@ -528,16 +530,68 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 
 ## M7 - Candidate search + invitations
 
-- [ ] Search over all §7.1 filter groups, verified-employer only
-- [ ] Skills match-all as `HAVING COUNT(DISTINCT ...) = n`; match-any as `IN`
-- [ ] Language minimum level via `level_rank >=`
-- [ ] `{count, isExact}` count endpoint
-- [ ] Match score with per-group breakdown; §7.3 sort options
-- [ ] Vacancy→search filter prefill contract (UAT-06)
-- [ ] Saved candidates, vacancy shortlists, private notes
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e.
+
+### Schema *(done - `20260806120000_create_candidate_saves`)*
+- [x] `saved_candidates`, with §7.3's private employer note **on the save** - one note per
+      employer per candidate, written where the employer already keeps them, so "a note
+      without a save" is unrepresentable rather than a state to decide about
+- [x] `vacancy_shortlists`, keyed by vacancy because "vacancy-specific" is the point of
+      it; the shortlist's owner is the vacancy's owner, so there is no second notion of
+      who may edit it
+- [x] Deliberately *not* enforced: that a shortlisted candidate was saved first. §7.3
+      describes a user's flow, and a foreign key demanding it would fail a two-tap action
+      for a rule nothing depends on
+
+### Search *(done)*
+- [x] All §7.1 filter groups, verified-employer only (`assertVerified` on every method,
+      the saved list included), every read behind BR-02's one gate fragment
+- [x] Skills match-all as `count(DISTINCT ...) = n`, match-any as `EXISTS` - two plans,
+      deliberately not unified (ARCHITECTURE.md §5)
+- [x] Language minimum level via `level_rank >=`, one ANDed predicate per language
+- [x] `{count, isExact}` bounded by `SEARCH_COUNT_CAP`, so "200+" is honest
+- [x] Match score with per-group breakdown; `scoreGroups()` is the single source of the
+      weights *and* of what the response reports, so the number that ranked a candidate
+      and the number explaining it cannot disagree
+- [x] §7.3 sorts: match, recent, experience, salary - each with a total order, or two
+      pages of one search can repeat a candidate. **Location proximity is not offered**:
+      places are dictionary ids, not coordinates
+- [x] Vacancy→search prefill (UAT-06) as a pure function over the vacancy aggregate:
+      mandatory requirements become filters, preferred ones deliberately do not, and a
+      BR-12 restriction carries the justification the vacancy already holds
+- [x] Saved candidates, vacancy shortlists, private notes
+- [x] **BR-09** used by every candidate serializer: the card has no contact fields and the
+      query never joins `users`; `CandidateViewService.forCandidate` is §7.3's "View
+      profile" and reuses M6's one gatherer rather than a second copy of the rule
+- [x] §7.1's two filters that cannot be built as written: no free-text `specialization`
+      (a substring match on prose cannot behave identically in four variants, §3.3), and
+      remote-work readiness is a `work_format` id rather than a boolean
+- [x] BR-12 on the search side: an age or gender filter needs a justification from the
+      same declaration a vacancy's restriction needs, covering the same kinds, and every
+      accepted use is logged for M10's audit
+- [x] **The profile photo is the one exception to BR-09's file gate** - §7.3 puts a photo
+      on the card, and a photo is not §5.4's authorized document. One route, one purpose
+      check, searchable profiles only. *Wants client sign-off, like the other decisions
+      answered as data*
+- [x] `search` rate-limit bucket (§12.5) with `RATE_LIMIT_SEARCH_PER_IP`
+
+### Invitations *(next)*
 - [ ] Invitations + accept/decline/request-details
-- [ ] **BR-09 single contact-exposure helper** used by every candidate serializer
-- [ ] Test: search result cards never contain a phone number
+- [ ] `hasAcceptedInvitation` wired into the BR-09 helper, and the invitation-scoped file
+      route that serves what it grants
+
+### Tests *(done for the search half - 56 unit, 40 integration)*
+- [x] Test: search result cards never contain a phone number - asserted twice, once
+      mechanically over the compiled SQL (no `users`, no `phone`) and once over a real
+      response body
+- [x] Unit: the scoring groups, the prefill mapping, and what every filter compiles to
+- [x] Integration: match-all really demands every skill, a language floor really compares
+      ranks, BR-02 really keeps a hidden or incomplete profile out, a negotiable
+      expectation passes a budget, the bounded count answers "n+", the page comes back in
+      the order it was scored
+- [x] Test: unverified employer cannot search candidates (§7) - M4's outstanding test,
+      written with the route it guards
+- [x] Test: hiding a profile removes it from a saved list it was already on
 - [ ] Measure p95 against the 3s budget before optimizing anything
 
 ## M8 - Chat + interviews
@@ -570,7 +624,8 @@ Client direction 2026-08-04: MVP first, notifications last to build and test.
 ## M11 - Hardening
 
 - [ ] Load test both budgets; fix misses before adding a search projection
-- [ ] Five rate-limit buckets: OTP, auth, search, messaging, files
+- [ ] Five rate-limit buckets: OTP, auth, search, messaging, files - four exist
+      (`search` landed with M7); messaging arrives with M8
 - [ ] Security review: route-level permission checks, input validation,
       file scanning, log redaction, no secrets shipped
 - [ ] Scheduled backups + **rehearsed** restore, documented

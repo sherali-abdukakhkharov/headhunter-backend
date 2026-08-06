@@ -507,6 +507,24 @@ export const MESSAGES = {
     en: 'You have already reported this.',
   },
 
+  // --- candidate search (§7) ----------------------------------------------
+  // BR-12 on the search side: an age or gender filter needs the same justification a
+  // vacancy's restriction needs, from the same list, covering the same kinds.
+  'search.restriction_not_justified': {
+    'uz-Latn':
+      'Yosh yoki jins boʻyicha filtr uchun ruxsat etilgan asos koʻrsatilishi shart.',
+    'uz-Cyrl':
+      'Ёш ёки жинс бўйича филтр учун рухсат этилган асос кўрсатилиши шарт.',
+    ru: 'Для фильтра по возрасту или полу нужно указать допустимое обоснование.',
+    en: 'An age or gender filter needs a permitted justification.',
+  },
+  'search.occupation_required': {
+    'uz-Latn': 'Kasb boʻyicha tajribani filtrlash uchun kasbni tanlang.',
+    'uz-Cyrl': 'Касб бўйича тажрибани филтрлаш учун касбни танланг.',
+    ru: 'Чтобы фильтровать по опыту в профессии, выберите профессию.',
+    en: 'Choose an occupation to filter by experience in it.',
+  },
+
   // --- idempotency (ARCHITECTURE.md §7) ------------------------------------
   // The client reused a key for a different request, which is its bug: a key means
   // "this one operation", so two operations under it is broken key generation.

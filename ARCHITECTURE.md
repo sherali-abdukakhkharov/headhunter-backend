@@ -258,6 +258,35 @@ Two hard authorization rules the search path must enforce server-side (§7, §11
 BR-09): only **verified** employers may search at all, and result cards must
 never include phone or full contact details.
 
+*Built in M7, and five decisions are worth carrying forward.*
+
+- **The query is four stages, in this order:** filter and count matches, turn the counts
+  into §7.3's score, sort and take the page, and only then build the cards. The card's
+  nine correlated subqueries and two lateral joins therefore run for at most `limit`
+  candidates rather than for every match — which is what makes the 3-second budget a
+  property of the filters rather than of the size of the database.
+- **The score's weights and the response's explanation come from one function.**
+  `scoreGroups(filters)` decides which groups take part, what each was asked for and what
+  it weighs; the SQL expression is built by iterating that list, and the breakdown the
+  client renders reports the same objects. Two definitions would drift into a ranking
+  nobody could explain.
+- **A card is not a hiring interaction, so BR-09 is not consulted for one.** §11.1 is
+  unconditional there, so the card type has no contact field and the query never joins
+  `users` — stronger than fetching a phone number and nulling it, and asserted
+  mechanically over the compiled SQL. Contact details live on the profile view, which
+  goes through M6's single BR-09 gatherer.
+- **The profile photo is the one exception to files being BR-09-gated.** §7.3 puts a
+  photo on the card and §5.4 keeps documents behind an interaction; both hold because a
+  photo uploaded to be found by is not a document. The exception is one route, one
+  purpose code, searchable profiles only.
+- **Two §7.1 filters could not be built as worded, and were not faked.** A free-text
+  `specialization` filter would be a substring match on prose, which cannot behave
+  identically in four interface variants (§3.3, BR-13) — education level and occupation
+  are the id-shaped ways to ask it. And "remote-work readiness" is a `work_format` id,
+  not a boolean. Likewise §7.3's location proximity: there are no coordinates in this
+  data model, and a distance invented from the region tree would be a made-up number in
+  a control an employer would read as real.
+
 ---
 
 ## 5a. Employers and verification

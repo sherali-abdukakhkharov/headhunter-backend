@@ -333,6 +333,14 @@ export interface RateLimitCounters {
   window_start: Timestamp;
 }
 
+export interface SavedCandidates {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  note: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface SavedVacancies {
   candidate_user_id: string;
   created_at: Generated<Timestamp>;
@@ -444,6 +452,12 @@ export interface VacancyRequirements {
   value_text: string | null;
 }
 
+export interface VacancyShortlists {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  vacancy_id: string;
+}
+
 export interface VacancyStatusHistory {
   actor_role: UserRole | null;
   actor_user_id: string | null;
@@ -494,6 +508,7 @@ export interface DB {
   idempotency_keys: IdempotencyKeys;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
+  saved_candidates: SavedCandidates;
   saved_vacancies: SavedVacancies;
   schema_versions: SchemaVersions;
   sessions: Sessions;
@@ -502,6 +517,7 @@ export interface DB {
   users: Users;
   vacancies: Vacancies;
   vacancy_requirements: VacancyRequirements;
+  vacancy_shortlists: VacancyShortlists;
   vacancy_status_history: VacancyStatusHistory;
   verification_submission_files: VerificationSubmissionFiles;
   verification_submissions: VerificationSubmissions;

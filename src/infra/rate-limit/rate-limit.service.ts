@@ -6,8 +6,8 @@ import { hashSecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AppEnv } from '@infra/env-schema';
 
-/** The §12.5 buckets that exist today. Search and messaging join with M7 and M8. */
-export type RateLimitBucket = 'otp' | 'auth' | 'files';
+/** The §12.5 buckets that exist today. Messaging joins with M8. */
+export type RateLimitBucket = 'otp' | 'auth' | 'files' | 'search';
 
 /** What a bucket is counted by. A request missing the value skips that rule. */
 export type RateLimitKey = 'ip' | 'phone';
@@ -70,6 +70,15 @@ export class RateLimitService {
         {
           key: 'ip',
           limit: config.get('RATE_LIMIT_FILES_PER_IP', { infer: true }),
+        },
+      ],
+      // §12.5 names search as its own bucket, and §7's queries are the heaviest reads
+      // in the product - which is exactly why they must not share a budget with
+      // authentication.
+      search: [
+        {
+          key: 'ip',
+          limit: config.get('RATE_LIMIT_SEARCH_PER_IP', { infer: true }),
         },
       ],
     };
