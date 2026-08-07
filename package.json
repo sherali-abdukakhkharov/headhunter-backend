@@ -44,6 +44,9 @@
     "migrate:down": "tsx src/infra/db/migrate.ts down",
     "migrate:status": "tsx src/infra/db/migrate.ts status",
     "seed": "tsx src/infra/db/seed.ts",
+    "load:seed": "tsx src/infra/db/load-seed.ts",
+    "load:clean": "tsx src/infra/db/load-seed.ts --clean",
+    "perf": "tsx src/infra/perf/measure.ts",
     "migrate:typecheck": "tsc --noEmit -p tsconfig.migrate.json",
     "kysely:generate": "kysely-codegen --date-parser string --out-file ./src/infra/db/database.types.ts"
   },

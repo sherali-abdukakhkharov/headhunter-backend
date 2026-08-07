@@ -254,6 +254,15 @@ candidate rank here" is the first question an employer asks.
 add a denormalized `candidate_search_projection` table maintained on profile
 write, before considering a separate search engine.
 
+*Measured in M11 and the hatch stayed shut:* at 200 000 searchable candidates the
+worst p95 is 231ms against the 3s budget
+([docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The unfiltered search is linear in
+the searchable population, though, so the doc names the volume that reopens this
+(500k) - and the first thing to try is **not** the projection but letting the
+recency sort stop early: page `candidate_profiles` alone, then do the lateral
+per-row work on the twenty rows that survived. That keeps one source of truth,
+which a projection does not.
+
 Two hard authorization rules the search path must enforce server-side (§7, §11.1,
 BR-09): only **verified** employers may search at all, and result cards must
 never include phone or full contact details.

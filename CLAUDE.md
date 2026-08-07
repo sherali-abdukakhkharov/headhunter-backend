@@ -19,6 +19,7 @@ Code session rooted there can edit this repo too (see that repo's
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The Cloudflare tunnel at hh.qitmir.uz, and what changes when the API is public. |
 | [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: what OTP delivery will need, and what to ask on purchase. |
 | [docs/BACKUP.md](docs/BACKUP.md) | The daily dump, and the **rehearsed** restore with its real output. |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | §12.4 measured at 200k profiles, and the volume that would break it. |
 | [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the two gaps. |
 | [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 

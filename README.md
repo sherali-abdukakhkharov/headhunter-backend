@@ -73,6 +73,10 @@ pnpm api:up               # build the image and run the API in Docker (see below
 pnpm api:down / api:logs  # stop it / follow its logs
 pnpm api:build            # rebuild the image without restarting anything
 
+pnpm load:seed [n] [m]    # synthetic volume for measurement - docs/PERFORMANCE.md
+pnpm load:clean           # remove every synthetic row it wrote
+pnpm perf [clients] [n]   # §12.4's budgets; exits non-zero on a miss
+
 pnpm backup:up            # daily pg_dump at 21:00 UTC - docs/BACKUP.md
 pnpm backup:now           # take one immediately
 pnpm backup:list / backup:logs / backup:down

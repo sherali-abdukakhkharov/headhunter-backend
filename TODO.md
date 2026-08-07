@@ -779,7 +779,13 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
 
 ## M11 - Hardening
 
-- [ ] Load test both budgets; fix misses before adding a search projection
+- [x] Load test both budgets; fix misses before adding a search projection -
+      [docs/PERFORMANCE.md](docs/PERFORMANCE.md). **Both met**: at 200 000
+      searchable candidates and 10 concurrent clients the worst p95 in the
+      product is 231ms against a 3s budget. Nothing to fix, so the projection
+      stays deferred - and the doc names the volume that changes that (500k
+      searchable profiles), because the unfiltered search is measurably linear
+      in the searchable population and its recency index is never chosen
 - [x] Five rate-limit buckets: OTP, auth, search, messaging, files - all five
 - [x] Security review: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) covers
       §12.5 point by point. The public route surface is frozen by a test rather

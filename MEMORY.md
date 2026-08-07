@@ -30,6 +30,41 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M11) - The load test's value was the scaling curve, not the pass
+
+§12.4's budgets pass with more than an order of magnitude spare: at 200 000 searchable
+candidates the worst p95 in the product is 231ms against 3s. A single passing run would
+have been worth almost nothing. Measuring the *same* scenarios at 50 000 and at 200 000 is
+what produced something usable:
+
+- The **unfiltered** search is linear in the searchable population - ×4 volume, ×4.5 p95.
+  Postgres's counters say why: every one of those searches sequentially scans the whole
+  searchable set, and `candidate_profiles_searchable_recent_idx` is chosen **zero** times,
+  because the per-row lateral work happens before `LIMIT 20` and there is nothing to stop
+  early for.
+- A **filtered** search scales *better* (×2.2), because the occupation filter uses its
+  index and the score is only computed for survivors. The heaviest-looking scenario is the
+  least volume-sensitive, which is the opposite of the intuition.
+- `count` is flat at 15ms at any volume, because `SEARCH_COUNT_CAP` bounds it. §7.2's cap
+  turns out to be a performance decision as much as a UX one.
+
+So the projection ARCHITECTURE.md defers stays deferred, and
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md) names the trigger (500k searchable profiles)
+and the first thing to try, which is **not** a projection: order and page
+`candidate_profiles` alone, then do the lateral work on the twenty rows that survived.
+
+Three things the harness had to learn the hard way, all of them the product being right:
+
+- **Per-IP rate limits throttle a load test**, correctly. Each run now uses a fresh block
+  of virtual addresses, because a run does represent different callers.
+- **A token has to be cached between runs.** `RATE_LIMIT_OTP_PER_PHONE` is five an hour,
+  and a harness that logs in every time hits it on the sixth run. Caching is what a real
+  client does.
+- **`OTP_STATIC_CODE` is not a bypass.** Falling back to it when the resend delay blocked a
+  send did not work, and should not have: the static code fixes *which* code is issued, it
+  does not add a second acceptance path in `verify`, so it still needs a live unconsumed
+  row. Waiting out the delay is the only correct answer.
+
 ### 2026-08-07 (M11) - A restore drill checks behaviour, not `pg_restore`'s exit code
 
 `pg_restore` exiting 0 says the archive was replayed, not that the database is back.
