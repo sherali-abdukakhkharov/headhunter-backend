@@ -18,6 +18,7 @@ import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
 import { DiscoveryModule } from '@modules/discovery/discovery.module';
 import { EmployersModule } from '@modules/employers/employers.module';
 import { FilesHttpModule } from '@modules/files/files.module';
+import { ChatModule } from '@modules/chat/chat.module';
 import { HealthModule } from '@modules/health/health.module';
 import { InvitationsModule } from '@modules/invitations/invitations.module';
 import { SchemasModule } from '@modules/schemas/schemas.module';
@@ -71,6 +72,7 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     ApplicationsModule,
     CandidateSearchModule,
     InvitationsModule,
+    ChatModule,
     FilesHttpModule,
     HealthModule,
   ],

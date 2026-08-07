@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { FilesModule } from '@infra/files/files.module';
 import { IdempotencyModule } from '@infra/idempotency/idempotency.module';
+import { PrivacyModule } from '@infra/privacy/privacy.module';
 import { EmployersModule } from '@modules/employers/employers.module';
 
 import { ApplicationsController } from './applications.controller';
@@ -24,7 +25,7 @@ import { CandidateViewService } from './candidate-view.service';
  * implementations is a privacy rule that drifts.
  */
 @Module({
-  imports: [IdempotencyModule, EmployersModule, FilesModule],
+  imports: [IdempotencyModule, EmployersModule, FilesModule, PrivacyModule],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, CandidateViewService],
   exports: [ApplicationsService, CandidateViewService],

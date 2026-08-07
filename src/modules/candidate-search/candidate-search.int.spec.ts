@@ -8,6 +8,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
+import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { ApplicationsService } from '@modules/applications/applications.service';
@@ -108,7 +109,7 @@ beforeAll(() => {
   candidateView = new CandidateViewService(
     db,
     employers,
-    applications,
+    new HiringInteractionService(db),
     filesStub,
   );
 });

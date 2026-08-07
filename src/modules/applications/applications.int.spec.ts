@@ -11,6 +11,7 @@ import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
+import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import { CandidatesService } from '@modules/candidates/candidates.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { DiscoveryService } from '@modules/discovery/discovery.service';
@@ -73,7 +74,7 @@ beforeAll(() => {
   candidateView = new CandidateViewService(
     db,
     employers,
-    applications,
+    new HiringInteractionService(db),
     // Files are not exercised by these tests - the BR-09 *decision* is what they cover,
     // and `infra/files` has its own suite. A stub keeps Telegram out of them.
     {

@@ -8,26 +8,11 @@ import {
   expose,
   exposedPhone,
 } from '@infra/privacy/contact-exposure';
+import {
+  type HiringInteraction,
+  HiringInteractionService,
+} from '@infra/privacy/hiring-interaction.service';
 import { EmployersService } from '@modules/employers/employers.service';
-
-import { ApplicationsService } from './applications.service';
-
-/**
- * What entitled this employer to the candidate's files, and therefore which route serves
- * them.
- *
- * The `kind` is the URL segment on purpose: BR-09 grants access through an interaction,
- * and the path a client is handed has to name the interaction it came from so the check
- * can be repeated on every download.
- *
- * An application outranks an accepted invitation when both exist, for no deeper reason
- * than that the application is the stronger claim - the candidate asked - and the two
- * routes serve identical bytes.
- */
-interface GrantingInteraction {
-  kind: 'applications' | 'invitations';
-  id: string;
-}
 
 export interface CandidateForEmployer {
   candidateUserId: string;
@@ -66,7 +51,7 @@ export class CandidateViewService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly employers: EmployersService,
-    private readonly applications: ApplicationsService,
+    private readonly interactions: HiringInteractionService,
     private readonly files: FilesService,
   ) {}
 
@@ -143,19 +128,10 @@ export class CandidateViewService {
     // Derived from the data every time, **never from the application id in the URL**: a
     // withdrawn application is still addressable, and trusting the path would let a
     // candidate's withdrawal be undone by requesting the view through the application
-    // they withdrew. `applicationWith` is the one place that decides what counts.
-    const application = await this.applications.applicationWith(
-      employerUserId,
-      candidateUserId,
-    );
-    const invitation = application
-      ? null
-      : await this.acceptedInvitationWith(employerUserId, candidateUserId);
-    const interaction: GrantingInteraction | null = application
-      ? { kind: 'applications', id: application }
-      : invitation
-        ? { kind: 'invitations', id: invitation }
-        : null;
+    // they withdrew. `HiringInteractionService` is the one place that decides what counts,
+    // and §9.1's chat gate asks it the same question.
+    const interaction: HiringInteraction | null =
+      await this.interactions.between(employerUserId, candidateUserId);
 
     // BR-02's gate decides *readability*, and an interaction overrides it: a candidate
     // who hides their profile leaves search, not the conversation they started by
@@ -238,32 +214,6 @@ export class CandidateViewService {
   }
 
   /**
-   * BR-09's second interaction (§8.2): did this employer invite the candidate, and did
-   * they accept?
-   *
-   * Read as a query here rather than through `InvitationsService`, deliberately. The
-   * invitations module imports this one - it serves the invitation-scoped download route -
-   * and injecting it back would be a circular dependency for one `SELECT`. Reading another
-   * module's table is what every service in this codebase already does; a module cycle is
-   * a structural problem.
-   */
-  private async acceptedInvitationWith(
-    employerUserId: string,
-    candidateUserId: string,
-  ): Promise<string | null> {
-    const row = await this.db
-      .selectFrom('invitations')
-      .select('id')
-      .where('employer_user_id', '=', employerUserId)
-      .where('candidate_user_id', '=', candidateUserId)
-      .where('status', '=', 'accepted')
-      .orderBy('responded_at', 'desc')
-      .executeTakeFirst();
-
-    return row?.id ?? null;
-  }
-
-  /**
    * Streams a file to an employer whose entitlement came from an **accepted invitation**
    * (§8.2, BR-09).
    *
@@ -316,7 +266,7 @@ export class CandidateViewService {
    */
   private async filesOf(
     candidateUserId: string,
-    interaction: GrantingInteraction,
+    interaction: HiringInteraction,
   ) {
     const rows = await this.db
       .selectFrom('stored_files')

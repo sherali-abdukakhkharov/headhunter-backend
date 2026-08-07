@@ -454,35 +454,6 @@ export class ApplicationsService {
     }));
   }
 
-  /**
-   * Does this employer have a hiring interaction with this candidate, and through which
-   * application?
-   *
-   * BR-09's third input. Any non-withdrawn application to one of the employer's
-   * vacancies counts: a candidate who applied has asked to be contacted, and a
-   * withdrawal takes that back.
-   *
-   * The **id** rather than a boolean, because the entitlement it grants has to be served
-   * by a route scoped to it - `/applications/{id}/files/{fileId}/content`. A caller that
-   * knew only "yes" would have to go looking for the application again.
-   */
-  async applicationWith(
-    employerUserId: string,
-    candidateUserId: string,
-  ): Promise<string | null> {
-    const row = await this.db
-      .selectFrom('applications')
-      .innerJoin('vacancies', 'vacancies.id', 'applications.vacancy_id')
-      .select('applications.id')
-      .where('vacancies.employer_user_id', '=', employerUserId)
-      .where('applications.candidate_user_id', '=', candidateUserId)
-      .where('applications.status', '!=', 'withdrawn')
-      .orderBy('applications.created_at', 'desc')
-      .executeTakeFirst();
-
-    return row?.id ?? null;
-  }
-
   private async assertEmployerOwns(
     employerUserId: string,
     applicationId: string,

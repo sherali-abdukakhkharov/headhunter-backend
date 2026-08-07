@@ -564,6 +564,41 @@ export const MESSAGES = {
     ru: 'Одно из выбранных значений приглашения недопустимо.',
     en: 'One of the values chosen for the invitation is not valid.',
   },
+  // --- chat (§9.1) ---------------------------------------------------------
+  'chat.no_interaction': {
+    'uz-Latn':
+      'Suhbatni boshlash uchun ariza yoki qabul qilingan taklif boʻlishi kerak.',
+    'uz-Cyrl':
+      'Суҳбатни бошлаш учун ариза ёки қабул қилинган таклиф бўлиши керак.',
+    ru: 'Чтобы начать переписку, нужен отклик или принятое приглашение.',
+    en: 'A chat needs an application or an accepted invitation first.',
+  },
+  'chat.conversation_not_found': {
+    'uz-Latn': 'Suhbat topilmadi.',
+    'uz-Cyrl': 'Суҳбат топилмади.',
+    ru: 'Переписка не найдена.',
+    en: 'The conversation was not found.',
+  },
+  'chat.message_not_found': {
+    'uz-Latn': 'Xabar topilmadi.',
+    'uz-Cyrl': 'Хабар топилмади.',
+    ru: 'Сообщение не найдено.',
+    en: 'The message was not found.',
+  },
+  // §9.1: a closed interaction stays in history and stops accepting messages.
+  'chat.read_only': {
+    'uz-Latn': 'Bu suhbat yopilgan: endi faqat oʻqish mumkin.',
+    'uz-Cyrl': 'Бу суҳбат ёпилган: энди фақат ўқиш мумкин.',
+    ru: 'Переписка закрыта: она доступна только для чтения.',
+    en: 'This conversation is closed and is now read-only.',
+  },
+  'chat.blocked': {
+    'uz-Latn': 'Bu suhbat bloklangan.',
+    'uz-Cyrl': 'Бу суҳбат блокланган.',
+    ru: 'Переписка заблокирована.',
+    en: 'This conversation is blocked.',
+  },
+
   'invitation.vacancy_not_open': {
     'uz-Latn': 'Bu vakansiyaga taklif yuborib boʻlmaydi: u faol emas.',
     'uz-Cyrl': 'Бу вакансияга таклиф юбориб бўлмайди: у фаол эмас.',

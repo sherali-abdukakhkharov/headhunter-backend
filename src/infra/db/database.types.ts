@@ -242,6 +242,24 @@ export interface Complaints {
   target_type: ComplaintTarget;
 }
 
+export interface ConversationBlocks {
+  blocked_by_user_id: string;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  reason: string | null;
+}
+
+export interface Conversations {
+  candidate_read_at: Timestamp | null;
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  employer_read_at: Timestamp | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  last_message_at: Timestamp | null;
+  opened_by_vacancy_id: string | null;
+}
+
 export interface DeletionRequests {
   cancelled_at: Timestamp | null;
   confirmed_at: Timestamp | null;
@@ -350,6 +368,15 @@ export interface InvitationStatusHistory {
   invitation_id: string;
   reason: string | null;
   to_status: InvitationStatus;
+}
+
+export interface Messages {
+  body: string | null;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  file_id: string | null;
+  id: Generated<string>;
+  sender_user_id: string;
 }
 
 export interface OtpCodes {
@@ -537,6 +564,8 @@ export interface DB {
   candidate_skills: CandidateSkills;
   companies: Companies;
   complaints: Complaints;
+  conversation_blocks: ConversationBlocks;
+  conversations: Conversations;
   deletion_requests: DeletionRequests;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;
@@ -546,6 +575,7 @@ export interface DB {
   idempotency_keys: IdempotencyKeys;
   invitation_status_history: InvitationStatusHistory;
   invitations: Invitations;
+  messages: Messages;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
   saved_candidates: SavedCandidates;
