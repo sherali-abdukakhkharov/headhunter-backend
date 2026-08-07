@@ -16,6 +16,7 @@ import { SORTS } from './dto/candidate-search.dto';
 import {
   cardColumns,
   cardJoins,
+  matchedColumns,
   matchedJson,
   orderBy,
   scoreExpression,
@@ -195,6 +196,55 @@ describe('whereFilters', () => {
     expect(whereSql({ occupationExperienceYearsMin: 5 })).toBe(
       "p.visibility = 'searchable' AND p.is_complete",
     );
+  });
+});
+
+describe('injection (§12.5)', () => {
+  const HOSTILE = "'; DROP TABLE users; --";
+
+  it('never puts a filter value into the SQL text', () => {
+    const compiled = whereFilters(
+      {
+        occupationIds: [HOSTILE],
+        skillIds: [HOSTILE],
+        skillsMatchMode: 'all',
+        languages: [{ itemId: HOSTILE, minLevelRank: 3 }],
+        specializationIds: [HOSTILE],
+        regionId: HOSTILE,
+        districtIds: [HOSTILE],
+        genderId: HOSTILE,
+        employmentTypeIds: [HOSTILE],
+        attributeIds: [HOSTILE],
+        updatedSince: HOSTILE,
+        availableBy: HOSTILE,
+      },
+      '2026-08-07',
+    ).compile(db);
+
+    // Every value reaches Postgres as a bound parameter. The query builder is what makes
+    // that true; this asserts that the hand-written `sql` fragments did not undo it - the
+    // one place in this codebase where they could.
+    expect(compiled.sql).not.toContain('DROP TABLE');
+    expect(compiled.parameters).toContain(HOSTILE);
+  });
+
+  it('interpolates only closed-union group codes into raw SQL', () => {
+    // `sql.raw` appears three times in the search, each time building a column alias from
+    // a `ScoreGroupCode`. Those come from a hardcoded weight table, never from a request -
+    // and this fails if a future edit ever routes a filter value through one.
+    const sqlText = [
+      ...matchedColumns(
+        { skillIds: [HOSTILE] },
+        scoreGroups({ skillIds: [HOSTILE] }),
+      ),
+      scoreExpression(scoreGroups({ skillIds: [HOSTILE] })),
+      matchedJson(scoreGroups({ skillIds: [HOSTILE] })),
+    ]
+      .map((fragment) => fragment.compile(db).sql)
+      .join(' ');
+
+    expect(sqlText).not.toContain('DROP TABLE');
+    expect(sqlText).toContain('matched_skills');
   });
 });
 

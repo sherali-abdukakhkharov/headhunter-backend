@@ -30,6 +30,24 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M11) - The public route surface is frozen by a test, not by review
+
+§12.5 asks for "server-side role and permission enforcement for every protected
+API". That is a property of the *set* of routes, and no per-module test can see it.
+The guards are global, so the realistic failure is not a forgotten guard but an
+**unintended exception**: one `@Public()` added for a local reason, on a route that
+later grows a body.
+
+`infra/api/api-surface.spec.ts` reads Nest's own routing metadata off every
+controller and asserts the public set equals a frozen list of eleven, with a
+comment on each saying why it must answer without a token. A new public route fails
+the suite until somebody writes that justification, which moves the decision into
+review. The controller list is itself checked against `app.module.ts`, so a module
+cannot escape the audit by being forgotten.
+
+Reading the metadata rather than booting the app is deliberate: it is what the
+router will read, it needs no database, and it runs in the fast suite.
+
 ### 2026-08-07 (M7) - An interaction is derived from data, never from the id in the URL
 `CandidateViewService.read` used to take the application id the route was called with and
 treat it as the interaction BR-09 needs. Wiring §7.3's "View profile" onto the same method
@@ -800,6 +818,13 @@ acting as R, do this to X".
 Full list with symptoms in [README.md](README.md) "Gotchas worth knowing". The
 ones most likely to bite again:
 
+- **The host clock and the container clock disagree by about a second.** An
+  integration test that writes a timestamp from Node and compares it in Postgres
+  straddles both, so a one-second margin is a coin flip. This cost an intermittent
+  M11 failure in the restriction-expiry test - it passed alone and failed in the
+  full run, which reads like cross-suite interference and is not. Give any such
+  test an hour of margin. The product is unaffected: its comparison is entirely
+  database-side.
 - **Kysely 0.29 is pure ESM.** Node 24 can `require()` it so the compiled CJS app
   runs, but Jest cannot - hence `transformIgnorePatterns`.
 - **`Migrator` moved to `kysely/migration`**, not the package root.

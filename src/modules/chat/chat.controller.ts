@@ -32,6 +32,7 @@ import {
   ActiveUser,
   type CurrentUser,
 } from '@infra/api/decorators/current-user.decorator';
+import { RateLimit } from '@infra/api/decorators/rate-limit.decorator';
 import type { AppEnv } from '@infra/env-schema';
 import { formatWithOffset } from '@infra/time/format';
 
@@ -138,6 +139,7 @@ export class ChatController {
   }
 
   @Post(':id/messages')
+  @RateLimit('messaging')
   @ApiHeader({
     name: 'Idempotency-Key',
     required: false,

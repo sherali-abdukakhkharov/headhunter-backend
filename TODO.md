@@ -780,10 +780,16 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
 ## M11 - Hardening
 
 - [ ] Load test both budgets; fix misses before adding a search projection
-- [ ] Five rate-limit buckets: OTP, auth, search, messaging, files - four exist
-      (`search` landed with M7); messaging arrives with M8
-- [ ] Security review: route-level permission checks, input validation,
-      file scanning, log redaction, no secrets shipped
+- [x] Five rate-limit buckets: OTP, auth, search, messaging, files - all five
+- [x] Security review: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) covers
+      §12.5 point by point. The public route surface is frozen by a test rather
+      than by review (`infra/api/api-surface.spec.ts`), and the search's
+      hand-written SQL has injection tests. Two things came out of it and are
+      **not** closed:
+  - [ ] Malware scanning is not implemented and cannot be here - the bytes go to
+        Telegram, which does not scan a bot upload. Stated as a gap, not fixed.
+  - [ ] `API_DOCS_ENABLED` is on and the hostname is public: decide between
+        turning it off and a Cloudflare Access policy on `/docs` + `/reference`
 - [ ] Scheduled backups + **rehearsed** restore, documented
 - [ ] §13.2 deliverables: OpenAPI, migrations, `.env.example`, deployment
       package, technical docs, test evidence

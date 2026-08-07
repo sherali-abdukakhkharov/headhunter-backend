@@ -6,8 +6,13 @@ import { hashSecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AppEnv } from '@infra/env-schema';
 
-/** The §12.5 buckets that exist today. Messaging joins with M8. */
-export type RateLimitBucket = 'otp' | 'auth' | 'files' | 'search';
+/**
+ * §12.5's five buckets, complete since M11.
+ *
+ * Five rather than one global limiter because the budgets differ by two orders of
+ * magnitude: an OTP costs an SMS, a search costs a query plan, a message costs a row.
+ */
+export type RateLimitBucket = 'otp' | 'auth' | 'files' | 'search' | 'messaging';
 
 /** What a bucket is counted by. A request missing the value skips that rule. */
 export type RateLimitKey = 'ip' | 'phone';
@@ -79,6 +84,15 @@ export class RateLimitService {
         {
           key: 'ip',
           limit: config.get('RATE_LIMIT_SEARCH_PER_IP', { infer: true }),
+        },
+      ],
+      // The loosest of the five: a conversation is bursty, and what this stops is a
+      // script rather than somebody typing quickly. §9.1's block is the answer to a
+      // person.
+      messaging: [
+        {
+          key: 'ip',
+          limit: config.get('RATE_LIMIT_MESSAGING_PER_IP', { infer: true }),
         },
       ],
     };

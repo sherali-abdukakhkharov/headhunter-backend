@@ -868,7 +868,11 @@ describe('a temporary restriction ends by itself (§10.4)', () => {
       targetUserId,
       'restricted',
       'Under review.',
-      new Date(Date.now() - 1000),
+      // An hour in the past, not a second: this line is written by Node on the host and
+      // compared by Postgres in its container, and those two clocks drift. The product is
+      // consistent - the guard's comparison is entirely database-side - but a test that
+      // straddles both needs more margin than the skew.
+      new Date(Date.now() - 60 * 60 * 1000),
     );
 
     // No scheduler runs in this product, so the guard is where "temporary" happens - on

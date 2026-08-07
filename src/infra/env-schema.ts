@@ -181,6 +181,14 @@ export interface AppEnv {
   RATE_LIMIT_FILES_PER_IP: number;
   /** §12.5's search bucket. A search is a heavy read, so it gets its own budget. */
   RATE_LIMIT_SEARCH_PER_IP: number;
+  /**
+   * §12.5's messaging bucket, and the last of its five.
+   *
+   * Generous on purpose: a real conversation is bursty, and the abuse this guards against
+   * is a script rather than somebody typing quickly. §9.1's block is what answers one
+   * person harassing another; this answers one machine.
+   */
+  RATE_LIMIT_MESSAGING_PER_IP: number;
 
   /**
    * The Firebase service-account JSON, base64-encoded, or empty to disable push.
@@ -355,6 +363,7 @@ export const envSchema = Joi.object<AppEnv, true>({
   // Looser than files and tighter than auth: a search is one deliberate action per
   // screen, but an employer refining filters legitimately fires several per minute.
   RATE_LIMIT_SEARCH_PER_IP: Joi.number().integer().min(1).default(240),
+  RATE_LIMIT_MESSAGING_PER_IP: Joi.number().integer().min(1).default(600),
 
   // §7.2: "the current number of matching candidates ... where technically reasonable".
   // 200 is where a client renders "200+" rather than a number anyone reads.

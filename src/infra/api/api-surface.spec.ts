@@ -1,0 +1,249 @@
+import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import { RequestMethod } from '@nestjs/common';
+
+import { IS_PUBLIC_KEY } from '@infra/api/decorators/public.decorator';
+import { REQUIRED_ROLES_KEY } from '@infra/api/decorators/require-role.decorator';
+import type { UserRole } from '@infra/db/database.types';
+import { AdminController } from '@modules/admin/admin.controller';
+import { ApplicationsController } from '@modules/applications/applications.controller';
+import { AuthController } from '@modules/auth/auth.controller';
+import { OtpController } from '@modules/auth/otp.controller';
+import { CandidateSearchController } from '@modules/candidate-search/candidate-search.controller';
+import { CandidatesController } from '@modules/candidates/candidates.controller';
+import { HistoryController } from '@modules/candidates/history.controller';
+import { ChatController } from '@modules/chat/chat.controller';
+import { DictionariesController } from '@modules/dictionaries/dictionaries.controller';
+import { DiscoveryController } from '@modules/discovery/discovery.controller';
+import { EmployersController } from '@modules/employers/employers.controller';
+import { FilesController } from '@modules/files/files.controller';
+import { HealthController } from '@modules/health/health.controller';
+import { InterviewsController } from '@modules/interviews/interviews.controller';
+import { InvitationsController } from '@modules/invitations/invitations.controller';
+import { NotificationsController } from '@modules/notifications/notifications.controller';
+import { SchemasController } from '@modules/schemas/schemas.controller';
+import { UsersController } from '@modules/users/users.controller';
+import { VacanciesController } from '@modules/vacancies/vacancies.controller';
+
+/**
+ * The API's authorization surface, asserted as a whole (§12.5).
+ *
+ * "Server-side role and permission enforcement for **every** protected API" is a property
+ * of the *set* of routes, not of any one of them, and no per-module test can see it. The
+ * guards are global - `AuthorizationGuard` makes every route authenticated unless it
+ * carries `@Public()` - so the danger is not a missing guard but an **unintended
+ * exception**: one `@Public()` added for a local reason, on a route that then serves data.
+ *
+ * These tests read the routing metadata off the controllers and compare the public set to
+ * a frozen list. A new public route fails this suite until somebody adds it here, which
+ * forces the decision to be argued in a review rather than discovered in production.
+ *
+ * Every controller in `app.module.ts` must appear below; the last test fails if one is
+ * missing, so a whole module cannot escape the audit by not being imported.
+ */
+
+const CONTROLLERS = [
+  AdminController,
+  ApplicationsController,
+  AuthController,
+  OtpController,
+  CandidateSearchController,
+  CandidatesController,
+  HistoryController,
+  ChatController,
+  DictionariesController,
+  DiscoveryController,
+  EmployersController,
+  FilesController,
+  HealthController,
+  InterviewsController,
+  InvitationsController,
+  NotificationsController,
+  SchemasController,
+  UsersController,
+  VacanciesController,
+];
+
+/**
+ * Every route that answers without a token, and why it has to.
+ *
+ * Adding a line here is a security decision. Each one is either something a client needs
+ * *before* it can have a token, or something with no user data in it at all.
+ */
+const PUBLIC_ROUTES = [
+  // Liveness. Deliberately unauthenticated so monitoring can reach it, and it reports a
+  // failing dependency as `degraded` rather than leaking anything.
+  'GET /health',
+
+  // §4.1's login pair. A client cannot hold a token before these succeed, and
+  // registration and login are deliberately the same two calls - a route that
+  // distinguished them would be a register of which numbers have accounts.
+  'POST /auth/otp/send',
+  'POST /auth/otp/resend',
+  'POST /auth/otp/verify',
+
+  // Telegram login (deprecated but working) and the token lifecycle. `refresh` and
+  // `logout` are public because they authenticate with the refresh token in the body
+  // rather than with an access token, which by then may have expired.
+  'POST /auth/telegram',
+  'POST /auth/refresh',
+  'POST /auth/logout',
+
+  // §3.2 and §4.1: the language and its pickers are chosen *before* registration, so the
+  // dictionaries have to answer without one. They contain no user data - only the
+  // localized value lists BR-13 defines.
+  'GET /dictionaries/manifest',
+  'GET /dictionaries/items',
+  'GET /dictionaries/:type',
+].sort();
+
+interface Route {
+  signature: string;
+  isPublic: boolean;
+  roles: UserRole[] | undefined;
+}
+
+const METHODS: Record<number, string> = {
+  [RequestMethod.GET]: 'GET',
+  [RequestMethod.POST]: 'POST',
+  [RequestMethod.PUT]: 'PUT',
+  [RequestMethod.DELETE]: 'DELETE',
+  [RequestMethod.PATCH]: 'PATCH',
+};
+
+/** Reads Nest's own routing metadata, so this sees exactly what the router will. */
+function routesOf(controller: new (...args: never[]) => object): Route[] {
+  const prefix = Reflect.getMetadata(PATH_METADATA, controller) ?? '';
+  const classPublic = Reflect.getMetadata(IS_PUBLIC_KEY, controller) === true;
+  const classRoles = Reflect.getMetadata(REQUIRED_ROLES_KEY, controller) as
+    | UserRole[]
+    | undefined;
+
+  return Object.getOwnPropertyNames(controller.prototype)
+    .filter((name) => name !== 'constructor')
+    .map((name) => {
+      const handler = (controller.prototype as Record<string, unknown>)[name];
+      const path = Reflect.getMetadata(PATH_METADATA, handler as object) as
+        | string
+        | undefined;
+
+      if (path === undefined) {
+        return null;
+      }
+
+      const method =
+        METHODS[
+          Reflect.getMetadata(METHOD_METADATA, handler as object) as number
+        ] ?? 'ALL';
+      const full = `/${[prefix, path].filter((part) => part && part !== '/').join('/')}`;
+
+      return {
+        signature: `${method} ${full}`,
+        isPublic:
+          classPublic ||
+          Reflect.getMetadata(IS_PUBLIC_KEY, handler as object) === true,
+        roles:
+          (Reflect.getMetadata(REQUIRED_ROLES_KEY, handler as object) as
+            | UserRole[]
+            | undefined) ?? classRoles,
+      };
+    })
+    .filter((route): route is Route => route !== null);
+}
+
+const ALL_ROUTES = CONTROLLERS.flatMap(routesOf);
+
+/** Nest's own module metadata, read without an `any` escaping into the assertions. */
+function metadataOf(
+  target: unknown,
+  key: 'imports' | 'controllers',
+): unknown[] {
+  const value: unknown = Reflect.getMetadata(key, target as object);
+
+  return Array.isArray(value) ? (value as unknown[]) : [];
+}
+
+describe('the public surface (§12.5)', () => {
+  it('is exactly the frozen list, and nothing else', () => {
+    const actual = ALL_ROUTES.filter((route) => route.isPublic)
+      .map((route) => route.signature)
+      .sort();
+
+    // If this fails with an extra entry, do not add it here to make the suite pass:
+    // ask first whether that route can really answer an anonymous caller.
+    expect(actual).toEqual(PUBLIC_ROUTES);
+  });
+
+  it('leaves every other route authenticated', () => {
+    const protectedRoutes = ALL_ROUTES.filter((route) => !route.isPublic);
+
+    // The global `AuthorizationGuard` is what enforces this; the assertion is that no
+    // route opted out of it.
+    expect(protectedRoutes.length).toBeGreaterThan(60);
+    expect(
+      protectedRoutes
+        .map((route) => route.signature)
+        .filter((signature) => PUBLIC_ROUTES.includes(signature)),
+    ).toEqual([]);
+  });
+});
+
+describe('role enforcement (§12.5, §2.3)', () => {
+  it('requires the admin role on every §10 route', () => {
+    const adminRoutes = ALL_ROUTES.filter((route) =>
+      route.signature.includes(' /admin/'),
+    );
+
+    expect(adminRoutes.length).toBeGreaterThan(15);
+
+    for (const route of adminRoutes) {
+      // §10's routes are ordinary endpoints behind a role, which means the role is the
+      // only thing between them and any authenticated user.
+      expect(route.roles).toEqual(['admin']);
+    }
+  });
+
+  it('never asks for a role on a public route', () => {
+    // A route that is both public and role-restricted is a contradiction: there is no
+    // active role without a token, so one of the two decorators does nothing.
+    for (const route of ALL_ROUTES.filter((r) => r.isPublic)) {
+      expect(route.roles).toBeUndefined();
+    }
+  });
+
+  it('keeps the two sides of the product apart where §2.3 requires it', () => {
+    const bySignature = new Map(
+      ALL_ROUTES.map((route) => [route.signature, route]),
+    );
+
+    // Spot checks on the routes where a leak would matter most: an account holding both
+    // roles must not reach the employer's candidate database while acting as a candidate.
+    expect(bySignature.get('POST /candidate-search')?.roles).toEqual([
+      'employer',
+    ]);
+    expect(bySignature.get('POST /invitations')?.roles).toEqual(['employer']);
+    expect(bySignature.get('GET /candidates/me/profile')?.roles).toEqual([
+      'candidate',
+    ]);
+    expect(bySignature.get('GET /discovery/recommended')?.roles).toEqual([
+      'candidate',
+    ]);
+  });
+});
+
+describe('the audit covers the whole application', () => {
+  it('lists every controller the application registers', async () => {
+    const { AppModule } = await import('../../app.module');
+    const imported = metadataOf(AppModule, 'imports');
+    const registered = imported
+      .flatMap((module) => metadataOf(module, 'controllers'))
+      .filter(Boolean);
+
+    // A module left out of the list above would silently escape every assertion in this
+    // file, so the list is checked against what `app.module.ts` actually wires up.
+    for (const controller of registered) {
+      expect(CONTROLLERS).toContain(controller);
+    }
+
+    expect(registered.length).toBe(CONTROLLERS.length);
+  });
+});
