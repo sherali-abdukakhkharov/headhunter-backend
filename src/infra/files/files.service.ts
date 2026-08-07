@@ -133,12 +133,11 @@ export class FilesService {
   }
 
   /**
-   * Fetches the bytes of a file the caller is allowed to read.
+   * Fetches the bytes of a file its **owner** is asking for.
    *
-   * `viewerUserId` is the only authorization this layer performs: owner-only.
-   * Employer access to a candidate's CV is BR-09's decision, not this one, and it
-   * arrives with M3's candidate files - it will call `readAs` with a viewer that
-   * passed that check, never bypass this method.
+   * Owner-only is the whole authorization this layer performs. Employer access to a
+   * candidate's CV is BR-09's decision and belongs to whoever can evaluate it - see
+   * `readAsAuthorized`, which M6 added once BR-09 had all three of its inputs.
    */
   async read(
     viewerUserId: string,
@@ -181,6 +180,26 @@ export class FilesService {
     }
 
     return { file: toStoredFile(row), bytes };
+  }
+
+  /**
+   * Fetches the bytes of a file belonging to `ownerUserId`, for a caller who is not the
+   * owner.
+   *
+   * **The caller must already have decided that BR-09 allows it.** This method verifies
+   * only that the file really belongs to the candidate the caller named, which is the
+   * part it can check - an employer must not be able to name their own file id, or
+   * anyone else's, and have it served under somebody else's authorization.
+   *
+   * Separate from `read` rather than a flag on it, because the two have different
+   * preconditions and a boolean parameter is how "authorized" ends up defaulting to true
+   * at some future call site.
+   */
+  async readAsAuthorized(
+    ownerUserId: string,
+    fileId: string,
+  ): Promise<{ file: StoredFile; bytes: Buffer }> {
+    return this.read(ownerUserId, fileId);
   }
 
   async listForOwner(

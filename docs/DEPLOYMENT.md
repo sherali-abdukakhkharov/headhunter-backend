@@ -52,15 +52,39 @@ holding either can serve traffic as `hh.qitmir.uz`.
 
 ```sh
 pnpm db:up          # Postgres
-pnpm start:dev      # the API, on host port 3001
+pnpm migrate:latest # schema, then content
+pnpm seed
+pnpm api:up         # build the image and run the API container
 pnpm tunnel:up      # cloudflared
 pnpm tunnel:logs    # watch it register
 ```
 
-The tunnel's origin is `http://host.docker.internal:3001`, so it reaches the API
-running on the host under `pnpm start:dev`. When the API is containerised (still on
-the TODO — there is no Dockerfile yet), change the ingress to the service name and
-put both on the same compose network.
+**The API runs in a container as of 2026-08-05** (`Dockerfile`,
+`docker-compose.api.yml`). The tunnel's origin is `http://api:3001` — the service
+name over the Docker network the three compose files share, because they live in one
+directory and Compose therefore gives them one project and one default network.
+
+Redeploying after a code change is one command: `pnpm api:up` rebuilds the image and
+replaces the container.
+
+Two things this arrangement deliberately does **not** do:
+
+- **The container does not migrate at boot.** Two replicas would race, and a
+  rollback would become a database event. Run `pnpm migrate:latest` from the host,
+  before `pnpm api:up`, exactly as above.
+- **The container's port is published to loopback only** (`127.0.0.1:3001`).
+  cloudflared does not use it — it addresses `api` directly — so nothing is reachable
+  from the LAN. The mapping exists only so a developer can curl the origin.
+
+*Why not `host.docker.internal:3001`, which also appears to work here:* Docker
+Desktop's port proxy makes a loopback-bound published port reachable from that name,
+and a Linux host does not. The API would be unreachable on a real server with no
+clue as to why. Addressing the service by name removes the host from the path
+altogether.
+
+*The previous arrangement, for the record:* `pnpm start:dev` (or `node dist/main.js`)
+on the host with the tunnel pointing at `host.docker.internal:3001`. Still workable
+for debugging — stop the container first so 3001 is free, and point the ingress back.
 
 Check it end to end:
 
@@ -118,6 +142,16 @@ Two settings are refused at boot in production, both deliberately:
   and would hand any caller a login code for any phone number.
 - `TELEGRAM_JWKS_URL` must be `https`. Signing keys fetched over plaintext can be
   substituted, which forges every login.
+
+`OTP_STATIC_CODE` is refused too, which is why **the container does not set
+`NODE_ENV`**: the image would refuse to boot against the current `.env`, and the
+fixed code is intentional until an SMS provider exists. The flag to flip when that
+day comes is in `.env`, not in the image.
+
+Because of that, log format is controlled by `LOG_PRETTY`, not by `NODE_ENV`. The
+container sets `LOG_PRETTY=false`: `pino-pretty` is a devDependency and the image
+carries production dependencies only, so pretty printing would fail at boot on a
+transport it does not have.
 
 ### `API_DOCS_ENABLED`
 
@@ -196,11 +230,16 @@ Not blockers for a staging URL; each is a real gap for production.
 
 | Symptom | Where to look |
 |---|---|
-| `curl https://hh.qitmir.uz/health` returns a Cloudflare 502/1033 | The tunnel is up but the origin is not. Is `pnpm start:dev` running on 3001? |
+| `curl https://hh.qitmir.uz/health` returns a Cloudflare 502/1033 | The tunnel is up but the origin is not. `docker ps` — is `headhunter-api` running and healthy? Right after a restart, give it a few seconds: cloudflared drops its QUIC connection when the origin goes away and re-registers |
+| 502 that persists, and the container *is* healthy | The tunnel and the API are not on the same Docker network. Both compose files must run from this directory so Compose gives them one project; check with `docker inspect headhunter-cloudflared --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'` |
+| The container serves old code | `pnpm api:up` rebuilds; a bare `docker compose up -d` reuses the existing image. This is the containerised version of the trap that cost an afternoon when the origin was `node dist/main.js` |
+| `headhunter-api` restart-loops at boot | Read `docker logs headhunter-api`. If it mentions `pino-pretty`, `LOG_PRETTY` is true in an image that has production dependencies only |
+| The API cannot reach Postgres from the container | `DB_HOST=postgres` and `DB_PORT=5432` inside the network — the host's 5435 mapping does not exist there. `docker-compose.api.yml` overrides both |
 | Cloudflare 1016 / DNS error | `cloudflared tunnel route dns` was not run, or the CNAME was removed |
 | Everything rate-limited at once | `CLIENT_IP_HEADER` is unset — every caller is sharing the loopback bucket |
 | Boot refuses to start | Joi rejected a variable; the message names it and says why |
 | No SMS arrives after `/auth/otp/send` | Expected — no provider is connected. The code is `OTP_STATIC_CODE`, and `devCode` in the response |
 | `/auth/otp/*` returns 404 | `OTP_LOGIN_ENABLED` is false. The 404 is deliberate; see `OtpEnabledGuard` |
 | Boot logs `OTP_STATIC_CODE is set` | Not an error. It warns on every start because a fixed code is a master key |
+| Logs `auto-verified: EMPLOYER_VERIFICATION_ENABLED is off` | Expected until M10. Nobody can approve a submission yet, so it self-approves; the audit row records a null actor. Turn the flag on when the admin module lands |
 | Telegram login fails, nothing in our logs | The redirect URI is not registered in BotFather. It fails on the client, before reaching us |

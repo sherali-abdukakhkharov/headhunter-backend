@@ -29,12 +29,26 @@ needs them.
 - [?] **Retention periods** for deleted accounts and audit logs (BR-14 defers to
       an approved privacy policy we do not have). *Blocks M1 deletion flow and
       M10 audit.*
-- [?] **Individual-employer verification evidence** - what is actually required
-      (§6.1 "if required by policy")? *Blocks M4.*
-- [?] **Permitted age/gender justifications** (BR-12) - moderation must validate
-      against an enumerated list. *Blocks M5.*
+- [x] ~~**Individual-employer verification evidence**~~ (§6.1 "if required by
+      policy") - **no longer blocking.** Resolved as *data*: the requirement is
+      declared per employer type in
+      [employer-requirements.ts](src/modules/employers/employer-requirements.ts)
+      with a provenance tag and a note, so the client's answer is one edit to one
+      file. The current default is that an individual employer need not upload an
+      identity document, and a company must upload a registration certificate.
+      What remains is sign-off, not delivery.
+- [x] ~~**Permitted age/gender justifications**~~ (BR-12) - **no longer blocking.**
+      Enumerated as *data*, the same way the employer evidence rules were: five
+      permitted reasons in
+      [age-gender-justifications.ts](src/modules/vacancies/age-gender-justifications.ts),
+      each with a provenance tag and an argument, plus a
+      `restriction_justification` dictionary for the four labels. Each reason
+      declares which restriction kinds it can support, so a gender restriction
+      justified by a minimum-age rule is refused. **Wants legal review** - nothing
+      on that list has been seen by a lawyer, which is why every entry is tagged
+      `default`.
 - [?] **Approved dictionary value lists** from the client (§13.2). **No longer
-      blocking anything.** All 14 types are seeded and working - 487 items, 1 950
+      blocking anything.** All 16 types are seeded and working - 575 items, 2 300
       labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.
       What remains is *review*, not delivery: `occupation` (162), `skill` (118),
       `industry` (32), `language`, `skill_level`, `shift` and `education_level` are
@@ -53,7 +67,15 @@ needs them.
 - [x] helmet, CORS, global `ValidationPipe`, Swagger `/docs` + Scalar `/reference`
 - [x] `GET /health` verified from the Flutter client on an emulator
 - [ ] Add `docs/` deliverables scaffold: deployment, backup/restore notes (§13.2)
-- [ ] Dockerfile + CI workflow (lint, typecheck, test, build)
+- [x] **Dockerfile** - multi-stage, runtime carries `dist` plus production
+      dependencies only, non-root, tini for signals, healthcheck on `/health`.
+      `docker-compose.api.yml` runs it as `headhunter-api` and the tunnel origin is
+      now `http://api:3001`; `pnpm api:up` is the whole redeploy. Migrations stay a
+      deliberate host command - a container that migrates at boot races itself the
+      moment there are two
+- [ ] CI workflow (lint, typecheck, test, build). The image build is the natural
+      place to hang it: `nest build` inside the Dockerfile already type-checks, so CI
+      is `docker build` plus the two test suites
 
 ## M1 - Auth, users, roles
 
@@ -207,7 +229,7 @@ Each type is tagged `spec` (enumerated in the specification), `default` (a
 conventional list seeded so dependent milestones can be built - **client still
 has to approve it**) or `awaiting` (a large list only the client can supply).
 
-All 14 types are populated - **487 items, 1 950 labels**. The four large lists live
+All 16 types are populated - **575 items, 2 300 labels**. The four large lists live
 in `seed/data/`.
 
 - [x] `region` - 14 first-level units **plus all 175 districts** by `parent_id`
@@ -232,88 +254,414 @@ in `seed/data/`.
 - [x] Every district resolves to one of the 14 regions
 - [x] Every occupation carries one of the five §2.1 categories
 
-## M3 - Candidate profile + files
+## M3 - Candidate profile + files *(done, except BR-09 - see below)*
 
-Storage is done (`infra/files`, Telegram-backed) with owner-scoped
-upload / list / download / delete at `/files`. What M3 adds is the candidate-facing
-part: attaching a file to a profile, the `attachments[]` schema block, and BR-09's
-rule for when an employer may read a candidate's CV.
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 
+### Schema *(done - `20260805120000_create_candidate_profiles`)*
+- [x] `candidate_profiles` with `visibility`, `completeness_percent`,
+      `is_complete`, `last_meaningful_update_at`, and `category` derived from the
+      primary occupation
+- [x] `candidate_occupations`, `candidate_skills`, `candidate_languages`,
+      `candidate_experience`, `candidate_education`, `candidate_attributes`
+- [x] Indexes from ARCHITECTURE.md §5 created **with** the tables, including the
+      two partial indexes over `visibility = 'searchable' AND is_complete` that
+      make BR-02's gate an index scan
+- [x] Race- and coherence-shaped rules in the database: one primary occupation
+      (partial unique index), exactly one value per attribute row (CHECK),
+      negotiable-excludes-a-range (CHECK), `from <= to` (CHECK), no future or
+      under-14 birth date (CHECK)
+- [x] `gender_id` is a **dictionary reference, not an enum** - §4.2's `kind` union
+      has no `enum` member, and BR-12 vacancy restrictions will reference the same
+      ids. `gender` is seeded as a 15th dictionary type
+
+### Field schemas *(done)*
+- [x] `GET /schemas/candidate-profile?category=` - core and category sections
+      together, ETag, `Vary: x-lang`, 304 on `If-None-Match`
+- [x] One declaration drives the form, the write routing **and** completeness
+      (`candidate-profile.schema.ts`), so a `requiredForSearchable` code cannot
+      fail to resolve to a field
+- [x] `pnpm seed` publishes the declared version into `schema_versions`, which is
+      what the manifest and the ETag read
+- [x] Contract tests over all five categories: every required code resolves, every
+      dictionary type exists, all four labels present, `accept` is a subset of what
+      the file service stores
+
+### Endpoints *(done)*
+- [x] `GET /candidates/me/profile` - an unstarted profile reads as empty with
+      `isStarted: false` rather than 404, so the form has one code path
+- [x] `PATCH /candidates/me/profile` - partial by field code, re-validated
+      server-side against the same schema (§4.2 rule 3), 422 per field
+- [x] `PUT /candidates/me/visibility` - its own route, and the only write that
+      does **not** move `last_meaningful_update_at`
+- [x] `GET/POST/PUT/DELETE /candidates/me/experience` and `.../education` - the
+      bespoke repeating sections
+- [x] `GET/POST/DELETE /candidates/me/attachments` - declared purposes only;
+      exceeding a purpose's `maxCount` supersedes the oldest, which is how §5.4's
+      "replace" works
+- [x] Recompute completeness and the derived category on every content write, in
+      the same transaction; expose the missing-field list with `required` flags
+- [x] BR-02: `is_complete AND visibility='searchable'`, reported as `isSearchable`
+
+### Files *(done in M0/M2 era, unchanged)*
 - [x] File upload / download / delete with type and size validation
 - [x] Authorized access without a public link - proxied, ownership-checked
-- [ ] BR-09 employer access to a candidate CV, via the one contact-exposure helper
-
-- [ ] `candidate_profiles` with `visibility`, `completeness_percent`,
-      `is_complete`, `last_meaningful_update_at`
-- [ ] `candidate_occupations`, `candidate_skills`, `candidate_languages`,
-      `candidate_experience`, `candidate_education`, `candidate_attributes`
-- [ ] Indexes from ARCHITECTURE.md §5 created **with** the tables
-- [ ] Category-driven required-field contract endpoint (§5.2) so the client form
-      adapts without hardcoding
-- [ ] Recompute completeness on write; expose the missing-field list
-- [ ] BR-02: searchable only when `is_complete AND visibility='searchable'`
-- [ ] `last_meaningful_update_at` must **not** move on a privacy-toggle-only change
-- [ ] Attach a stored file to the profile as its CV; replace supersedes the old one
 - [x] ~~Type + size validation; no public links~~ - done in `infra/files`. Note the
       shape changed from the original plan: **no signed URLs**. The Telegram file
       URL carries the bot token, so downloads are proxied through this API instead,
       which is a stronger reading of §11.1 than a short-lived URL
-- [ ] Tests: completeness maths, BR-02 gate, privacy toggle does not refresh
-      the update timestamp, unauthorized file access refused
 
-## M4 - Employer profile + verification
+### Tests *(done - 34 new unit, 28 new integration)*
+- [x] Completeness maths, including that `isComplete` is not a threshold on the
+      percentage
+- [x] Every validator rule, over pure functions with injected dictionary facts
+- [x] BR-02 gate end to end; privacy toggle does not refresh
+      `last_meaningful_update_at`; a calendar date survives a round trip unshifted
+- [x] One primary occupation across a change of primary; a leveled set rewrite
+      removes an entry; an invalid field in a body writes nothing at all
+- [x] Cascade from `users` through the profile to every child table
+- [x] One candidate cannot read, update or delete another's records or files
 
-- [ ] `employers` (type: company | individual) + `companies` detail
-- [ ] `verification_submissions` with evidence file references
-- [ ] Status `not_submitted | under_review | verified | rejected | changes_required`
-      + admin reason
-- [ ] BR-03 precondition on invitation and vacancy-submit routes
-- [ ] Test: unverified employer cannot search candidates (§7) or invite
+### Deferred out of M3, delivered in M6
+- [x] **BR-09 employer access to a candidate CV** - built once all three inputs
+      existed (a verified employer from M4, an application from M6). The rule is one
+      pure function, `infra/privacy/contact-exposure.ts`; `CandidateViewService`
+      gathers its inputs and `GET /applications/:id/files/:fileId/content` serves the
+      bytes. `GET /files/:id/content` stays **owner-only** - an employer's
+      entitlement comes from the application, so the route that serves them is the one
+      that can see it. Every access is logged with its decision reason (§11.1).
+- [ ] Flutter: mirror `CandidateProfileDto`, `FieldSchemaDto` and the history and
+      attachment DTOs (the app repo's M3)
 
-## M5 - Vacancies + moderation
+## M4 - Employer profile + verification *(done)*
 
-- [ ] `vacancies` + `vacancy_requirements` (skills/languages with level and
-      mandatory-vs-preferred, experience, education, attributes)
-- [ ] Status machine + transition validation in one place
-- [ ] `vacancy_status_history` audit rows on every transition
-- [ ] BR-05 check constraint `worker_count >= 1`
-- [ ] BR-06 deadline/closure enforcement
-- [ ] BR-11 closed leaves discovery, stays in history
-- [ ] BR-12 age/gender need justification and force `under_moderation`
-- [ ] Seasonal shape test: work type, date range, worker count, hours, transport,
-      payment method (UAT-10)
+### Schema *(done - `20260805150000_create_employers`)*
+- [x] `employers` (type: company | individual) + `companies` detail as its own
+      table - §6.1 gives the two types different fields, and nullable columns for
+      both on one table would make "which of these must be filled" a property of
+      code rather than of the schema
+- [x] `verification_submissions` + `verification_submission_files`, with a partial
+      unique index allowing **one open submission** per employer
+- [x] `employer_verification_history` - BR-08 for the verification machine, same
+      shape as `account_status_history` so an auditor reads one layout
+- [x] CHECK: `verified_at` is present exactly when the status is `verified`, so a
+      rejection cannot leave a stale verification timestamp behind
 
-## M6 - Discovery + applications
+### Endpoints *(done)*
+- [x] `GET /employers/me` - 404 before creation, unlike the candidate profile:
+      `type` decides which fields exist, so there is no neutral empty employer
+- [x] `PUT /employers/me` - full replacement; `type` is immutable after creation
+- [x] `GET /employers/me/verification` - state, past attempts and their reasons,
+      plus the **required evidence list served as data**
+- [x] `POST /employers/me/verification` - requires a complete profile and every
+      required document, each owned by the caller
+- [x] Status `not_submitted | under_review | verified | rejected | changes_required`
+      + admin reason, transitions validated in one place, every one writing its
+      BR-08 history row in the same transaction
+- [x] `VerificationService.decide` - the administrator's decision with a mandatory
+      reason for anything other than an approval (§6.1). M10 adds the queue and the
+      route; the rules and the audit row live with the machine
 
-- [ ] Candidate feed: recommended (rule-based), recent, saved + §5.5 filters
-- [ ] `applications` + **BR-07 partial unique index**
-- [ ] `application_stage_history` written in the same transaction (BR-08)
-- [ ] BR-06 deadline check inside the insert transaction, vacancy read `FOR SHARE`
-- [ ] Apply / withdraw / save / report
-- [ ] Employer application management, internal notes, hired-vs-required counts
-- [ ] `Idempotency-Key` on apply
-- [ ] Test: concurrent double-apply produces exactly one application
+### `EMPLOYER_VERIFICATION_ENABLED` *(off for the MVP)*
+- [x] The same reasoning as `MODERATION_ENABLED` in PLAN.md's M5: the admin module
+      is M10, so nobody *can* approve a submission, and BR-03 would park every
+      employer in `under_review` forever - making the whole employer half of the
+      product unreachable. With the flag off, submit goes straight to `verified`,
+      **still writing its history row** with a null actor and an
+      `auto_verified_no_reviewer` reason, and logging a warning on every use.
+      Both paths are tested
 
-## M7 - Candidate search + invitations
+### The open §6.1 decision, resolved as data
+- [x] **`employer-requirements.ts` declares what each type must provide**, with a
+      `spec | default` provenance tag and a note per value - the same pattern the
+      dictionary seed uses. Current defaults: a company must upload a registration
+      certificate; an individual **need not** upload an identity document. The
+      asymmetry is deliberate and argued in the file: an individual hiring two
+      seasonal workers is the case the product exists for, and storing scans of
+      identity documents is a liability to accept only when a policy says to
+- [ ] Client sign-off on those two defaults. A change is one edit to that file -
+      no migration, no endpoint change, no client release. **No longer blocking**
 
-- [ ] Search over all §7.1 filter groups, verified-employer only
-- [ ] Skills match-all as `HAVING COUNT(DISTINCT ...) = n`; match-any as `IN`
-- [ ] Language minimum level via `level_rank >=`
-- [ ] `{count, isExact}` count endpoint
-- [ ] Match score with per-group breakdown; §7.3 sort options
-- [ ] Vacancy→search filter prefill contract (UAT-06)
-- [ ] Saved candidates, vacancy shortlists, private notes
-- [ ] Invitations + accept/decline/request-details
-- [ ] **BR-09 single contact-exposure helper** used by every candidate serializer
-- [ ] Test: search result cards never contain a phone number
+### BR-03 *(the rule, ready for its callers)*
+- [x] `EmployersService.gate` / `assertVerified` - the two conditions returned
+      separately, because "finish your profile" and "wait for verification" are
+      different refusals with different fixes. `canPublish` on the profile response
+      is BR-03 in one field so no client re-implements it
+- [x] Applied at the call sites as they arrived: vacancy submit (M5) and candidate search
+      (M7, on every method of `CandidateSearchService`). Invitations are the last caller.
+      Still not a guard, deliberately: the two conditions are different refusals and the
+      routes want to say which
+
+### Tests *(done - 10 unit, 21 integration)*
+- [x] Completeness measured against that type's requirements only; missing-field list
+- [x] Type immutability; company detail absent for an individual
+- [x] Submission refused when incomplete, when a required document is missing, and
+      when the file belongs to another account
+- [x] Auto-verify writes an honest audit row (null actor, named reason)
+- [x] Queued path: one open submission, BR-03 still blocking under review
+- [x] Rejection and changes-required with a mandatory reason, then a resubmission
+      keeping both attempts and three history rows
+- [x] BR-03's gate across the whole lifecycle
+- [x] Test: unverified employer cannot search candidates (§7) - written in M7 with the
+      route it guards (`candidate-search.int.spec.ts`). The invitation half lands with
+      invitations
+
+### Noticed while building, worth knowing before BR-14
+- [ ] `verification_submission_files.file_id` is `RESTRICT` on purpose: evidence must
+      not vanish from under a submission an administrator is reading. That means a
+      **purge** must delete the employer row (which cascades submissions) *before*
+      the files, or it fails. Nothing does today - `purge_after` is still nullable
+      pending BR-14 - but the purge implementation has to know this ordering
+
+## M5 - Vacancies + moderation *(done)*
+
+### Schema *(done - `20260805170000_create_vacancies`)*
+- [x] `vacancies` + `vacancy_requirements` (skills/languages with level and
+      mandatory-vs-preferred, experience, education, attributes) - **one**
+      requirements table keyed by field code, because a vacancy's requirements are
+      read whole rather than filtered across vacancies the way candidate skills are
+- [x] `vacancy_status_history` - BR-08, same shape as the employer and account
+      histories
+- [x] BR-05 check constraint `worker_count >= 1`
+- [x] BR-12 as a CHECK too: any age or gender restriction requires a justification
+      in the same row, so no admin path or manual SQL fix can write an unexplained
+      restriction
+- [x] CHECKs keeping the timestamps honest: `published_at` present once published,
+      `closed_at` exactly when closed
+- [x] Partial indexes expressing BR-11 - discovery reads `status = 'active'` only,
+      so a closed vacancy cannot appear in it by forgetting a filter
+
+### The vacancy field schema *(done)*
+- [x] `GET /schemas/vacancy?category=` - the second target `schema_versions` has
+      published since M2, now real. Same resolver, same validator, same
+      `requiredForSearchable` guarantee as the candidate profile
+- [x] Contract tests generalized to run over **both** targets, plus two new ones:
+      shared field codes mean the same thing on both sides (M7 maps one to the other
+      by code for UAT-06's prefill), and each target uses only storage kinds its
+      writer implements
+
+### Endpoints *(done)*
+- [x] `POST /vacancies` (draft), `GET /vacancies/mine`, `GET /vacancies/:id`
+- [x] `PATCH /vacancies/:id` - partial by field code, re-validated server-side.
+      Editing a rejected vacancy returns it to `draft` and clears the stale reason
+- [x] `POST /vacancies/:id/submit` - BR-03, completeness (one 422 violation per
+      unfilled field), deadline sanity, BR-12 justification
+- [x] `PUT /vacancies/:id/status` - pause, resume, close with a reason
+- [x] `POST /vacancies/:id/moderation` - the admin decision, admin role only. M10
+      adds the *queue*; the rules and audit rows live with the machine
+- [x] Status machine + transition validation in one place (`vacancy-status.ts`),
+      and the one method that changes a status always writes its history row
+
+### `MODERATION_ENABLED` *(off for the MVP)* and the BR-12 exception
+- [x] Off, so an ordinary vacancy publishes on submit with an
+      `auto_approved_no_moderator` audit row and a warning - otherwise BR-04 would
+      strand every vacancy and close the MVP loop
+- [x] **A BR-12 restricted vacancy goes to review regardless of the flag.** BR-12
+      requires "administrator review", and a flag meant to stop ordinary vacancies
+      being stranded must not become a way to publish an unchecked restriction. Such
+      a vacancy therefore cannot publish until M10 - the right outcome, and the
+      employer sees `under_moderation` rather than silence
+- [x] Changing a restriction on a *live* vacancy sends it back for review too: it
+      has not been reviewed as it now reads
+
+### BR-06
+- [x] `isOpenForApplications(status, deadline, today)` - one definition, exported,
+      so M6's feed filter and its in-transaction apply check cannot disagree. A feed
+      that advertised a vacancy the apply route refuses is the failure this prevents
+- [ ] Apply it in M6: the deadline check inside the insert transaction with the
+      vacancy read `FOR SHARE` (ARCHITECTURE.md §6)
+
+### Tests *(done - 22 unit, 25 integration)*
+- [x] The transition table pinned exactly, `closed` terminal (BR-11), no self
+      transitions, and which statuses are editable
+- [x] BR-06 boundary: open *on* the deadline day, closed the day after
+- [x] BR-12: unknown reason refused, mismatched reason refused, a reason must cover
+      every restriction present, and no preference-shaped reason is on the list
+- [x] Seasonal shape end to end: work type, date range, worker count, hours,
+      transport, tools, crew, payment method (UAT-10)
+- [x] reject → edit → draft → resubmit → approve, with all six history rows
+- [x] Pause and resume without moving `published_at`; close keeps it in the list
+- [x] One employer never sees another's vacancy (404, not 403)
+- [x] Cascade from the employer through vacancies to requirements and history
+
+## M6 - Discovery + applications *(done - the MVP loop closes here)*
+
+### Schema *(done - `20260805190000_create_applications`)*
+- [x] `applications` + **BR-07 partial unique index** (`WHERE status NOT IN
+      ('withdrawn','rejected')`), so a withdrawn or rejected candidate may apply again
+- [x] `application_stage_history` (BR-08), `application_notes` as **its own table**
+      so §6.5's internal note is never one forgotten `select` from the candidate
+- [x] `saved_vacancies`, keyed so saving twice is saving once
+- [x] `complaints` - generic `target_type` + `target_id` from the start, because
+      §5.6 needs vacancy reports now and §10 reviews four target kinds later
+- [x] `idempotency_keys` storing a fingerprint and the resource id, never a response
+      body - a cached body would go stale the moment the resource changed
+
+### Candidate side *(done)*
+- [x] Feed: recommended (rule-based on occupation, region and category), recent,
+      saved, with §5.5's filters. One visibility fragment behind all of them, so
+      BR-04, BR-06 and BR-11 cannot be forgotten by one query
+- [x] `GET /discovery/vacancies/:id` - §5.6's detail with the employer's verification
+      status and the structured requirements
+- [x] Apply / withdraw / save / unsave / report
+- [x] **Saved vacancies are deliberately not visibility-filtered**: a candidate who
+      saved something needs to see that it closed, not have it vanish. BR-11 removes a
+      closed vacancy from *discovery*, and a personal list is not discovery
+- [x] `Idempotency-Key` on apply (ARCHITECTURE.md §7): same key + same body replays
+      the original application, a different body is a 409
+
+### Employer side *(done)*
+- [x] Applications grouped by vacancy, filterable by status (§6.5)
+- [x] Stage moves with §8.1's who-may-set-what, forward-only, skipping allowed
+- [x] Internal notes, and `hired` incrementing the vacancy counter in the same
+      transaction (§6.5's hired-vs-required)
+- [x] `GET /applications/:id/candidate` - the applicant as much as BR-09 allows,
+      with the authorized CV download
+
+### Tests *(done - 19 unit, 30 integration)*
+- [x] **Test: concurrent double-apply produces exactly one application** - two applies
+      fired together, exactly one succeeds, one row in the table
+- [x] BR-06 after the deadline, BR-04/BR-11 for paused and closed
+- [x] The idempotent replay, and a 409 for a reused key with a different body
+- [x] Backwards moves refused; an employer cannot withdraw for a candidate
+- [x] BR-09 across the lifecycle: revealed on application, withdrawn on withdrawal
+- [x] The internal note appears in no candidate-facing read
+- [x] BR-07 counts only active applications, so re-applying after withdrawal works
+
+## M7 - Candidate search + invitations *(done)*
+
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
+
+### Schema *(done - `20260806120000_create_candidate_saves`)*
+- [x] `saved_candidates`, with §7.3's private employer note **on the save** - one note per
+      employer per candidate, written where the employer already keeps them, so "a note
+      without a save" is unrepresentable rather than a state to decide about
+- [x] `vacancy_shortlists`, keyed by vacancy because "vacancy-specific" is the point of
+      it; the shortlist's owner is the vacancy's owner, so there is no second notion of
+      who may edit it
+- [x] Deliberately *not* enforced: that a shortlisted candidate was saved first. §7.3
+      describes a user's flow, and a foreign key demanding it would fail a two-tap action
+      for a rule nothing depends on
+
+### Search *(done)*
+- [x] All §7.1 filter groups, verified-employer only (`assertVerified` on every method,
+      the saved list included), every read behind BR-02's one gate fragment
+- [x] Skills match-all as `count(DISTINCT ...) = n`, match-any as `EXISTS` - two plans,
+      deliberately not unified (ARCHITECTURE.md §5)
+- [x] Language minimum level via `level_rank >=`, one ANDed predicate per language
+- [x] `{count, isExact}` bounded by `SEARCH_COUNT_CAP`, so "200+" is honest
+- [x] Match score with per-group breakdown; `scoreGroups()` is the single source of the
+      weights *and* of what the response reports, so the number that ranked a candidate
+      and the number explaining it cannot disagree
+- [x] §7.3 sorts: match, recent, experience, salary and **tiered proximity** - same
+      district, then same region, then the rest, against `proximityDistrictId`. Each sort
+      ends with a total order, or two pages of one search can repeat a candidate. A real
+      distance needs a centroid per district and would not change the contract
+- [x] Vacancy→search prefill (UAT-06) as a pure function over the vacancy aggregate:
+      mandatory requirements become filters, preferred ones deliberately do not, and a
+      BR-12 restriction carries the justification the vacancy already holds
+- [x] Saved candidates, vacancy shortlists, private notes
+- [x] **BR-09** used by every candidate serializer: the card has no contact fields and the
+      query never joins `users`; `CandidateViewService.forCandidate` is §7.3's "View
+      profile" and reuses M6's one gatherer rather than a second copy of the rule
+- [x] §7.1's two filters that could not be built as written, both resolved as ids:
+      `specialization` is now a **dictionary** (60 items, `default`, client owns the final
+      list) on both the candidate profile and the vacancy, with both schema versions
+      bumped to 2 and the old free text deleted rather than guessed at; remote-work
+      readiness was never missing, it is a `work_format` id rather than a boolean
+- [x] BR-12 on the search side: an age or gender filter needs a justification from the
+      same declaration a vacancy's restriction needs, covering the same kinds, and every
+      accepted use is logged for M10's audit
+- [x] **The profile photo is the one exception to BR-09's file gate** - §7.3 puts a photo
+      on the card, and a photo is not §5.4's authorized document. One route, one purpose
+      check, searchable profiles only. *Wants client sign-off, like the other decisions
+      answered as data*
+- [x] `search` rate-limit bucket (§12.5) with `RATE_LIMIT_SEARCH_PER_IP`
+
+### Invitations *(done - `20260806130000_create_invitations`)*
+- [x] `invitations` with the two §8.2 shapes made exclusive by a CHECK - a vacancy
+      invitation or a general one carrying its own occupation, place, schedule and pay -
+      plus `invitation_status_history` for BR-08 and a response note, because "Request
+      details" without room for the question is a button that says nothing
+- [x] One open invitation per employer, candidate and vacancy: a partial unique index with
+      **`NULLS NOT DISTINCT`**, without which two general invitations (both with a null
+      `vacancy_id`) would count as different rows
+- [x] `POST /invitations` with BR-03, BR-02's gate on who may be invited, M5's
+      `isOpenForApplications` on the vacancy, and `Idempotency-Key`
+- [x] Accept / decline / request-details in one method: the three differ only in the status
+      they set, and splitting them is how one ends up without its audit row.
+      `details_requested` is a question, not an ending; asking twice is refused
+- [x] `hasAcceptedInvitation` wired into the BR-09 helper - one line, no change to the rule
+      - plus `GET /invitations/:id/files/:fileId/content`, the invitation's counterpart to
+      the application-scoped download, re-evaluated per download
+- [x] §7.4's invited/accepted counts per vacancy; the interviewed and hired halves are
+      application stages and stay where they are
+- [x] Test: unverified employer cannot invite (§7) - the second half of M4's outstanding
+      test
+- [x] Tests: the transition table pinned exactly, a concurrent double-tap producing one
+      invitation, the idempotent replay and the 409 for a reused key, inviting a hidden
+      candidate refused, a paused and an expired vacancy refused, contact details closed
+      while only sent and open on acceptance, and the download refused for another employer
+
+### Tests *(done - 85 unit, 66 integration across both halves)*
+- [x] Test: search result cards never contain a phone number - asserted twice, once
+      mechanically over the compiled SQL (no `users`, no `phone`) and once over a real
+      response body
+- [x] Unit: the scoring groups, the prefill mapping, and what every filter compiles to
+- [x] Integration: match-all really demands every skill, a language floor really compares
+      ranks, BR-02 really keeps a hidden or incomplete profile out, a negotiable
+      expectation passes a budget, the bounded count answers "n+", the page comes back in
+      the order it was scored
+- [x] Test: unverified employer cannot search candidates (§7) - M4's outstanding test,
+      written with the route it guards
+- [x] Test: hiding a profile removes it from a saved list it was already on
 - [ ] Measure p95 against the 3s budget before optimizing anything
 
-## M8 - Chat + interviews
+## M8 - Chat + interviews *(done)*
 
-- [ ] Gated conversation creation and message send
-- [ ] Attachments, per-recipient read state, report/block, read-only on close
-- [ ] Interviews with type-dependent required fields + candidate response
-- [ ] `Idempotency-Key` on message send
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4g.
+
+### Schema *(done - `20260807100000_create_conversations`, `20260807130000_create_interviews`)*
+- [x] `conversations` (one per employer/candidate pair), `messages` with a one-file
+      attachment, `conversation_blocks`. **No column says a conversation is permitted** -
+      that is asked live, so nothing has to remember to un-set it
+- [x] Read state as two timestamps on the conversation, not a `message_reads` table: two
+      participants make it one comparison and one aggregate
+- [x] `interviews` with §8.3's conditional requirement as a CHECK over all three permitted
+      shapes, plus `interview_status_history` for BR-08
+
+### Chat *(done)*
+- [x] Gated conversation creation and message send, through the **one**
+      `HiringInteractionService` that BR-09 already uses - extracted on its third caller,
+      so "may see a phone number" and "may send a message" cannot drift apart
+- [x] Attachments (sender-owned files only), per-recipient read state, report as a
+      `complaints` row with `target_type = 'message'`, block that is read-only for both
+      sides, read-only when the interaction closes - and readable throughout
+- [x] `Idempotency-Key` on message send
+- [x] **No `delivered` state**: §9.1 asks for it "where supported by the backend", and it
+      is a property of push. It arrives with M9's dispatcher rather than as a column set
+      at the same instant as `created_at`
+
+### Interviews *(done)*
+- [x] Type-dependent required fields (§8.3), refused with a field-level violation and a
+      CHECK constraint behind it
+- [x] Scheduling moves the application to §8.1's `interview` stage **in the same
+      transaction**, with its BR-08 row - the stage and the interview are one event
+- [x] Candidate confirm / request-another-time; `confirmed` is not terminal, because plans
+      change; rescheduling always resets the answer
+- [x] `cancelled`, which §8.3 does not list - the alternative is a stale interview nobody
+      can retract
+
+### Tests *(done - 35 unit, 39 integration)*
+- [x] The two rule tables pinned exactly, including §8.3's absence checks - a phone
+      interview carrying a meeting link is refused
+- [x] Integration: no conversation without a permitted interaction, a sent invitation is
+      not enough, withdrawal closes sending and keeps the history, a new interaction
+      reopens it, a rejection deliberately does not close it, a block stops both sides,
+      read state per recipient, an attachment must be the sender's own
+- [x] Integration: scheduling moves the stage atomically, a rejected application is
+      refused **and writes nothing**, and the CHECK constraints refuse a direct write that
+      the service would have refused too
 
 ## M9 - Notifications *(deferred: last feature milestone, after M10)*
 
@@ -338,7 +686,8 @@ Client direction 2026-08-04: MVP first, notifications last to build and test.
 ## M11 - Hardening
 
 - [ ] Load test both budgets; fix misses before adding a search projection
-- [ ] Five rate-limit buckets: OTP, auth, search, messaging, files
+- [ ] Five rate-limit buckets: OTP, auth, search, messaging, files - four exist
+      (`search` landed with M7); messaging arrives with M8
 - [ ] Security review: route-level permission checks, input validation,
       file scanning, log redaction, no secrets shipped
 - [ ] Scheduled backups + **rehearsed** restore, documented

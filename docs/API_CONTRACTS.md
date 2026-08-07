@@ -237,12 +237,34 @@ GET /dictionaries/items?ids=<uuid,uuid>
 
 `occupation` · `skill` · `industry` · `region` · `language` · `employment_type` ·
 `work_format` · `shift` · `attribute` · `skill_level` · `language_level` ·
-`education_level` · `payment_period` · `file_purpose`
+`education_level` · `payment_period` · `file_purpose` · `gender` ·
+`restriction_justification` · `specialization`
 
 Everything selectable anywhere in the product is one of these. There is no
 inline enum in any contract: BR-13 requires a stable id plus four locales, and
 §10.3 requires admin management — both of which only the dictionary tables
 provide.
+
+**`gender` added 2026-08-05 with M3.** §5.1 asks for gender on the profile and
+§7.1/BR-12 let a moderated vacancy restrict on it, so it needed four labels and a
+stable id that a profile and a vacancy requirement can share. A native enum was
+rejected because §4.2's `kind` union has no `enum` member — deliberately, per §3.1.
+Adding a type is **additive**: a field names its own `dictionaryType` and the client
+fetches whatever is named, so nothing existing changed. `file_purpose` also gained a
+`photo` item for §5.1's optional profile photo.
+
+**`restriction_justification` added 2026-08-05 with M5** for BR-12's permitted reasons —
+the labels are content, the rule about which reason supports which restriction is code.
+
+**`specialization` added 2026-08-07 with M7, and this one was not additive.** §7.1 filters
+on specialization, and the field was free text on both the candidate profile and the
+vacancy until then. A text filter cannot work across four interface variants: a
+candidate's `Информатика` never meets an employer's `Informatika` (§3.3, BR-13). Both
+fields are now `dictionary_multi` over this type, **both schema versions are bumped to 2**,
+and clients must refetch the two schemas. Existing free-text values were deleted rather
+than guessed at — mapping prose onto items would put a claim in somebody's profile they
+did not make, and re-picking is one tap. 60 items in eight groups, tagged `default`: the
+client owns the final list.
 
 ### 3.2 Categories — frozen
 
@@ -439,6 +461,21 @@ stays bespoke.
 | `dictionary_multi` | `uuid[]` |
 | `dictionary_leveled` | see §4.4 |
 
+Two field properties were **added 2026-08-05 with M3**, both additive:
+
+- **`parentFieldCode`** on a `dictionary_single` — restrict the options to the
+  children of the item chosen in that field. Only `district_id` uses it today
+  (`parentFieldCode: "region_id"`). Without it the client would have to hardcode
+  "districts are the children of a region", which is exactly the hardcoding the
+  schema exists to remove. The server enforces it: a district under another region
+  is `422` with `rule: "parentField"`, checked against the stored region when the
+  request does not resend one.
+- **`validation.notAfter: "today"` and `validation.minAgeYears`** on a `date`. The
+  mirror of §4.1's `notBefore` example, plus the rule a birth date needs.
+  `date_of_birth` carries both, and the column keeps the same rule as a CHECK — the
+  schema layer exists so an under-age entry gets a field-level message instead of a
+  constraint failure.
+
 There is no `enum` and no file kind. Both were considered and rejected — §3.1
 and §4.5.
 
@@ -551,6 +588,684 @@ to the field that produced it.
 `completenessPercent` and `isComplete` are computed and stored server-side
 (§7.1 filters on them). Read them from the profile response; recomputing
 client-side guarantees the two disagree.
+
+## 4a. The candidate profile
+
+Built 2026-08-05 with M3. Every route requires an **active role of `candidate`** —
+an account may hold several roles (§2.3), and holding one is not acting as it.
+
+```
+GET   /candidates/me/profile                 ->  CandidateProfile
+PATCH /candidates/me/profile                 ->  CandidateProfile   (§4.6 body)
+PUT   /candidates/me/visibility              ->  CandidateProfile
+
+GET   /candidates/me/experience               ->  { items: Experience[] }
+POST  /candidates/me/experience               ->  Experience
+PUT   /candidates/me/experience/{id}          ->  Experience
+DELETE/candidates/me/experience/{id}          ->  204
+
+GET   /candidates/me/education                ->  { items: Education[] }
+POST  /candidates/me/education                ->  Education
+PUT   /candidates/me/education/{id}           ->  Education
+DELETE/candidates/me/education/{id}           ->  204
+
+GET   /candidates/me/attachments               ->  { items: Attachment[] }
+POST  /candidates/me/attachments               ->  Attachment  (multipart)
+DELETE/candidates/me/attachments/{id}          ->  204
+```
+
+### The profile response
+
+```json
+{
+  "isStarted": true,
+  "category": "professional",
+  "visibility": "hidden",
+  "completenessPercent": 52,
+  "isComplete": true,
+  "isSearchable": false,
+  "missingFields": [
+    { "code": "available_from", "section": "preferences", "required": false }
+  ],
+  "fields": { "full_name": "Anvar Karimov", "region_id": "…", "…": "…" },
+  "lastMeaningfulUpdateAt": "2026-08-05T18:02:55+05:00",
+  "updatedAt": "2026-08-05T18:03:05+05:00"
+}
+```
+
+Five things the client should rely on:
+
+- **`fields` is keyed by schema field codes and shaped exactly as `PATCH` accepts.**
+  Read, change one value, send it back. There is no second mapping to maintain.
+- **A profile that does not exist yet is not a 404.** `isStarted: false`, every field
+  present and null, completeness 0. The form screen has one code path.
+- **`category` is derived from the primary occupation** and is what to pass to
+  `GET /schemas/candidate-profile`. It is `null` until an occupation is chosen, and
+  only the fields common to all five categories exist until then — so the first
+  profile screen is choosing the target work. Sending a category-specific code
+  before that is `422 validation.unknown_field`.
+- **`isSearchable` is BR-02 in one field**: `isComplete && visibility === 'searchable'`.
+  ANDing it client-side would be a second implementation of the rule that decides
+  who is findable.
+- **`missingFields` carries optional gaps too**, flagged by `required`. The `true`
+  ones are §5.3's mandatory list and block searchability; the rest are prompts.
+  `code` is a field code (or a bespoke section's code) and `section` is what to open.
+
+### Visibility is its own route, not a field
+
+`PUT /candidates/me/visibility` with `{ "visibility": "searchable" | "hidden" | "visible_after_apply" }`.
+
+Two reasons it is not in `fields`: §4.2's `kind` union has no `enum` member, and this
+is the **only write that does not refresh `lastMeaningfulUpdateAt`** (§5.3, §7.3) —
+a privacy toggle must not let a stale profile present itself as freshly maintained.
+It is accepted while the profile is incomplete: BR-02 gates the *effect*, not the
+setting.
+
+### Experience and education
+
+The `editor: "bespoke"` sections of §4.1, at the `endpoint` the schema publishes.
+Fixed shapes rather than schema-driven ones, and `PUT` is a full replacement — the
+records are small and a bespoke editor submits the whole form.
+
+Only `roleTitle` and `startedOn` are required on experience: §5.1 asks for a
+simplified entry for informal or seasonal work, where there is often no employer to
+name. `isCurrent` and `endedOn` are mutually exclusive (`422`
+`validation.current_has_no_end`), and an end before the start is
+`validation.date_order`.
+
+Both count toward `completenessPercent`, refreshed in the same transaction as the
+write. Neither can ever be *required* — a bespoke section has no field for
+`requiredForSearchable` to name — so an empty work history lowers the percentage
+without locking the profile out of search.
+
+### Attachments
+
+`POST` is `multipart/form-data` with `purpose` (a `file_purpose` **code** —
+`cv`, `photo`, `certificate`, `evidence`) and `file`.
+
+- Only purposes the category's `attachments[]` declares are accepted; anything else
+  is `400 candidate.attachment_purpose_invalid`.
+- **`maxCount` is how "replace" works** (§5.4). Uploading a second CV supersedes the
+  first: the new file is stored, then the oldest beyond the limit is soft-deleted.
+  There is deliberately no "replace" operation — delete-then-upload leaves a
+  candidate with no CV if the second call fails.
+- `downloadPath` is a path on this API (`/files/{id}/content`). There is never a
+  storage URL: Telegram's carries the bot token, so bytes are proxied after an
+  ownership check (§11.1, ARCHITECTURE.md §9).
+- Deletes are soft. BR-14's retention period is still open.
+
+**Employer access to a candidate's CV (BR-09) is not built yet.** A CV is currently
+readable only by its owner — stricter than BR-09 requires, so nothing is exposed. It
+arrives with M4's verified employer and M7's candidate serializer, where "an allowed
+hiring interaction" can actually be evaluated.
+
+## 4b. The employer profile and verification
+
+Built 2026-08-05 with M4. Every route requires an **active role of `employer`**.
+
+```
+GET   /employers/me                ->  EmployerProfile
+PUT   /employers/me                ->  EmployerProfile
+GET   /employers/me/verification    ->  VerificationState
+POST  /employers/me/verification    ->  VerificationState
+```
+
+### The profile
+
+`PUT` is a full replacement — §6.1 is one screen and submits whole. `type` is
+`company` or `individual`, chosen once: it decides which fields apply and what
+verification asks for, so changing it later would strand the other type's answers and
+the evidence verification was granted against. A later `PUT` with a different `type`
+is `403 employer.type_immutable`.
+
+Unlike the candidate profile, **`GET` is a 404 before the first `PUT`**
+(`employer.profile_not_found`). There is no neutral empty employer to render, because
+`type` decides which fields exist at all.
+
+Fields by type, per §6.1:
+
+| Type | Required for BR-03 | Also accepted |
+|---|---|---|
+| `company` | `contactPhone`, `regionId`, `legalName`, `publicName`, `industryId`, `contactPersonName`, `description` | `districtId`, `address`, `logoFileId` |
+| `individual` | `contactPhone`, `regionId`, `fullName`, `description` | `districtId`, `address` |
+
+- **`legalName` and `publicName` are both kept.** They differ often enough that
+  showing the legal name on a vacancy card would be wrong and verifying against the
+  public name would be impossible.
+- **`contactPhone` is not the login phone.** BR-01's verified number stays on the
+  account; this is the number a candidate should call, which is often a different
+  person.
+- `logoFileId` is a stored file of purpose `logo`, uploaded through `POST /files`.
+
+**`canPublish` is BR-03 in one field**: `isComplete && verificationStatus ===
+'verified'`. Read it rather than ANDing the two — a client that re-derived it would be
+a second implementation of the rule that decides who may post a vacancy.
+`missingFields[]` names the unfilled required fields so the client can focus one.
+
+### Verification
+
+`verificationStatus` is §6.1's five states exactly: `not_submitted`, `under_review`,
+`verified`, `rejected`, `changes_required`. `verificationReason` is the
+administrator's text for a rejection or a correction request — **human prose in
+whatever language they wrote it**, not a translatable key.
+
+```json
+{
+  "status": "not_submitted",
+  "reason": null,
+  "verifiedAt": null,
+  "requiredEvidence": [
+    { "purposeCode": "company_registration", "required": true },
+    { "purposeCode": "evidence", "required": false }
+  ],
+  "submissions": []
+}
+```
+
+**Read `requiredEvidence` rather than hardcoding a document list.** §6.1 says
+"verification documents if required" and "identity verification data if required by
+policy", and that policy is still an open client decision — so the answer is served as
+data and will change without a client release. Today a company must provide
+`company_registration` and an individual need not provide anything.
+
+`POST` takes `{ "fileIds": [...] }` — files uploaded through `POST /files` with the
+purpose the list names, each owned by the caller. Refusals:
+
+| Code | Status | Meaning |
+|---|---|---|
+| `employer.profile_incomplete` | 403 | BR-03: finish the profile first. |
+| `employer.verification_evidence_missing` | 403 | A `required` document is absent. |
+| `employer.verification_not_submittable` | 409 | Already under review, or already verified. A 409 rather than a 403: the state forbids it, not the caller. |
+| `file.not_found` | 404 | A file id is unknown, deleted, or belongs to another account. |
+
+`submissions[]` is newest first and keeps every attempt with its reason, so a client
+can show why a previous try was refused. After a `changes_required` decision the
+employer may submit again.
+
+**Verification currently approves immediately.** The admin module is M10, so
+`EMPLOYER_VERIFICATION_ENABLED` is off and a submission goes straight to `verified`.
+The client should not special-case this: it is the same response shape, and the
+`under_review` state will start appearing when the flag goes on. The audit row records
+a null actor and an `auto_verified_no_reviewer` reason, so nothing claims a person
+reviewed it.
+
+## 4c. Vacancies
+
+Built 2026-08-05 with M5. The employer side; what a *candidate* sees is discovery (M6),
+a separate module with different authorization and ranking.
+
+```
+POST  /vacancies                    ->  Vacancy   (a draft)
+GET   /vacancies/mine                ->  { items: Vacancy[] }
+GET   /vacancies/{id}                ->  Vacancy
+PATCH /vacancies/{id}                ->  Vacancy   (§4.6 body)
+POST  /vacancies/{id}/submit         ->  Vacancy
+PUT   /vacancies/{id}/status         ->  Vacancy   (pause | resume | close)
+POST  /vacancies/{id}/moderation     ->  Vacancy   (admin role only)
+```
+
+The form comes from `GET /schemas/vacancy?category=<code>` — **the same mechanism as the
+candidate profile**, so one form engine renders both, and `fields` is keyed by the same
+field codes in both directions. `category` is derived from `occupation_id`, as on a
+candidate profile.
+
+### Statuses (§6.4)
+
+`draft` · `under_moderation` · `active` · `paused` · `closed` · `rejected`
+
+```
+draft            → under_moderation | active
+under_moderation → active | rejected
+rejected         → draft            (an edit does this automatically)
+active           → paused | closed | under_moderation
+paused           → active | closed | under_moderation
+closed           → nothing          (BR-11: leaves discovery, stays in history)
+```
+
+- **`isOpenForApplications`** is BR-06 in one field: `active`, and either no deadline or
+  one that has not passed. The deadline day itself still accepts applications.
+- **`missingForSubmit`** lists required codes still unfilled. `POST /submit` refuses
+  while it is non-empty, with **one 422 violation per code** so each can be focused.
+- **Editing a `rejected` vacancy returns it to `draft`** and clears the moderator's
+  reason — otherwise a stale reason would read as current.
+- **A vacancy under review cannot be edited** (`409 vacancy.under_moderation`): a
+  moderator is reading it, and an edit would have them approve something else.
+- `closed` is terminal, and closing is the employer's action with a reason.
+
+### BR-12: age and gender restrictions
+
+Optional fields, in the `restrictions` section: `age_min`, `age_max`, `gender_id`,
+`restriction_justification_id`, `restriction_justification_note`.
+
+Four things the client must know:
+
+1. **A restriction requires `restriction_justification_id`** — an id from the
+   `restriction_justification` dictionary, never free text, because BR-12 requires
+   moderation to validate the reason. The note is elaboration for the reviewer.
+2. **Each reason supports only certain restriction kinds.** A gender restriction
+   justified by a minimum-age rule is `403 vacancy.restriction_not_justified`.
+3. **A restricted vacancy always goes to `under_moderation`**, even while
+   `MODERATION_ENABLED` is off. Until the admin module exists it therefore **cannot be
+   published** — deliberately: the flag exists so ordinary vacancies are not stranded,
+   not so an unchecked restriction can go live.
+4. **Adding or changing a restriction on a live vacancy sends it back for review**, so
+   it leaves discovery until approved.
+
+### Errors
+
+| Code | Status | Meaning |
+|---|---|---|
+| `employer.profile_incomplete` / `employer.not_verified` | 403 | BR-03, on create and submit. |
+| `vacancy.not_found` | 404 | Unknown, or another employer's — we do not confirm which (§11.1). |
+| `vacancy.under_moderation` | 409 | Being reviewed; not editable yet. |
+| `vacancy.not_editable` | 409 | Closed. BR-11 keeps it as history. |
+| `vacancy.not_submittable` | 409 | Only a `draft` or a `rejected` vacancy may be submitted. |
+| `vacancy.transition_not_allowed` | 409 | Not a legal move in the machine above. |
+| `vacancy.deadline_passed` | 403 | Publishing something BR-06 would refuse every application to. |
+| `vacancy.restriction_not_justified` | 403 | BR-12: absent or unsuitable justification. |
+| `validation.failed` | 422 | Per-field, on a write **and** on an incomplete submit. |
+
+**Publication currently happens on submit.** `MODERATION_ENABLED` is off until the admin
+module (M10), so an unrestricted vacancy goes straight to `active` with an
+`auto_approved_no_moderator` audit row. The client should not special-case that: the
+response shape is identical, and `under_moderation` starts appearing when the flag goes
+on — and already appears today for anything BR-12 touches.
+
+## 4d. Discovery and applications
+
+Built 2026-08-05 with M6. This is the loop: an employer publishes, a candidate finds and
+applies, the employer moves them through the stages.
+
+```
+GET   /discovery/recommended                  ->  { items: FeedItem[] }
+GET   /discovery/recent                       ->  { items: FeedItem[] }
+GET   /discovery/saved                        ->  { items: FeedItem[] }
+GET   /discovery/vacancies/{id}                ->  VacancyDetail
+PUT   /discovery/vacancies/{id}/saved          ->  204
+DELETE/discovery/vacancies/{id}/saved          ->  204
+POST  /discovery/vacancies/{id}/report         ->  { id }
+
+POST  /vacancies/{id}/applications             ->  Application    (candidate)
+GET   /applications/mine                        ->  { items: Application[] }
+POST  /applications/{id}/withdraw                ->  Application
+
+GET   /vacancies/{id}/applications               ->  { items: Application[] }   (employer)
+GET   /vacancies/{id}/applications/counts         ->  ApplicationCounts
+PUT   /applications/{id}/stage                    ->  Application
+GET   /applications/{id}/candidate                 ->  CandidateForEmployer
+GET   /applications/{id}/files/{fileId}/content     ->  bytes
+POST  /applications/{id}/notes                     ->  ApplicationNote
+GET   /applications/{id}/notes                     ->  { items: ApplicationNote[] }
+
+GET   /applications/{id}/history                    ->  { items: StageHistoryEntry[] }  (both)
+```
+
+### The feed
+
+All three lists share one card shape, and two of its fields save the client a round trip:
+`isSaved`, and `applicationStatus` — the caller's own stage for that vacancy, or null,
+so a card can show Apply or the current status directly (§5.6). The card also carries the
+employer's `isVerified`, which is what makes BR-03's badge worth having.
+
+Filters (§5.5) are query parameters, id lists comma-separated:
+`occupationIds`, `category`, `regionId`, `districtId`, `employmentTypeIds`,
+`workFormatIds`, `shiftIds`, `salaryFrom`, `publishedFrom`, plus `limit` (max 50)
+and `offset`.
+
+- **`recommended` is rule-based**, not a model: occupation counts double, region and
+  category one each, ties break on recency. A candidate with no profile gets the recent
+  feed rather than an empty one.
+- **`salaryFrom` keeps negotiable vacancies.** One has not said no to the figure, and
+  excluding them would hide much of the seasonal work.
+- **Everything except `saved` is filtered to visible vacancies** — active, deadline not
+  passed (BR-04, BR-06, BR-11). `saved` deliberately is not: a candidate who saved
+  something needs to see that it closed rather than have it vanish.
+
+### Applying
+
+`POST /vacancies/{id}/applications` with an optional `coverNote`, and an optional
+**`Idempotency-Key` header**. Send one: a retry with the same key and body returns the
+original application instead of failing, which is what makes a lost response safe (§12.4).
+A different body under the same key is `409 idempotency.key_reused`.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `candidate.profile_required` | 403 | BR-02 — fill in the profile first. |
+| `application.already_applied` | 409 | BR-07 — one active application per vacancy. |
+| `application.vacancy_closed` | 409 | BR-06, and BR-04/BR-11. From the candidate's side "paused", "closed" and "deadline passed" are one fact: applications are not being taken. |
+
+**Withdrawing frees the BR-07 slot**, so a candidate may apply again later. It is allowed
+up to an accepted offer, which `hired` being terminal expresses.
+
+### Stages (§8.1)
+
+`submitted` · `viewed` · `shortlisted` · `interview` · `offer` · `hired` ·
+`rejected` · `withdrawn`
+
+- **Forward moves may skip a stage** — real hiring does. Backwards moves are refused: a
+  candidate told they were shortlisted and then returned to `viewed` has been told
+  something false.
+- **`withdrawn` is the candidate's alone**; everything from `viewed` on is the
+  employer's. `hired`, `rejected` and `withdrawn` are terminal.
+- `hired` increments the vacancy's counter in the same transaction — read it from
+  `/counts` alongside `workerCount` (§6.5).
+- `GET /applications/{id}/history` is BR-08's trail and is readable by **both** sides.
+
+### What the employer may see of the applicant (BR-09)
+
+`GET /applications/{id}/candidate` returns the profile plus:
+
+- **`phone`** — present only where the candidate's privacy settings **and** a hiring
+  interaction both allow it. **Null is a normal answer, not an error.**
+- **`canViewFiles`** and **`files[]`**, each with a `downloadPath` pointing at
+  `/applications/{id}/files/{fileId}/content`. Not `/files/{id}/content`, which stays
+  owner-only: the entitlement comes from the application, so the route that serves it is
+  the one that can see it.
+- **`exposureReason`** — a stable code (`application`, `no_interaction`,
+  `hidden_by_candidate`, `not_verified_employer`, `accepted_invitation`, `admin`)
+  saying which rule decided. Every call is logged (§11.1).
+
+**A withdrawal revokes the exposure**, including in-flight download paths: BR-09 is
+re-evaluated per download rather than trusted from the listing.
+
+**Internal notes are employer-only** (§6.5). No candidate-facing response contains them,
+and they live in their own table so exposing one would take a deliberate new query.
+
+---
+
+## 4e. Candidate search
+
+Built 2026-08-07 with M7. The employer's half of discovery: §7's structured search over
+the candidate database, and what an employer keeps from it.
+
+```
+POST  /candidate-search                             ->  { items: CandidateCard[], groups }
+POST  /candidate-search/count                        ->  { count, isExact }
+GET   /candidate-search/prefill/{vacancyId}           ->  CandidateSearchFilters
+GET   /candidate-search/candidates/{id}                ->  CandidateForEmployer
+GET   /candidate-search/candidates/{id}/photo           ->  bytes
+
+GET   /candidate-search/saved                          ->  { items: CandidateCard[] }
+PUT   /candidate-search/saved/{id}                      ->  204
+DELETE/candidate-search/saved/{id}                      ->  204
+PUT   /candidate-search/saved/{id}/note                 ->  204
+
+GET   /vacancies/{id}/shortlist                          ->  { items: CandidateCard[] }
+PUT   /vacancies/{id}/shortlist/{candidateUserId}         ->  204
+DELETE/vacancies/{id}/shortlist/{candidateUserId}         ->  204
+```
+
+**Every route requires a verified employer** (§7, BR-03), including the saved list: an
+employer who loses verification loses the candidate database, not just the search box.
+`employer.profile_incomplete` and `employer.not_verified` are separate refusals because
+they have different fixes.
+
+### Why search is a POST
+
+The filter set is nested — `languages` is an array of `{itemId, minLevelRank,
+requireCertificate}` — and §7.1 has eleven groups. Encoding that into a query string
+would trade a documented DTO for hand-rolled parsing on both sides. Both routes are
+reads with no side effects; they are rate limited as §12.5 requires of search.
+
+### The filters (§7.1)
+
+All optional, all **dictionary ids** (BR-13). Two of §7.1's entries do not appear as they
+are worded, and in both cases the id-shaped form is the one that works:
+
+- **`specializationIds`, not a text box.** A substring match on prose cannot behave
+  identically in four interface variants (§3.3), so specialization became a dictionary in
+  M7 — see §3.1. Any of the listed specializations matches.
+- **Remote-work readiness is `workFormatIds`**, not a boolean — remote is a
+  `work_format` item, and every selectable value in this product is a row.
+
+`skillsMatchMode` and `attributesMatchMode` are §7.1's "match all or match any", `any`
+by default. `languages` are always **all** of them: two language requirements are two
+requirements, and a level is a floor (`minLevelRank`), not an equality.
+
+BR-12's `ageMin` / `ageMax` / `genderId` need `restrictionJustificationId` — an id from
+the `restriction_justification` dictionary that the declaration permits for the kinds of
+restriction present, the same rule a vacancy's restriction is held to.
+`search.restriction_not_justified` otherwise, and every accepted use is logged.
+
+### The card (§7.3)
+
+**No phone number and no CV.** §11.1 forbids contact details on a search card, so the
+card has no field for one and the query does not read `users` at all. `photoPath` is the
+single candidate file a card carries, argued below. To reach contact details, open
+`/candidate-search/candidates/{id}`, which is the same BR-09 answer
+`/applications/{id}/candidate` gives — `phone`, `canViewFiles`, `files[]` and
+`exposureReason` — and it is readable while the candidate is **findable** (searchable and
+complete) or while an interaction exists. An applicant who then hides their profile stays
+readable to the employer they wrote to.
+
+`matchScore` is 0–100 and `matchBreakdown` says how it was reached: per group, `asked`
+against `matched`. Only the groups the filters asked about take part, so a search for one
+skill scores purely on that skill, and a search with no filters scores everyone 100.
+`groups` on the response is the same list with the weights, so a client can render the
+explanation without hardcoding them.
+
+Sorts: `match` (default), `recent`, `experience`, `salary`, `proximity`.
+
+**`proximity` is tiered, not a distance** — same district, then same region, then
+everywhere else. §7.3 allows a proximity sort "where permission exists", and places are
+dictionary ids here rather than coordinates, so a kilometre figure would be invented;
+tiers are what the region tree honestly supports, and adding a centroid per district
+later would make it a real distance without changing this contract.
+
+The reference point is **`proximityDistrictId`**, its own filter field rather than a reuse
+of `districtIds`, because the two do opposite jobs: filtering by district excludes
+everyone else and leaves the sort nothing to order. The useful shape is a wide filter — a
+region, or none — plus a point to sort around, which is exactly what the prefill gives
+you. With no reference at all, the order falls through to recency.
+
+### The profile photo is the one exception to BR-09's file gate
+
+§7.3 puts a photo on the card; §5.4 keeps candidate files behind an authorized hiring
+interaction. Both hold, because a profile photo is not a document: only the file whose
+purpose is `photo`, only for a searchable profile, only for a verified employer, on one
+route. A CV still needs an application or an accepted invitation.
+
+### Saved candidates and shortlists (§7.3)
+
+- `PUT .../saved/{id}` is idempotent — saving twice is saving once.
+- The **private note lives on the save**, so writing one saves the candidate. It is
+  never in a candidate-facing response.
+- The shortlist is **per vacancy**, which is what "vacancy-specific" means; its owner is
+  the vacancy's owner, so there is no second notion of who may edit it.
+- **The saved list is still behind BR-02's gate**: a candidate who hides their profile
+  leaves every employer's saved list, because otherwise "hide me from search" would be
+  defeated by whoever saved them first. The row survives, so they come back if they
+  choose to.
+
+### Count-before-open (§7.2)
+
+`{count, isExact}`. The count stops at `SEARCH_COUNT_CAP` (200 by default) and answers
+`isExact: false`, so the client renders "200+" rather than a number presented as the
+truth. §7.2 asks for this "where technically reasonable"; an exact count of a huge set is
+the part that is not.
+
+### Prefill from a vacancy (UAT-06)
+
+`GET /candidate-search/prefill/{vacancyId}` returns a filter set the client may edit and
+post back. **Mandatory requirements become filters; preferred ones do not** — a
+preference that excluded candidates would not be a preference, and the score rewards it
+instead. Mandatory skills prefill as match-all, which may match nobody: that is the
+honest starting point, and it is what the count is for. A BR-12 restriction comes across
+**with the justification the vacancy already carries**, so the employer is not asked to
+re-justify a restriction the platform has reviewed.
+
+---
+
+## 4f. Invitations
+
+Built 2026-08-07 with M7. §8.2, and the third action on §7.3's candidate card.
+
+```
+POST  /invitations                                 ->  Invitation      (employer)
+GET   /invitations/sent?vacancyId=&status=          ->  { items: Invitation[] }
+GET   /invitations/counts/{vacancyId}                ->  { byStatus }
+GET   /invitations/{id}/files/{fileId}/content         ->  bytes
+
+GET   /invitations/received                           ->  { items: Invitation[] }  (candidate)
+POST  /invitations/{id}/respond                        ->  Invitation
+
+GET   /invitations/{id}                                 ->  Invitation   (both)
+GET   /invitations/{id}/history                          ->  { items }
+```
+
+### The two shapes, and why they are exclusive
+
+§8.2: an employer may invite a candidate **to an active vacancy** or send a **general work
+invitation** carrying occupation, location, schedule, payment and contact context. Exactly
+one of `vacancyId` and `occupationId` must be present — `invitation.shape_invalid`
+otherwise, and a CHECK constraint underneath. A vacancy invitation reads its details from
+the vacancy; a general one carries `occupationId`, `regionId`, `districtId`, the four
+salary fields, `scheduleNote` and `message` itself.
+
+`scheduleNote` is free text on purpose: a general invitation is a message, and the
+structured version of it is what publishing a vacancy is for.
+
+### What sending one requires
+
+- **A verified employer** (BR-03), the same gate as candidate search.
+- **A search-visible candidate** (§8.2) — BR-02's gate again, so hiding a profile stops
+  invitations and not merely search results. `candidate.profile_not_found`.
+- **An active vacancy**, checked with the same definition of "open" the apply route uses
+  (BR-06). An invitation must not advertise something the application would be refused
+  for. `invitation.vacancy_not_open`.
+- **One open invitation** per employer, candidate and vacancy — a partial unique index,
+  BR-07's shape. Answering frees the slot, so an employer may invite again after a decline.
+  `invitation.already_invited`.
+
+Send an **`Idempotency-Key`**: a retry with the same key and body returns the original
+invitation rather than that conflict, which is what makes a lost response safe (§12.4).
+
+### Statuses
+
+`sent` · `details_requested` · `accepted` · `declined`
+
+Every transition is the candidate's — that is the whole of §8.2's "Accept, Decline, or
+Request details" — so there is one response route and it is candidate-only.
+`details_requested` is a **question, not an ending**: accepting or declining afterwards is
+allowed, asking twice is not. `accepted` and `declined` are terminal. There is no
+`withdrawn` and no `expired`: neither is in the specification, and a status nothing sets is
+a state every client has to handle for nothing.
+
+Every change writes a `GET /invitations/{id}/history` row with its time and actor (BR-08's
+rule, applied beyond applications), and the candidate's `note` is kept as that row's
+reason.
+
+### Accepting opens BR-09's second interaction
+
+Until the candidate accepts, an employer who invited them sees exactly what a stranger
+sees: `phone: null`, `canViewFiles: false`, `exposureReason: 'no_interaction'`. Inviting
+somebody is not an interaction they agreed to. On acceptance the reason becomes
+`accepted_invitation` and the files arrive with `downloadPath` pointing at
+`/invitations/{id}/files/{fileId}/content` — the invitation's counterpart to the
+application-scoped download, for the same reason: the entitlement comes from the
+interaction, so the route that serves the bytes is the one that can see it. Re-evaluated
+per download.
+
+### Counts
+
+`GET /invitations/counts/{vacancyId}` answers the first half of §7.4's "track invited,
+accepted, interviewed and hired counts against the target of 20". The other half is
+application stages, from `/vacancies/{id}/applications/counts`.
+
+---
+
+## 4g. Chat and interviews
+
+Built 2026-08-07 with M8. §9.1's gated conversation and §8.3's interview scheduling.
+
+```
+POST  /conversations                                  ->  Conversation
+GET   /conversations                                   ->  { items: Conversation[] }
+GET   /conversations/{id}                               ->  Conversation
+GET   /conversations/{id}/messages?limit=&before=         ->  { items: Message[] }
+POST  /conversations/{id}/messages                        ->  Message
+PUT   /conversations/{id}/read                             ->  204
+POST  /conversations/{id}/block                            ->  204
+DELETE/conversations/{id}/block                            ->  204
+POST  /conversations/{id}/messages/{messageId}/report        ->  { id }
+GET   /conversations/{id}/messages/{messageId}/file           ->  bytes
+
+POST  /applications/{id}/interviews                        ->  Interview   (employer)
+GET   /applications/{id}/interviews                         ->  { items }   (both)
+PUT   /interviews/{id}                                       ->  Interview   (employer)
+POST  /interviews/{id}/cancel                                 ->  Interview   (employer)
+GET   /interviews/mine                                         ->  { items }  (candidate)
+POST  /interviews/{id}/respond                                  ->  Interview  (candidate)
+GET   /interviews/{id}/history                                   ->  { items }
+```
+
+### Chat opens on an interaction, and closes with it
+
+`POST /conversations` takes a `counterpartUserId` and needs a **permitted hiring
+interaction**: a live application, or an accepted invitation. It is the same question
+BR-09 asks, answered by the same service — an employer who may see a phone number and one
+who may send a message are the same employer. `chat.no_interaction` otherwise.
+
+There is **one conversation per pair**, not per vacancy, so opening is idempotent. Which
+side you are on follows from your active role, so a multi-role account can hold both
+kinds of thread.
+
+**The gate is re-asked on every send**, never stored: an interaction can end while a
+client holds the screen. `canSend` on the conversation is the live answer, and
+`chat.read_only` is the refusal. The thread stays readable either way — §9.1 keeps closed
+interactions in history. A new interaction reopens it with no repair step.
+
+### Read state, and what is missing from it
+
+Read state is one timestamp per participant: `PUT /conversations/{id}/read` marks
+everything up to now, `unreadCount` counts the other side's messages after it, and
+`isReadByRecipient` appears on the messages **you** sent.
+
+**There is no `delivered` state.** §9.1 asks for sent, delivered and read "where supported
+by the backend"; delivery is a property of push, which is M9, and a field set at the same
+instant as `createdAt` would be a fake answer. It arrives with the dispatcher that can set
+it honestly.
+
+### Blocking and reporting (§9.1)
+
+A block makes the thread read-only for **both** sides, whoever set it — a block that let
+the blocker keep writing would be a mute. `isBlocked` says that it happened; `blockedByMe`
+says whether it was you. Messages stay readable, because a moderator reviewing the report
+needs them. Reports are `complaints` rows with `target_type = 'message'`, the same queue
+M10 reviews vacancy reports through, one open report per person per message.
+
+### Attachments
+
+One file per message, and it must be a file the **sender owns** — knowing an id is not
+owning it. `downloadPath` points at `/conversations/{id}/messages/{id}/file`, the third
+entitlement-bearing download route in the product; `/files/{id}/content` stays owner-only.
+
+### Interviews (§8.3)
+
+`POST /applications/{id}/interviews` schedules one and **moves the application to §8.1's
+`interview` stage in the same transaction**, with its BR-08 history row: the stage table
+says the candidate is told "date, time, type and location/link" when that stage is set,
+and that is the interview. An application already at or past the stage is left alone; a
+terminal one is refused.
+
+`type` decides which detail is required, and the server refuses the others —
+`in_person` needs `location`, `external_link` needs `meetingLink`, `phone` needs and
+permits neither. A `422 interview.detail_required` names the offending field, and a CHECK
+constraint enforces the same three shapes underneath.
+
+Statuses: `scheduled` · `confirmed` · `reschedule_requested` · `cancelled`.
+
+- **`confirmed` is not terminal.** A candidate who confirms and then finds a clash may
+  still ask for another time; only `cancelled` ends an interview.
+- **Rescheduling always resets the answer.** `PUT /interviews/{id}` is a full replacement,
+  because the type decides which fields may exist — a patch could leave a phone interview
+  holding an address — and a new time has not been confirmed whatever was said about the
+  old one.
+- **`cancelled` is not in §8.3's list**, and is here because the alternative is a stale
+  interview nobody can retract.
+
+`scheduledAt` is an instant, stored as `timestamptz` and returned with the platform offset
+(§2), so "14:00" is the same moment for both sides.
 
 ---
 

@@ -11,12 +11,28 @@ export type AccountStatus =
   | 'deletion_requested'
   | 'restricted';
 
+export type ApplicationStatus =
+  | 'hired'
+  | 'interview'
+  | 'offer'
+  | 'rejected'
+  | 'shortlisted'
+  | 'submitted'
+  | 'viewed'
+  | 'withdrawn';
+
+export type ComplaintStatus = 'actioned' | 'dismissed' | 'open';
+
+export type ComplaintTarget = 'message' | 'profile' | 'user' | 'vacancy';
+
 export type DictionaryCategory =
   | 'physical_industrial'
   | 'professional'
   | 'seasonal_agricultural'
   | 'service_operations'
   | 'temporary_shift';
+
+export type EmployerType = 'company' | 'individual';
 
 export type Generated<T> =
   T extends ColumnType<infer S, infer I, infer U>
@@ -29,7 +45,23 @@ export type Int8 = ColumnType<
   bigint | number | string
 >;
 
+export type InterviewStatus =
+  | 'cancelled'
+  | 'confirmed'
+  | 'reschedule_requested'
+  | 'scheduled';
+
+export type InterviewType = 'external_link' | 'in_person' | 'phone';
+
+export type InvitationStatus =
+  | 'accepted'
+  | 'declined'
+  | 'details_requested'
+  | 'sent';
+
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
+
+export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type OtpPurpose =
   | 'device_confirmation'
@@ -37,11 +69,28 @@ export type OtpPurpose =
   | 'phone_change'
   | 'registration';
 
+export type ProfileVisibility = 'hidden' | 'searchable' | 'visible_after_apply';
+
 export type SchemaTarget = 'candidate_profile' | 'vacancy';
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type UserRole = 'admin' | 'candidate' | 'employer';
+
+export type VacancyStatus =
+  | 'active'
+  | 'closed'
+  | 'draft'
+  | 'paused'
+  | 'rejected'
+  | 'under_moderation';
+
+export type VerificationStatus =
+  | 'changes_required'
+  | 'not_submitted'
+  | 'rejected'
+  | 'under_review'
+  | 'verified';
 
 export interface AccountStatusHistory {
   actor_role: UserRole | null;
@@ -54,10 +103,169 @@ export interface AccountStatusHistory {
   user_id: string;
 }
 
+export interface ApplicationNotes {
+  application_id: string;
+  author_user_id: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  note: string;
+}
+
+export interface Applications {
+  candidate_user_id: string;
+  cover_note: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  rejection_reason: string | null;
+  status: Generated<ApplicationStatus>;
+  updated_at: Generated<Timestamp>;
+  vacancy_id: string;
+}
+
+export interface ApplicationStageHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  application_id: string;
+  created_at: Generated<Timestamp>;
+  from_status: ApplicationStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: ApplicationStatus;
+}
+
 export interface AppMeta {
   key: string;
   updated_at: Generated<Timestamp>;
   value: string;
+}
+
+export interface CandidateAttributes {
+  created_at: Generated<Timestamp>;
+  field_code: string;
+  item_id: string | null;
+  user_id: string;
+  value_bool: boolean | null;
+  value_date: string | null;
+  value_decimal: Numeric | null;
+  value_int: number | null;
+  value_text: string | null;
+}
+
+export interface CandidateEducation {
+  created_at: Generated<Timestamp>;
+  graduation_year: number | null;
+  id: Generated<string>;
+  institution: string | null;
+  level_id: string;
+  specialization: string | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface CandidateExperience {
+  created_at: Generated<Timestamp>;
+  employer_name: string | null;
+  ended_on: string | null;
+  id: Generated<string>;
+  is_current: Generated<boolean>;
+  occupation_id: string | null;
+  responsibilities: string | null;
+  role_title: string;
+  started_on: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface CandidateLanguages {
+  certificate_note: string | null;
+  created_at: Generated<Timestamp>;
+  has_certificate: Generated<boolean>;
+  item_id: string;
+  level_id: string;
+  level_rank: number;
+  user_id: string;
+}
+
+export interface CandidateOccupations {
+  created_at: Generated<Timestamp>;
+  is_primary: Generated<boolean>;
+  item_id: string;
+  level_id: string | null;
+  user_id: string;
+}
+
+export interface CandidateProfiles {
+  available_from: string | null;
+  category: DictionaryCategory | null;
+  completeness_percent: Generated<number>;
+  created_at: Generated<Timestamp>;
+  date_of_birth: string | null;
+  district_id: string | null;
+  full_name: string | null;
+  gender_id: string | null;
+  is_complete: Generated<boolean>;
+  last_meaningful_update_at: Timestamp | null;
+  region_id: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  settlement: string | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  visibility: Generated<ProfileVisibility>;
+  willing_to_relocate: boolean | null;
+  willing_to_travel: boolean | null;
+}
+
+export interface CandidateSkills {
+  created_at: Generated<Timestamp>;
+  item_id: string;
+  level_id: string;
+  level_rank: number;
+  user_id: string;
+}
+
+export interface Companies {
+  contact_person_name: string | null;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  industry_id: string | null;
+  legal_name: string | null;
+  logo_file_id: string | null;
+  public_name: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Complaints {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  reason: string;
+  reporter_user_id: string;
+  resolution: string | null;
+  reviewed_at: Timestamp | null;
+  reviewed_by_user_id: string | null;
+  status: Generated<ComplaintStatus>;
+  target_id: string;
+  target_type: ComplaintTarget;
+}
+
+export interface ConversationBlocks {
+  blocked_by_user_id: string;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  reason: string | null;
+}
+
+export interface Conversations {
+  candidate_read_at: Timestamp | null;
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  employer_read_at: Timestamp | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  last_message_at: Timestamp | null;
+  opened_by_vacancy_id: string | null;
 }
 
 export interface DeletionRequests {
@@ -100,6 +308,112 @@ export interface DictionaryTypes {
   has_rank: Generated<boolean>;
 }
 
+export interface Employers {
+  address: string | null;
+  completeness_percent: Generated<number>;
+  contact_phone: string | null;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  district_id: string | null;
+  full_name: string | null;
+  is_complete: Generated<boolean>;
+  region_id: string | null;
+  type: EmployerType;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+  verification_reason: string | null;
+  verification_status: Generated<VerificationStatus>;
+  verified_at: Timestamp | null;
+}
+
+export interface EmployerVerificationHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  from_status: VerificationStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: VerificationStatus;
+}
+
+export interface IdempotencyKeys {
+  created_at: Generated<Timestamp>;
+  fingerprint: string;
+  key: string;
+  operation: string;
+  resource_id: string | null;
+  user_id: string;
+}
+
+export interface Interviews {
+  application_id: string;
+  created_at: Generated<Timestamp>;
+  created_by_user_id: string | null;
+  id: Generated<string>;
+  instructions: string | null;
+  location: string | null;
+  meeting_link: string | null;
+  responded_at: Timestamp | null;
+  response_note: string | null;
+  scheduled_at: Timestamp;
+  status: Generated<InterviewStatus>;
+  type: InterviewType;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface InterviewStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: InterviewStatus | null;
+  id: Generated<string>;
+  interview_id: string;
+  reason: string | null;
+  to_status: InterviewStatus;
+}
+
+export interface Invitations {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  district_id: string | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  message: string | null;
+  occupation_id: string | null;
+  region_id: string | null;
+  responded_at: Timestamp | null;
+  response_note: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  schedule_note: string | null;
+  status: Generated<InvitationStatus>;
+  updated_at: Generated<Timestamp>;
+  vacancy_id: string | null;
+}
+
+export interface InvitationStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: InvitationStatus | null;
+  id: Generated<string>;
+  invitation_id: string;
+  reason: string | null;
+  to_status: InvitationStatus;
+}
+
+export interface Messages {
+  body: string | null;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  file_id: string | null;
+  id: Generated<string>;
+  sender_user_id: string;
+}
+
 export interface OtpCodes {
   attempts: Generated<number>;
   code_hash: string;
@@ -117,6 +431,20 @@ export interface RateLimitCounters {
   hits: Generated<number>;
   subject: string;
   window_start: Timestamp;
+}
+
+export interface SavedCandidates {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  note: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface SavedVacancies {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  vacancy_id: string;
 }
 
 export interface SchemaVersions {
@@ -176,18 +504,128 @@ export interface Users {
   updated_at: Generated<Timestamp>;
 }
 
+export interface Vacancies {
+  address: string | null;
+  age_max: number | null;
+  age_min: number | null;
+  category: DictionaryCategory | null;
+  closed_at: Timestamp | null;
+  closure_reason: string | null;
+  created_at: Generated<Timestamp>;
+  deadline_on: string | null;
+  description: string | null;
+  district_id: string | null;
+  employer_user_id: string;
+  ends_on: string | null;
+  gender_id: string | null;
+  hired_count: Generated<number>;
+  id: Generated<string>;
+  moderation_reason: string | null;
+  occupation_id: string | null;
+  published_at: Timestamp | null;
+  region_id: string | null;
+  restriction_justification_id: string | null;
+  restriction_justification_note: string | null;
+  salary_from: Numeric | null;
+  salary_is_negotiable: Generated<boolean>;
+  salary_period_id: string | null;
+  salary_to: Numeric | null;
+  starts_on: string | null;
+  status: Generated<VacancyStatus>;
+  title: string | null;
+  updated_at: Generated<Timestamp>;
+  worker_count: number | null;
+}
+
+export interface VacancyRequirements {
+  created_at: Generated<Timestamp>;
+  field_code: string;
+  is_mandatory: Generated<boolean>;
+  item_id: string | null;
+  level_id: string | null;
+  level_rank: number | null;
+  vacancy_id: string;
+  value_bool: boolean | null;
+  value_date: string | null;
+  value_decimal: Numeric | null;
+  value_int: number | null;
+  value_text: string | null;
+}
+
+export interface VacancyShortlists {
+  candidate_user_id: string;
+  created_at: Generated<Timestamp>;
+  vacancy_id: string;
+}
+
+export interface VacancyStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: VacancyStatus | null;
+  id: Generated<string>;
+  reason: string | null;
+  to_status: VacancyStatus;
+  vacancy_id: string;
+}
+
+export interface VerificationSubmissionFiles {
+  file_id: string;
+  submission_id: string;
+}
+
+export interface VerificationSubmissions {
+  decided_at: Timestamp | null;
+  decided_by_user_id: string | null;
+  employer_user_id: string;
+  id: Generated<string>;
+  reason: string | null;
+  status: VerificationStatus;
+  submitted_at: Generated<Timestamp>;
+}
+
 export interface DB {
   account_status_history: AccountStatusHistory;
   app_meta: AppMeta;
+  application_notes: ApplicationNotes;
+  application_stage_history: ApplicationStageHistory;
+  applications: Applications;
+  candidate_attributes: CandidateAttributes;
+  candidate_education: CandidateEducation;
+  candidate_experience: CandidateExperience;
+  candidate_languages: CandidateLanguages;
+  candidate_occupations: CandidateOccupations;
+  candidate_profiles: CandidateProfiles;
+  candidate_skills: CandidateSkills;
+  companies: Companies;
+  complaints: Complaints;
+  conversation_blocks: ConversationBlocks;
+  conversations: Conversations;
   deletion_requests: DeletionRequests;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;
   dictionary_types: DictionaryTypes;
+  employer_verification_history: EmployerVerificationHistory;
+  employers: Employers;
+  idempotency_keys: IdempotencyKeys;
+  interview_status_history: InterviewStatusHistory;
+  interviews: Interviews;
+  invitation_status_history: InvitationStatusHistory;
+  invitations: Invitations;
+  messages: Messages;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
+  saved_candidates: SavedCandidates;
+  saved_vacancies: SavedVacancies;
   schema_versions: SchemaVersions;
   sessions: Sessions;
   stored_files: StoredFiles;
   user_roles: UserRoles;
   users: Users;
+  vacancies: Vacancies;
+  vacancy_requirements: VacancyRequirements;
+  vacancy_shortlists: VacancyShortlists;
+  vacancy_status_history: VacancyStatusHistory;
+  verification_submission_files: VerificationSubmissionFiles;
+  verification_submissions: VerificationSubmissions;
 }

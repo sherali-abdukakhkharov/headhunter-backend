@@ -1,6 +1,7 @@
 import { INDUSTRY_SEED, SKILL_SEED } from './data/skills.data';
 import { OCCUPATION_SEED } from './data/occupations.data';
 import { REGION_SEED } from './data/locations.data';
+import { SPECIALIZATION_SEED } from './data/specializations.data';
 import type { SeedType } from './seed-types';
 
 export type { SeedItem, SeedProvenance, SeedType } from './seed-types';
@@ -31,13 +32,19 @@ export type { SeedItem, SeedProvenance, SeedType } from './seed-types';
  * depends on.
  */
 
-/** The 14 frozen types of docs/API_CONTRACTS.md §3.1, in that order. */
+/**
+ * The frozen types of docs/API_CONTRACTS.md §3.1, in that order, plus `gender`
+ * added for M3 - see its entry below.
+ */
 export const DICTIONARY_SEED: SeedType[] = [
   // Large content lists, in data/. See each file's header for provenance.
   OCCUPATION_SEED,
   SKILL_SEED,
   INDUSTRY_SEED,
   REGION_SEED,
+  // Added in M7: §7.1's specialization filter needs ids, not the free text the field
+  // used to carry - see the file header.
+  SPECIALIZATION_SEED,
   {
     code: 'language',
     provenance: 'default',
@@ -556,6 +563,141 @@ export const DICTIONARY_SEED: SeedType[] = [
           'uz-Cyrl': 'Тасдиқловчи ҳужжат',
           ru: 'Подтверждающий документ',
           en: 'Supporting document',
+        },
+      },
+      // §5.1 "profile photo optional" and §7.3's candidate card. A file purpose
+      // rather than a schema field, because §4.5 keeps every upload out of the
+      // field union - a photo needs the same progress, retry and authorization
+      // lifecycle as a CV.
+      {
+        code: 'photo',
+        labels: {
+          'uz-Latn': 'Profil surati',
+          'uz-Cyrl': 'Профил сурати',
+          ru: 'Фото профиля',
+          en: 'Profile photo',
+        },
+      },
+      // --- employer verification (§6.1) ---
+      // "verification documents if required" for a company and "identity
+      // verification data if required by policy" for an individual. Which of these
+      // is actually mandatory is an open client decision, so the requirement lives
+      // in `employer-requirements.ts` as data and these purposes exist either way.
+      {
+        code: 'company_registration',
+        labels: {
+          'uz-Latn': 'Davlat royxatidan otganlik guvohnomasi',
+          'uz-Cyrl': 'Давлат рўйхатидан ўтганлик гувоҳномаси',
+          ru: 'Свидетельство о регистрации',
+          en: 'Certificate of registration',
+        },
+      },
+      {
+        code: 'id_document',
+        labels: {
+          'uz-Latn': 'Shaxsni tasdiqlovchi hujjat',
+          'uz-Cyrl': 'Шахсни тасдиқловчи ҳужжат',
+          ru: 'Документ, удостоверяющий личность',
+          en: 'Identity document',
+        },
+      },
+      {
+        code: 'logo',
+        labels: {
+          'uz-Latn': 'Kompaniya logotipi',
+          'uz-Cyrl': 'Компания логотипи',
+          ru: 'Логотип компании',
+          en: 'Company logo',
+        },
+      },
+    ],
+  },
+  {
+    code: 'restriction_justification',
+    provenance: 'default',
+    note:
+      'BR-12: an age or gender restriction needs "an objective reason" that ' +
+      'moderation can validate, so the reasons are enumerated rather than typed. ' +
+      'These are the four labels for the employer’s picker; the *rule* about which ' +
+      'reason supports which restriction lives in ' +
+      'modules/vacancies/age-gender-justifications.ts, deliberately in code - a ' +
+      'dictionary row is admin-editable and widening BR-12 must not be a content ' +
+      'edit. A test asserts the codes here and there match. Needs legal review by ' +
+      'the client. Added 2026-08-05 with M5.',
+    items: [
+      {
+        code: 'statutory_minimum_age',
+        labels: {
+          'uz-Latn': 'Qonun bilan belgilangan eng kichik yosh',
+          'uz-Cyrl': 'Қонун билан белгиланган энг кичик ёш',
+          ru: 'Установленный законом минимальный возраст',
+          en: 'Statutory minimum age for the work',
+        },
+      },
+      {
+        code: 'night_work_restriction',
+        labels: {
+          'uz-Latn': 'Tungi ishga qonuniy cheklov',
+          'uz-Cyrl': 'Тунги ишга қонуний чеклов',
+          ru: 'Законодательное ограничение на ночной труд',
+          en: 'Legal restriction on night work',
+        },
+      },
+      {
+        code: 'hazardous_conditions',
+        labels: {
+          'uz-Latn': 'Zararli yoki xavfli mehnat sharoitlari',
+          'uz-Cyrl': 'Зарарли ёки хавфли меҳнат шароитлари',
+          ru: 'Вредные или опасные условия труда',
+          en: 'Hazardous or harmful working conditions',
+        },
+      },
+      {
+        code: 'heavy_lifting_limits',
+        labels: {
+          'uz-Latn': 'Yuk ko‘tarish me’yorlari',
+          'uz-Cyrl': 'Юк кўтариш меъёрлари',
+          ru: 'Нормы подъёма тяжестей',
+          en: 'Statutory manual-handling limits',
+        },
+      },
+      {
+        code: 'single_sex_facility',
+        labels: {
+          'uz-Latn': 'Bir jinsli muhit talab qilinadigan ish',
+          'uz-Cyrl': 'Бир жинсли муҳит талаб қилинадиган иш',
+          ru: 'Работа в среде одного пола',
+          en: 'Work in a single-sex setting',
+        },
+      },
+    ],
+  },
+  {
+    code: 'gender',
+    provenance: 'spec',
+    note:
+      '§5.1 personal information asks for gender, and §7.1 / BR-12 let a ' +
+      'moderated vacancy restrict on it. A dictionary rather than an enum ' +
+      'because the field schema has no `enum` kind (API_CONTRACTS.md §4.2), the ' +
+      'four labels have to come from somewhere, and a vacancy restriction and a ' +
+      'profile must reference the same id. Added 2026-08-05 with M3.',
+    items: [
+      {
+        code: 'male',
+        labels: {
+          'uz-Latn': 'Erkak',
+          'uz-Cyrl': 'Эркак',
+          ru: 'Мужской',
+          en: 'Male',
+        },
+      },
+      {
+        code: 'female',
+        labels: {
+          'uz-Latn': 'Ayol',
+          'uz-Cyrl': 'Аёл',
+          ru: 'Женский',
+          en: 'Female',
         },
       },
     ],

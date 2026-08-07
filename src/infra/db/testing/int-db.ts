@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 
 import type { Database } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
+import { configurePgTypeParsers } from '@infra/db/pg-types';
 
 /**
  * Connects an integration spec to the development database.
@@ -18,6 +19,9 @@ export function createIntTestDb(): {
   destroy: () => Promise<void>;
 } {
   dotenv.config({ quiet: true });
+  // Same parsers as the running service, or a date-only column behaves
+  // differently under test than in production - see `pg-types.ts`.
+  configurePgTypeParsers();
 
   const pool = new Pool({
     host: process.env.DB_HOST ?? 'localhost',

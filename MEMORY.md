@@ -30,6 +30,380 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M7) - An interaction is derived from data, never from the id in the URL
+`CandidateViewService.read` used to take the application id the route was called with and
+treat it as the interaction BR-09 needs. Wiring §7.3's "View profile" onto the same method
+exposed what that meant: a withdrawn application is still addressable, so requesting the
+view *through the application the candidate withdrew* would have re-granted the exposure
+the withdrawal took back.
+*The fix is one line and the shape is the lesson:* the interaction comes from
+`applicationWith(employer, candidate)` - the query that already knows withdrawn ones do not
+count - and the path is derived from what that returns, not the other way round. A URL is a
+request, not a fact.
+*What caught it:* M6's own "a withdrawal revokes the exposure" integration test, which
+asserted the *side effect* rather than the exception. That is the second time in this
+project a test written that way has caught a real regression.
+
+### 2026-08-07 (M7) - The strongest way to keep a phone number off a card is not to select it
+§11.1 forbids contact details on a candidate search card, and ARCHITECTURE.md §8 asked for
+the card to be built from `expose()`'s output. What shipped is stricter: the card query
+never joins `users` at all, `CandidateCard` has no field for a phone number, and a unit
+test asserts over the *compiled SQL* that neither `users` nor `phone` appears.
+*Why that beats calling the rule:* a serializer that fetches a phone number and then nulls
+it is one careless edit from leaking it, and the rule would return "no" every time anyway -
+a card is not a hiring interaction, whatever else exists between those two people. A
+constant answer is not a decision worth making at runtime.
+*Where BR-09 still decides:* the profile view, which goes through M6's single gatherer and
+can legitimately return a phone number when an application or an accepted invitation
+exists.
+
+### 2026-08-07 (M7) - The score's weights and the client's explanation come from one function
+§7.3's match score is a weighted average of `matched / asked` over the groups the filters
+actually asked about. `scoreGroups(filters)` is the only source of the weights, of what
+each group was asked for, and of which groups take part; the SQL expression is built by
+iterating that list and the response's breakdown reports the same objects.
+*Why one function rather than a scoring expression plus a breakdown query:* the two would
+drift, and the failure is invisible - a ranking that no longer matches the explanation
+shown beside it. "Why did this candidate rank here" is the first question an employer asks.
+*A property worth keeping:* a search with no filters scores everyone 100 rather than
+dividing by zero. Nothing was asked, so everyone matched what was asked.
+
+### 2026-08-07 (M7) - The profile photo is a deliberate hole in BR-09's file gate
+§7.3 puts a photo on the candidate card; §5.4 keeps candidate files behind an authorized
+hiring interaction. Both are satisfied by treating the *purpose* as the distinction: a file
+whose purpose is `photo` is served to a verified employer for a searchable profile, and
+every other file still needs an application or an accepted invitation.
+*Why not treat the photo as a document:* §7.3 would be unimplementable, and the client's
+own specification asks for the card to show one. *Why not widen the gate instead:* BR-09
+would mean nothing. The seam is one route with one purpose check, which is the smallest
+shape this can have. It wants client sign-off, like the other decisions this project
+answers as data.
+
+### 2026-08-07 (M8) - A permission asked live needs nothing un-set when it ends
+§9.1 gives chat two sentences: it becomes available after a permitted hiring interaction,
+and a closed interaction stays in history but may become read-only. The obvious build is a
+flag on the conversation, and it is wrong: the flag would have to be cleared by a
+withdrawal, a declined invitation and anything else that ends an interaction - from
+modules with no reason to know chat exists. One of them eventually forgets, and the
+failure is a channel to somebody who has left.
+*Asking the question live costs one query per read and pays for itself twice:* the
+read-only rule needs no code at all, and **reopening** works for free - a new application
+restores the channel with nothing to repair.
+*The general shape:* a permission derived from state does not need to be denormalized
+until it is measurably slow, and denormalizing it means owning every event that
+invalidates it.
+
+### 2026-08-07 (M8) - The third caller is when to extract, and this one had to be extracted
+"Is there a live hiring interaction between these two people" was a method on
+`ApplicationsService` and a private query in `CandidateViewService`. M8's chat gate was the
+third caller, which is the rule-of-three CLAUDE.md states - but the duplication was the
+smaller reason. BR-09 and §9.1's gate are the *same question*, and two implementations
+would eventually give an employer a phone number they cannot message, or a channel to
+somebody whose contact details are closed.
+*Where it lives and why:* `infra/privacy/hiring-interaction.service.ts`, beside the rule it
+feeds, with no module dependencies. That matters structurally - `invitations` imports
+`applications` for the download route, so the gatherer must not import either, or the
+graph has a cycle. Reading another module's table is normal in this codebase; a module
+cycle is not.
+
+### 2026-08-07 (M8) - A missing feature is better than a fake one: no `delivered` state
+§9.1 asks for "sent, delivered and read states **where supported by the backend**". Sent
+is the row existing and read is a timestamp, but delivered is a property of push - which
+is M9. A `delivered_at` column set at the same instant as `created_at` would satisfy a
+checklist and tell a user nothing true.
+*The clause "where supported by the backend" is the specification giving permission to
+leave it out*, and reading it that way is more honest than a column nobody can trust. It
+arrives with the dispatcher that can set it.
+
+### 2026-08-07 (M7, later the same day) - Two of the three gaps closed, on client direction
+The entry below recorded three §7.1/§7.3 items that could not be built as worded. The
+client answered two of them within the hour, and both answers were the id-shaped one.
+*Specialization is now a dictionary.* 60 items in eight groups (`specializations.data.ts`,
+tagged `default`), and the field is `dictionary_multi` on **both** the candidate profile
+and the vacancy - they have to move together, because the schema contract test pins a
+shared field code to one meaning, and UAT-06's prefill copies it straight across. Both
+schema versions bumped to 2, so clients refetch. Existing free-text values were **deleted,
+not mapped**: "Информатика" could be `computer_science` or `information_systems`, and
+choosing for somebody would put a claim in their profile they did not make.
+*Proximity is tiered:* same district 2, same region 1, elsewhere 0. The trap, found by the
+first test written for it: measuring against the *district filter* collapses the tiers,
+because filtering by district has already excluded everyone who is not in it. The
+reference point therefore has its own field, `proximityDistrictId` - a wide filter plus a
+point to sort around is the only shape in which a proximity sort means anything.
+*The third gap stands:* remote-work readiness was never missing, only differently shaped -
+it is a `work_format` id, and saying so in the commit as though it were a gap was
+imprecise.
+
+### 2026-08-07 (M7) - Two §7.1 filters could not be built as worded, and were not faked
+"Specialization" and "remote-work readiness" are listed as filters in §7.1. Neither shipped
+in that form: a free-text specialization filter is a substring match on prose, which cannot
+behave identically in four interface variants (§3.3, BR-13), and remote work is a
+`work_format` dictionary item rather than a boolean.
+*The same reasoning killed a sort option:* §7.3 offers "location proximity where permission
+exists", and this data model has region and district **ids**, not coordinates. A distance
+invented from the region tree would be a made-up number in a control an employer would read
+as real.
+*Why this is recorded rather than quietly omitted:* each is a client conversation, not a
+bug - a dictionary for specializations would make it work, and so would storing
+coordinates. The gap is in the specification's assumptions, not in the build.
+
+### 2026-08-05 (M6) - BR-09 was worth waiting for, and the wait is the lesson
+The contact-exposure rule was on M3's checklist and deliberately not built there. It
+landed in M6, unchanged in shape from what M3 would have written, because that is when its
+inputs existed: a verified employer (M4) and a hiring interaction (M6).
+*Why deferring was right rather than lazy:* built in M3 it would have had **no caller**
+and could only have been tested against invented inputs - "does this function return false
+when I pass it false". Meanwhile the actual behaviour in M3 was *stricter* than BR-09
+requires (a CV was owner-only), so the gap exposed nothing. A missing capability is not a
+missing check, and telling the two apart is what made it safe to wait.
+*What the finished rule looks like:* one pure function taking (viewer, visibility,
+interaction) and returning two booleans **and a reason code**. The reason is not
+decoration - §11.1 requires logging access to protected data, and a log that cannot
+distinguish "was entitled" from "asked and was refused" answers no audit question. Two
+denials with different causes are not the same denial.
+*The property M7 must not break:* a search card is not an interaction. §11.1 forbids a
+phone number on one, so candidate-search cards have to be built from `expose()`'s output
+rather than from the profile row.
+
+### 2026-08-05 (M6) - The employer's file access is its own route, not a flag on the owner's
+`GET /files/:id/content` stays owner-only. An employer downloads a CV through
+`GET /applications/:id/files/:fileId/content`.
+*Why not teach the existing route about BR-09:* the entitlement comes from the
+application, so the route that serves it has to be the one that can see the application.
+Adding an "or an authorized employer" branch to the owner route would put a privacy rule
+in `infra/files`, which has no business knowing what a hiring interaction is - and
+`FilesService.readAsAuthorized` exists precisely so the check happens above it.
+*Why BR-09 is re-evaluated on every download rather than trusted from the listing:* a
+client may hold a `downloadPath` from a moment when the interaction still existed. A
+candidate who withdraws stops the download working, which is the point of the rule.
+*Why `readAsAuthorized` is a separate method and not a boolean parameter:* a flag named
+`authorized` is how "authorized" ends up defaulting to true at some future call site.
+
+### 2026-08-05 (M6) - Idempotency claims the key before doing the work
+`IdempotencyService.run` inserts the key row **first**, then performs the operation, then
+records the resource id.
+*Why that order and not check-then-insert:* two concurrent retries would both pass a
+check. Claiming first means the second conflicts on the primary key, waits, and finds the
+first one's result - which is the whole window the mechanism exists to close.
+*Why the resource id and not the response body:* a cached body goes stale the moment the
+resource changes. Re-reading the resource keeps one source of truth for what a client gets
+back on a replay.
+*Why it is not redundant with BR-07's unique index:* the index prevents the duplicate but
+answers a retry with a conflict, which a client cannot distinguish from "somebody else got
+there first". The key makes an interrupted-but-committed request replay as the success it
+was. Both are needed, and §12.4 asks for both.
+
+### 2026-08-05 (M6) - A saved list is not discovery
+Saved vacancies are deliberately **not** filtered by the visibility predicate that BR-11
+imposes on the feed.
+*Why:* BR-11 removes a closed vacancy from *active discovery*. A candidate who saved
+something needs to see that it closed - a saved item that silently vanished reads as a bug
+and loses the information the candidate wanted. Everything else in the discovery module
+starts from one shared `visible` fragment precisely so this exception is the only one, and
+is visible as such.
+
+### 2026-08-05 (M5) - BR-12 overrides the missing-moderator flag, and that is the point
+A vacancy carrying an age or gender restriction goes to `under_moderation` **regardless
+of `MODERATION_ENABLED`**, so with no admin module it cannot be published at all.
+*Why that is correct rather than a gap:* BR-12 makes "administrator review" part of the
+rule. The flag exists so *ordinary* vacancies are not stranded behind a moderator who
+does not exist yet; letting it also wave through a restriction nobody checked would use
+a convenience to defeat the one rule in the specification specifically about
+discrimination. Refusing to publish is the safe failure, and the employer sees
+`under_moderation` rather than silence.
+*The same reasoning covers a live vacancy whose restriction changes:* it has not been
+reviewed as it now reads, so it leaves discovery until it is. That is why `active →
+under_moderation` is a legal transition.
+*Generalisable:* when a feature flag exists to work around a missing dependency, decide
+explicitly which rules it is allowed to bypass. A flag that bypasses everything reachable
+from its code path is a flag that will eventually bypass something that mattered.
+
+### 2026-08-05 (M5) - BR-12's reasons: the labels are content, the rule is code
+The permitted justifications live in two places on purpose. The four labels are a
+`restriction_justification` dictionary (BR-13, like every selectable value). The *rule* -
+which reason can support which restriction, and the argument for each - is
+`age-gender-justifications.ts`.
+*Why not put `applies` in the dictionary row's `item_group`:* dictionary content is
+admin-editable by design (§10.3). If the rule lived there, an administrator could widen
+BR-12 by editing a label row - turning "minimum age" into something that justifies a
+gender restriction. The rule belongs where changing it is a code review.
+*Why enumerate at all rather than take free text:* BR-12 requires moderation to
+**validate** the reason. Prose cannot be validated, and a text box collects "young
+dynamic team" and leaves a moderator arguing case by case.
+*What the tests hold:* that the two code lists match exactly, that a reason must cover
+every restriction kind present, and that no preference-shaped code ("client_preference",
+"team_culture") is on the list. That last test looks paranoid and is not - it is the
+exact failure mode BR-12 exists to prevent, and the list is the only thing preventing it.
+
+### 2026-08-05 (M4) - An unanswered policy question can be a declaration instead of a blocker
+§6.1 asks for "identity verification data **if required by policy**" and no policy
+exists, which had M4 marked as blocked. It is now answered as *data*:
+`employer-requirements.ts` declares, per employer type, which profile fields BR-03
+requires and which documents a submission must carry - each with a `spec | default`
+provenance tag and a note arguing the value.
+*Why this is not a guess dressed up as a decision:* the provenance tag is the same
+device the dictionary seed uses, and it records **who may change the value**. A
+`default` is ours until the client approves it; changing one is one edit to one file,
+with no migration, endpoint or client release. The `file_purpose` rows are seeded
+either way, so the upload slots already render.
+*The defaults, and why they are asymmetric:* a company must upload a registration
+certificate - verifying nothing makes the verified badge meaningless. An individual
+must **not**. That is deliberate: an individual hiring two seasonal workers is the case
+this product exists to serve, demanding an identity document up front is the surest way
+to lose them, and storing scans of identity documents is a data-protection liability to
+accept only when a policy says to. A test pins both, so flipping either is deliberate.
+*Generalisable, and worth doing next:* BR-12's permitted age/gender justifications are
+the same shape of question and currently block M5's moderation. They can be declared
+the same way.
+
+### 2026-08-05 (M4) - The missing-reviewer flag, a second time
+`EMPLOYER_VERIFICATION_ENABLED` defaults to **off**, exactly as PLAN.md specifies
+`MODERATION_ENABLED` for M5. Submitting therefore transitions straight to `verified`.
+*Why a flag rather than skipping verification:* BR-03 blocks vacancy submission and
+invitations on a verified employer, so with no admin module (M10) every employer would
+park in `under_review` forever and the entire employer half of the product would be
+unreachable. The statuses, transitions, evidence rules and BR-03 all stay implemented;
+only the queue is absent.
+*Why the automatic approval still writes its BR-08 row:* an audit trail that silently
+omits the approvals nobody made is worse than one that records them honestly. The row
+carries a **null actor** and an `auto_verified_no_reviewer` reason, and every use logs
+a warning. Both paths are tested, so turning the flag on is not a leap of faith.
+*The pattern to reuse:* when a milestone's approver does not exist yet, flag the
+transition rather than the feature, and make the audit row admit what happened.
+
+### 2026-08-05 (M4) - Evidence is RESTRICT, so a purge has an ordering requirement
+`verification_submission_files.file_id` is `ON DELETE RESTRICT` on purpose: evidence
+must not vanish from under a submission an administrator is reading.
+*The consequence, found by a test cleanup that failed:* deleting a user's
+`stored_files` while a submission still references them **fails**. A BR-14 purge must
+delete the employer row first (which cascades its submissions and their file links),
+then the files, then the user. Nothing does this today - `purge_after` is still
+nullable pending the retention decision - but the purge implementation has to know it,
+and the failure would otherwise appear as a mysterious foreign-key error in production
+rather than in a test.
+
+### 2026-08-05 - The API is a container, and the tunnel addresses it by service name
+`Dockerfile` + `docker-compose.api.yml`; the tunnel origin changed from
+`host.docker.internal:3001` to `http://api:3001`. Three compose files in one directory
+share a Compose project and therefore one network, which is what makes both service
+names resolve with no network block anywhere.
+*Why not keep `host.docker.internal`, which does work here:* the container publishes
+its port to **loopback only**, and Docker Desktop's port proxy happens to make that
+reachable from `host.docker.internal` while a Linux host does not. The API would be
+unreachable on a real server with no clue as to why. Addressing the service directly
+also means nothing has to be published at all for the tunnel to work - the loopback
+mapping survives purely so a developer can curl the origin.
+*Why `NODE_ENV` is not baked into the image:* Joi refuses `OTP_STATIC_CODE` in
+production, and the fixed code is intentional until an SMS provider exists, so a
+`production` image would refuse to boot against the current `.env`. That forced a real
+improvement: log format is now `LOG_PRETTY`, not `NODE_ENV`. Without it the container
+crashed at boot requiring `pino-pretty`, a devDependency the production image does not
+carry - "development mode" and "pretty logs" were never the same concern.
+*Why migrations do not run at boot:* two replicas would race, and a rollback would
+become a database event. `pnpm migrate:latest` from the host, before `pnpm api:up`.
+*Why pnpm needed `--node-linker=hoisted` for the production install:* pnpm's default
+layout is symlinks into a content-addressed store, which do not survive a
+`COPY --from` into a stage that has no store. A hoisted tree is a plain directory.
+*An unplanned benefit worth keeping:* the container runs **UTC** while the platform
+zone is `Asia/Tashkent`, so it permanently exercises the case the date handling exists
+for. A birth date round-tripped unchanged and timestamps carried `+05:00` on the first
+try - which is the entry below, verified against a differently-zoned server rather
+than argued about.
+
+### 2026-08-05 (M3) - `date` columns come back as strings, or a birth date shifts a day
+`kysely:generate` runs with `--date-parser string` and `infra/db/pg-types.ts` registers
+the matching runtime parser for OID 1082. The two are a **pair**: changing one alone
+makes the generated types lie about what the driver returns.
+*The trap:* node-postgres parses a `date` into `new Date(y, m-1, d)` - **local**
+midnight on the server. That is a value with a time and a zone standing in for one
+that has neither, and every later formatting choice can move the day: UTC getters, or
+`formatWithOffset` for `Asia/Tashkent`, shift a birth date or an availability date by
+one whenever the server's zone and the platform zone disagree. It looks correct on a
+machine configured for Tashkent and wrong in production.
+*Why a string is not a workaround:* `'2026-08-12'` is what Postgres stores, what the
+driver now returns, and what API_CONTRACTS.md §4.2 puts on the wire for `kind: "date"`.
+No conversion exists to get wrong. Date comparisons are then lexicographic, which is
+exactly right for ISO dates.
+*Related:* `formatDateOnly(date, zone)` exists for "today" in the platform zone -
+`toISOString().slice(0,10)` is the previous day for five hours out of every
+twenty-four, which would make a `notAfter: 'today'` rule reject a legitimate value
+every night. The validator takes `today` as an **injected** value, so the rule is
+testable at all.
+
+### 2026-08-05 (M3) - The field schema is one declaration serving three jobs
+`modules/schemas/candidate-profile.schema.ts` is simultaneously the client's form
+(API_CONTRACTS.md §4), the server's write-routing and validation table, and the
+completeness definition. Each field carries its four labels, its requiredness per
+category, and where its value is stored.
+*Why not three separate lists:* §4.1 promises that every code in
+`requiredForSearchable` resolves to a field the client can render, so a completeness
+prompt can always focus something. With one declaration that is true by
+construction. With three it is true until someone edits one of them - and the
+failure is a client stuck on "something is missing" with nothing to tap.
+*Consequence to keep:* `storage` is part of the field declaration and is stripped
+from the response. Adding a field is one edit in one place; a mapping table next door
+would be the second place to forget.
+*For M5:* the vacancy schema should reuse this shape and the same validator. The
+validator is provided by `CandidatesModule` today because it has one caller; it moves
+to a shared module when the second arrives, not before.
+
+### 2026-08-05 (M3) - Completeness is two answers, and `is_complete` is not a threshold
+`completeness_percent` is measured over **every** entry the category's form has -
+engine fields plus experience and education as one entry each. `is_complete` is about
+the **required** entries only.
+*Why they must stay separate:* a percentage over only the mandatory fields moves in
+20-point jumps and tells an employer nothing, while a threshold on the percentage
+("80% is complete") would let a profile with no occupation into search and break
+BR-02. Two different questions, computed in one pass, never derived from each other.
+*The contract forces one detail:* a bespoke section has no fields, so
+`requiredForSearchable` can never name experience or education. BR-02 therefore never
+blocks on having entered a job - completeness still counts them, so an empty history
+is a lower percentage rather than a locked profile. That is the contract's shape, not
+an oversight.
+
+### 2026-08-05 (M3) - Gender is a dictionary row, because the field union has no enum
+§5.1 asks for gender and §7.1/BR-12 let a moderated vacancy restrict on it. It is
+stored as `gender_id` referencing `dictionary_items`, and `gender` is seeded as a 15th
+dictionary type.
+*Why not a native enum, which was the first implementation:* §4.2's `kind` union
+deliberately has no `enum` member (§3.1 - everything selectable is a dictionary), so
+an enum column would have had no way to reach the client except a bespoke field kind
+or a hand-maintained id mapping. It also has to be the **same id** a BR-12 vacancy
+restriction references, or the moderation review compares two vocabularies.
+*Why adding a "frozen" type is safe:* a field names its own `dictionaryType` and the
+client fetches whatever is named, so a new type changes nothing existing. The frozen
+list documents what exists; it is not a limit on additions.
+*The same reasoning kept visibility out of the field engine* - but there the answer
+was its own route, not a dictionary, because it also must not touch
+`last_meaningful_update_at`.
+
+### 2026-08-05 (M3) - Validate before opening the transaction, again
+`CandidatesService.patch` resolves the category, validates every field and collects
+every violation **before** `db.transaction()`. `applyFields` cannot throw.
+*Why this is written down a second time:* it is the same trap as the two M1 security
+bugs below, approached from the other side. There the throw was after the write; here
+the discipline is that by the time a transaction opens there is nothing left that can
+throw. The history service does the mirror thing - it returns the outcome from the
+transaction and throws the 404 after the commit, so the derived-state refresh is not
+rolled back by the exception that reports a missing row.
+*Also relevant:* the whole request fails as a unit. One bad field in a body of five
+writes none of them, which a test asserts - a client that got a 422 must not have to
+guess which half landed.
+
+### 2026-08-05 (M3) - `candidate_attributes` is the generic field store, not just category fields
+One key/value table keyed by the **schema field's code** holds every §5.2 category
+field *and* the core multi-selects (employment type, work format, shift, industry).
+One row per scalar, one row per selected id.
+*Why the core multi-selects went there too:* they need no column of their own, and one
+indexed table answers "has this tool" and "accepts this employment type" with the same
+join in M7. Four more child tables would have been four more migrations for no new
+capability.
+*What keeps it honest:* a CHECK requires exactly one of the six value columns per row,
+so a field whose kind changed cannot leave two values behind for readers to choose
+between; and two partial unique indexes (scalar rows have a null `item_id`, multi rows
+do not) express "one row per scalar field, one per selected id" - which a primary key
+cannot, because `item_id` is nullable.
+
 ### 2026-08-05 (later the same day) - Login reverts to phone + OTP; Telegram is deprecated
 Client direction, superseding the two Telegram entries below after one day: the app logs
 in with §4.1's phone + OTP, which is what the specification and UAT-01 said all along.
@@ -367,14 +741,15 @@ ones most likely to bite again:
 
 - **The public URL is https://hh.qitmir.uz** — named Cloudflare tunnel `headhunter`,
   id `3d0cec91-0f40-4f1d-848a-76c4c952142b`, created 2026-08-05. Origin is
-  `host.docker.internal:3001`, so it serves whatever is listening on 3001.
-  Bring it up with `pnpm tunnel:up`.
-  *Trap paid for on 2026-08-05:* that process has been `node dist/main.js`, a
-  **compiled build and not a watcher**, so it kept serving hours-old code while the
-  source and `.env` had both moved on. The symptom was a correct-looking 404 from
+  `http://api:3001`, the `headhunter-api` container over the shared compose network.
+  Bring it up with `pnpm db:up && pnpm api:up && pnpm tunnel:up`.
+  *Trap paid for on 2026-08-05, and it survives containerisation:* the origin serves a
+  **built artefact, never a watcher**, so it keeps serving old code while the source
+  and `.env` have both moved on. The symptom was a correct-looking 404 from
   `/auth/otp/send` — the guard reading an `OTP_LOGIN_ENABLED` that was false when the
-  build was made. Check `(Get-CimInstance Win32_Process -Filter "ProcessId=$pid").CommandLine`
-  before believing a live response; `pnpm build` then restart is what picks up a change.
+  build was made. `pnpm api:up` rebuilds; a bare `docker compose up -d` reuses the
+  existing image and reproduces the trap exactly. Before believing any live response,
+  confirm what is actually serving: `docker ps --filter name=headhunter-api`.
   *Also worth knowing:* the tunnel drops its QUIC connection when the origin goes
   away and takes a few seconds to re-register, so the first call after a restart can
   fail once through `hh.qitmir.uz` while `127.0.0.1:3001` is already fine.
@@ -402,13 +777,18 @@ ones most likely to bite again:
 
 Tracked as `[?]` items at the top of [TODO.md](TODO.md). Still open and still
 blocking: **data-retention periods** (BR-14, blocks the deletion purge and audit
-retention), **individual-employer verification evidence** (§6.1, blocks M4), and
-the **permitted age/gender justifications** (BR-12, blocks M5 moderation).
+retention). That is now the only one.
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
 
-The dictionary value lists are no longer a blocker - all 14 types are seeded and
+No longer blocking, though still wanting sign-off - both declared as data with stated
+defaults and provenance tags, so an answer is one file edit rather than a milestone
+dependency: **individual-employer verification evidence** (§6.1) and the **permitted
+age/gender justifications** (BR-12). The second wants **legal** review specifically;
+nothing on that list has been seen by a lawyer.
+
+The dictionary value lists are no longer a blocker - all 16 types are seeded and
 working - but four of them and the occupation set are compiled starting points
 awaiting client review, and each says so in its data file. Getting that review is
 now a quality task, not a dependency.

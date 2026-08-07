@@ -1,5 +1,5 @@
 /**
- * Dictionary seed runner.
+ * Dictionary and field-schema seed runner.
  *
  *   pnpm seed
  *
@@ -17,6 +17,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 
 import { seedDictionaries } from '@modules/dictionaries/seed/dictionary-seed';
+import { seedSchemaVersions } from '@modules/schemas/seed/schema-version-seed';
 
 import type { DB } from './database.types';
 
@@ -44,12 +45,18 @@ async function main(): Promise<void> {
     console.log(`  items activated   ${report.itemsActivated}`);
     console.log(`  labels written    ${report.labelsWritten}`);
 
+    // Publishes what the field-schema declarations say, so the manifest and the
+    // schema ETag report the version the code actually serves.
+    const schemas = await seedSchemaVersions(db);
+    console.log(`  schema versions   ${schemas.versionsUpdated}`);
+
     if (
       report.typesCreated +
         report.itemsCreated +
         report.itemsUpdated +
         report.itemsActivated +
-        report.labelsWritten ===
+        report.labelsWritten +
+        schemas.versionsUpdated ===
       0
     ) {
       // Worth saying out loud: it means no dictionary version moved, so no

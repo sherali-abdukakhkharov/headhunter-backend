@@ -16,6 +16,18 @@ export interface AppEnv {
   LOG_LEVEL: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
   /**
+   * Human-readable logs through `pino-pretty` instead of raw JSON.
+   *
+   * Separate from `NODE_ENV` because they are different concerns, and the
+   * container proves it: this deployment runs with `NODE_ENV=development` on
+   * purpose (the fixed OTP code is refused in production), but it must still emit
+   * JSON, because `pino-pretty` is a devDependency and the image carries
+   * production dependencies only. Tying the two together made the container crash
+   * at boot on an unresolvable transport.
+   */
+  LOG_PRETTY: boolean;
+
+  /**
    * IANA zone every client-facing timestamp is rendered in (§8.3, single
    * platform zone). Storage stays UTC; see `infra/time/format.ts`.
    */
@@ -36,6 +48,46 @@ export interface AppEnv {
    * `/auth/otp/*` route answers 404.
    */
   OTP_LOGIN_ENABLED: boolean;
+
+  /**
+   * Whether a verification submission waits for a human decision (§6.1).
+   *
+   * **Off for the MVP**, and the reasoning is the same as `MODERATION_ENABLED` in
+   * PLAN.md's M5: the admin module is M10, so there is nobody who *can* approve a
+   * submission. With it off, submitting transitions straight to `verified` - and
+   * still writes its BR-08 history row, with a null actor and an
+   * `auto_verified_no_reviewer` reason, so the audit trail never claims a person
+   * reviewed anything.
+   *
+   * Everything else stays implemented: the five statuses, the transition rules, the
+   * evidence requirement and BR-03's precondition. Turning this on when M10 lands
+   * needs no client change.
+   *
+   * *Why not simply skip verification until M10:* BR-03 blocks vacancy submission
+   * and invitations on a verified employer, so an employer who submits would park in
+   * `under_review` forever and the entire employer half of the product would be
+   * unreachable - exactly the trap PLAN.md records for BR-04.
+   */
+  EMPLOYER_VERIFICATION_ENABLED: boolean;
+
+  /**
+   * Whether a submitted vacancy waits for a moderator (§6.4, BR-04).
+   *
+   * **Off for the MVP**, for the reason PLAN.md's M5 records: the admin module is M10,
+   * so nobody can approve a vacancy, and BR-04 would leave every submission parked in
+   * `under_moderation` - closing the whole employer-posts-candidate-applies loop the
+   * MVP exists to demonstrate. With it off, submit transitions `draft → active`
+   * directly, **still writing its BR-08 history row** with a null actor and an
+   * `auto_approved_no_moderator` reason.
+   *
+   * *What it deliberately does not cover:* a vacancy carrying a BR-12 age or gender
+   * restriction is sent for review **regardless of this flag**. BR-12 requires
+   * "administrator review", and a flag that exists to stop ordinary vacancies being
+   * stranded must not become a way to publish a restriction nobody checked. Such a
+   * vacancy therefore cannot be published until M10 lands - which is the right
+   * outcome, and the employer is told so.
+   */
+  MODERATION_ENABLED: boolean;
 
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;
@@ -126,6 +178,17 @@ export interface AppEnv {
   RATE_LIMIT_AUTH_PER_PHONE: number;
   RATE_LIMIT_AUTH_PER_IP: number;
   RATE_LIMIT_FILES_PER_IP: number;
+  /** §12.5's search bucket. A search is a heavy read, so it gets its own budget. */
+  RATE_LIMIT_SEARCH_PER_IP: number;
+
+  /**
+   * How far §7.2's count-before-open counts before answering "n+".
+   *
+   * Configuration rather than a constant for the reason every other limit here is: the
+   * number at which an exact count stops being "technically reasonable" depends on the
+   * size of the database it runs against.
+   */
+  SEARCH_COUNT_CAP: number;
 
   /**
    * Bot token for the file store. Also the download credential: Telegram's
@@ -169,6 +232,12 @@ export const envSchema = Joi.object<AppEnv, true>({
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
 
+  // Defaults to on outside production, which is what a developer watching a
+  // terminal wants. The container sets it to false explicitly.
+  LOG_PRETTY: Joi.boolean().default(
+    (parent: { NODE_ENV?: string }) => parent.NODE_ENV !== 'production',
+  ),
+
   // Validated as a real IANA zone at boot rather than trusted: a typo would
   // otherwise surface as a RangeError from Intl on the first response.
   PLATFORM_TIME_ZONE: Joi.string()
@@ -194,6 +263,13 @@ export const envSchema = Joi.object<AppEnv, true>({
   // The MVP login path (§4.1), so it defaults to on. It stays a flag because the
   // routes still need to be closable without a revert - see OtpEnabledGuard.
   OTP_LOGIN_ENABLED: Joi.boolean().default(true),
+
+  // Off until the admin module (M10) gives submissions a reviewer. See AppEnv.
+  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(false),
+
+  // Off until M10 gives vacancies a moderator. BR-12 restrictions are reviewed
+  // regardless - see AppEnv.
+  MODERATION_ENABLED: Joi.boolean().default(false),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.
@@ -257,6 +333,13 @@ export const envSchema = Joi.object<AppEnv, true>({
   RATE_LIMIT_AUTH_PER_PHONE: Joi.number().integer().min(1).default(20),
   RATE_LIMIT_AUTH_PER_IP: Joi.number().integer().min(1).default(120),
   RATE_LIMIT_FILES_PER_IP: Joi.number().integer().min(1).default(120),
+  // Looser than files and tighter than auth: a search is one deliberate action per
+  // screen, but an employer refining filters legitimately fires several per minute.
+  RATE_LIMIT_SEARCH_PER_IP: Joi.number().integer().min(1).default(240),
+
+  // §7.2: "the current number of matching candidates ... where technically reasonable".
+  // 200 is where a client renders "200+" rather than a number anyone reads.
+  SEARCH_COUNT_CAP: Joi.number().integer().min(1).default(200),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

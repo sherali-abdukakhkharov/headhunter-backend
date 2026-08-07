@@ -82,6 +82,19 @@ export function offsetMinutes(date: Date, timeZone: string): number {
 }
 
 /**
+ * The calendar date at `timeZone` for a given instant, as `'YYYY-MM-DD'`.
+ *
+ * Separate from `formatWithOffset` because a calendar date is not an instant:
+ * "today" in Tashkent is the previous UTC day for five hours out of every
+ * twenty-four, so `toISOString().slice(0, 10)` gets it wrong every night. Date-only
+ * comparisons (a birth date's minimum age, an availability date) must use this.
+ */
+export function formatDateOnly(date: Date, timeZone: string): string {
+  const p = wallClockParts(date, timeZone);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/**
  * Formats an instant as ISO-8601 with an explicit numeric offset for `timeZone`.
  *
  * ```

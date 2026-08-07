@@ -157,7 +157,62 @@ Decisions:
   absorb. Recompute on profile write.
 - **`last_meaningful_update_at`** is separate from `updated_at`: §5.3 requires
   showing the last *meaningful* update, and §7.1/§7.3 allow sorting by it.
-  Touching a privacy toggle must not make a stale profile look fresh.
+  Touching a privacy toggle must not make a stale profile look fresh. Structural
+  rather than conditional: visibility has its **own route**, which is the only
+  write that does not refresh it, so no branch decides "was this meaningful".
+- **`candidate_attributes` is the generic store for any engine field without a
+  column or a child table of its own** - every §5.2 category field, plus the core
+  multi-selects (employment type, work format, shift, industry). One row per scalar
+  field, one row per selected id for a multi-select, keyed by the **schema field's
+  code**. That is what makes an attribute filter an ordinary indexed join in M7 and
+  a new work-type field a data change rather than a migration.
+- **`gender` is a dictionary reference, not a native enum.** §4.2's `kind` union has
+  no `enum` member, the four labels have to come from somewhere, and BR-12's vacancy
+  restrictions must reference the same ids the profile stores. It is the 15th
+  dictionary type; adding one is additive, because a field names its own
+  `dictionaryType` and the client fetches whatever is named.
+- **A calendar date is a string end to end.** `date` columns come back as
+  `'YYYY-MM-DD'` (`infra/db/pg-types.ts` plus `--date-parser string`), because
+  node-postgres otherwise parses one into local midnight - a value with a time and
+  a zone standing in for one that has neither, which shifts a birth date by a day
+  whenever the server's zone and the platform zone disagree.
+
+### 4.1 Completeness (§5.3, BR-02)
+
+Two answers from one pass, and the distinction matters:
+
+- **`completeness_percent`** is measured over *every* entry the category's form has
+  - engine fields plus experience and education as one entry each. A percentage over
+  only the mandatory fields would move in 20-point jumps and tell an employer
+  nothing (§7.1 filters on "minimum completeness").
+- **`is_complete`** is only about the *required* entries. It is BR-02's gate, so it
+  must never be a threshold on the percentage - "80% complete" would otherwise let a
+  profile with no occupation into search.
+
+`missingFields` carries both, flagged, so §5.3's "missing mandatory fields with
+direct edit links" and the client's optional-gap prompts come from one list.
+
+A consequence of the contract worth knowing: a bespoke section has no fields, so
+`requiredForSearchable` can never name experience or education (§4.1 requires every
+code there to resolve to a rendered field). BR-02 therefore never blocks on having
+entered a job - completeness still counts them, so an empty history shows up as a
+percentage rather than a locked profile.
+
+### 4.2 The field schema is one declaration, not three
+
+`modules/schemas/candidate-profile.schema.ts` is the client's form, the server's
+write-validation table **and** the completeness definition. Each field carries its
+labels, its requiredness per category, and where its value is stored.
+
+*Why:* three separate lists are three chances for a field to be required in one and
+unknown in another, and API_CONTRACTS.md §4.1 promises that every code in
+`requiredForSearchable` resolves to a field the client can focus. With one
+declaration that is true by construction; with three it is true until someone edits
+one of them.
+
+The published version lives in `schema_versions` and is copied there from the
+declaration by `pnpm seed`. A content hash was rejected: not every edit needs a
+refetch, and hashing would make a reordered comment invalidate every cached form.
 
 ---
 
@@ -203,7 +258,75 @@ Two hard authorization rules the search path must enforce server-side (§7, §11
 BR-09): only **verified** employers may search at all, and result cards must
 never include phone or full contact details.
 
+*Built in M7, and five decisions are worth carrying forward.*
+
+- **The query is four stages, in this order:** filter and count matches, turn the counts
+  into §7.3's score, sort and take the page, and only then build the cards. The card's
+  nine correlated subqueries and two lateral joins therefore run for at most `limit`
+  candidates rather than for every match — which is what makes the 3-second budget a
+  property of the filters rather than of the size of the database.
+- **The score's weights and the response's explanation come from one function.**
+  `scoreGroups(filters)` decides which groups take part, what each was asked for and what
+  it weighs; the SQL expression is built by iterating that list, and the breakdown the
+  client renders reports the same objects. Two definitions would drift into a ranking
+  nobody could explain.
+- **A card is not a hiring interaction, so BR-09 is not consulted for one.** §11.1 is
+  unconditional there, so the card type has no contact field and the query never joins
+  `users` — stronger than fetching a phone number and nulling it, and asserted
+  mechanically over the compiled SQL. Contact details live on the profile view, which
+  goes through M6's single BR-09 gatherer.
+- **The profile photo is the one exception to files being BR-09-gated.** §7.3 puts a
+  photo on the card and §5.4 keeps documents behind an interaction; both hold because a
+  photo uploaded to be found by is not a document. The exception is one route, one
+  purpose code, searchable profiles only.
+- **Where §7.1's wording and the data model disagree, the id-shaped form wins.**
+  Specialization was free text and is now a `specialization` dictionary on both the
+  candidate profile and the vacancy (M7, on client direction): a substring match on prose
+  cannot behave identically in four interface variants (§3.3, BR-13). "Remote-work
+  readiness" is likewise a `work_format` id rather than a boolean. And §7.3's location
+  proximity is **tiered** — same district, then same region — because places here are
+  dictionary ids in a two-level tree, not coordinates; its reference point is its own
+  filter field, since filtering by district would exclude everyone the sort exists to
+  order.
+
 ---
+
+## 5a. Employers and verification
+
+Two employer types with different fields (§6.1), so **company detail is its own
+table** rather than a set of nullable columns: which fields must be filled becomes a
+property of the schema instead of a rule in code, and an individual employer does not
+carry eight columns that can never apply.
+
+Verification keeps **the current state on the employer and the attempts as rows**.
+Both are needed — §6.1 shows the employer one status, while an administrator
+reviewing a resubmission needs to see what was sent before and why it was refused —
+and the status is written in the same transaction as the submission that changes it.
+
+- **Transitions live in one place** and every one writes an
+  `employer_verification_history` row in the same transaction (BR-08). The method
+  that sets the status is private, so no caller can change it without the audit row.
+- `verified` is **terminal** in this machine. Revoking it is an administrator action
+  against a *user* (§10.4), not a step here; treating it as one would let an employer
+  resubmit their way out of a revocation.
+- **`EMPLOYER_VERIFICATION_ENABLED` is off until M10.** With no admin module nobody
+  can approve a submission, and BR-03 would strand every employer in `under_review`.
+  The automatic approval still writes its history row, with a null actor and an
+  `auto_verified_no_reviewer` reason.
+- **`is_complete` is stored**, like the candidate's, because BR-03 is read on every
+  vacancy submission and invitation.
+
+### 5a.1 An open policy question, answered as data
+
+§6.1 requires "verification documents if required" and "identity verification data
+if required by policy", and no policy exists. Rather than block the milestone, the
+requirement is **declared** in `employer-requirements.ts` — per employer type, with a
+`spec | default` provenance tag and a note per value, exactly as dictionary content
+declares its own provenance. The `file_purpose` rows it names are seeded regardless,
+so the client renders the upload slots today and the answer arrives as one file edit.
+
+The same move is available for BR-12's permitted age/gender justifications, which is
+the remaining decision blocking M5's moderation.
 
 ## 6. Vacancies, applications and status machines
 
@@ -231,9 +354,43 @@ Enforcement points:
   write both or neither.
 - **BR-05** worker count `>= 1` as a check constraint.
 - **BR-12** age/gender restrictions on a vacancy require a stored justification
-  and force `under_moderation`; the audit row records the admin decision.
+  and force `under_moderation`; the audit row records the admin decision. Two
+  properties worth stating, because both are easy to undo by accident:
+  - **The justification is an id from an enumerated list, never prose.** BR-12
+    requires moderation to *validate* the reason, and prose cannot be validated. The
+    list's labels are a dictionary; the rule about which reason supports which
+    restriction is code, because a dictionary row is admin-editable and widening
+    BR-12 must not be a content edit. The CHECK constraint refuses a restriction with
+    no justification at all, so no write path can produce one.
+  - **It overrides `MODERATION_ENABLED`.** A restricted vacancy waits for review even
+    when nothing can review it, which means it cannot publish before M10. That is the
+    safe failure: the flag exists so *ordinary* vacancies are not stranded, not so a
+    restriction can skip the review the specification requires for it. Changing a
+    restriction on a live vacancy sends it back for the same reason, which is why
+    `active → under_moderation` is a legal transition.
 - **BR-11** closed vacancies leave active discovery but stay in history - a
   status filter, never a delete.
+
+**Invitations** (§8.2, built in M7) are the fourth machine, and the smallest:
+`sent → accepted | declined | details_requested`, then `details_requested → accepted |
+declined`. Four things about it are decisions rather than transcription.
+
+- **Every transition is the candidate's.** Unlike §8.1's stages there is no "who may set
+  this" column, because there is one answer - so the response route is candidate-only and
+  the service checks ownership instead of consulting a table.
+- **`details_requested` is a question, not an ending**, and asking twice is refused: a
+  second identical row would record that nothing happened.
+- **No `withdrawn`, no `expired`.** Neither is in the specification, and a status nothing
+  can set is a state every reader has to consider for nothing.
+- **The two shapes are exclusive in the schema.** A CHECK requires exactly one of
+  `vacancy_id` and `occupation_id`, so "an invitation to a vacancy that also states a
+  different occupation" is unrepresentable - the same move as M4's `employers` /
+  `companies` split, which makes "which fields must be filled" a property of the schema.
+
+One open invitation per (employer, candidate, vacancy) is a partial unique index with
+**`NULLS NOT DISTINCT`**, which is load-bearing: without it two general invitations - both
+with a null `vacancy_id` - would count as different rows and an employer could send
+unlimited ones.
 
 ---
 
@@ -255,6 +412,14 @@ This is separate from BR-07's unique index: the index prevents logical
 duplicates, idempotency keys make an interrupted-but-successful request safe to
 retry and let the client distinguish "already done" from "conflict".
 
+*Built in M6 (`infra/idempotency`), and two details of the implementation matter.*
+The key is **claimed before the work runs**, so two concurrent retries cannot both pass
+the check - the second conflicts on the primary key, waits, and then finds the first
+one's result. Checking first and inserting afterwards would leave exactly the window the
+mechanism exists to close. And what is stored is the **resource id, not the response
+body**: a cached body would go stale the moment the resource changed, and re-reading
+keeps one source of truth for what the client gets back.
+
 ---
 
 ## 8. Authorization
@@ -274,9 +439,31 @@ but "may this user, acting as role R, do this to resource X".
   message creation with a clear reason (§13.1 UAT-14).
 - **BR-03**: employer profile completeness is a precondition on invitation and
   vacancy-submit routes.
-- **BR-09**: contact-detail exposure is decided in one serializer helper that
-  takes (viewer, candidate, interaction state). Never inline this rule per
-  endpoint - it will drift, and drifting is a privacy incident.
+- **BR-09**: contact-detail exposure is decided in **one pure function**,
+  `infra/privacy/contact-exposure.ts`, taking (viewer, visibility, interaction state).
+  Never inline this rule per endpoint - it will drift, and drifting is a privacy
+  incident. Built in M6 rather than M3, because two of its three inputs did not exist
+  before then; until they did, a CV was owner-only, which is stricter than the rule.
+  Three properties to preserve:
+  - It returns a **reason code** as well as the two booleans, so §11.1's "access to
+    protected data is logged" produces a log that can distinguish an employer who was
+    entitled to a phone number from one who asked and was refused.
+  - **Files and contact details are one decision.** §5.4 and §11.1 draw the same line,
+    so a state where one is allowed and the other is not would be a rule nobody wrote.
+  - **A search card is not an interaction.** §11.1 forbids a phone number on one, and M7
+    took the stricter route than nulling one: the card query never joins `users` and the
+    card type has no field for a phone number, asserted over the compiled SQL. A rule
+    whose answer is always "no" is not a decision worth making at runtime.
+  - **The interaction is derived from data, never from an id in the URL.** M7 found this
+    the hard way while adding the second entry point: a withdrawn application is still
+    addressable, so trusting the path would have let a view requested *through* the
+    withdrawn application re-grant the exposure the withdrawal took back.
+  - Both interactions now exist. An accepted invitation (§8.2) is the second, and adding
+    it was one line in the gatherer and no change to the rule - which is what passing both
+    flags explicitly bought. The gatherer reads the `invitations` table directly rather
+    than injecting that module, because the invitations module imports *it* for the
+    invitation-scoped download route; a module cycle for one `SELECT` would be a worse
+    trade.
 
 ### Auth flow
 
@@ -425,6 +612,34 @@ and Telegram performs none on a bot upload.
 - **Interviews** store type (phone/in-person/external link), timestamp in the
   configured zone, location-or-link required by type, instructions, and the
   candidate's confirm / request-another-time response.
+
+*Built in M8, and five decisions are worth carrying forward.*
+
+- **Nothing records that a conversation is permitted.** The gate is asked live, of
+  `HiringInteractionService`, on every send. A flag written at creation would have to be
+  un-set by everything that can end an interaction - a withdrawal, a declined invitation
+  - from modules with no reason to know chat exists, and the failure mode is a channel to
+  somebody who has left. Asking live also makes §9.1's read-only rule free, and reopening
+  free with it.
+- **That service is the third caller of one question**, after BR-09's gatherer and the
+  employer's candidate view. It lives in `infra/privacy` with no module dependencies, so
+  nothing can form a cycle around it, and the two rules it feeds - who may see a phone
+  number, and who may send a message - cannot drift apart.
+- **Read state is two timestamps on the conversation.** There are exactly two
+  participants, so "has the other side read this" is one comparison and the unread count
+  is one aggregate; a `message_reads` table would carry a row per message per person to
+  answer the same question. **There is no `delivered` state** until M9's dispatcher can
+  set it honestly.
+- **A block is read-only for both sides**, whoever set it. The alternative is a mute, and
+  the messages stay readable because the moderator reviewing the report needs them.
+- **Scheduling an interview moves the application to §8.1's `interview` stage in the same
+  transaction.** The stage table says the candidate is told "date, time, type and
+  location/link" when it is set - that *is* the interview - so two calls would let the
+  pair disagree. `ApplicationsService.ensureInterviewStage` runs inside the interview's
+  transaction, keeping the stage machine and its BR-08 row in the module that owns them.
+  §8.3's conditional "location / link required according to interview type" is a CHECK
+  constraint with a pure-function twin, so the message names the field and the rule holds
+  against any write path.
 - **Notifications** (§9.2): nine event types, each with a defined recipient. Every
   notification is an in-app row plus a push attempt. Preferences may disable
   non-critical categories; **security and account notices are not disableable**.
@@ -468,10 +683,16 @@ Answers change the schema, so raise them before the affected milestone:
 
 1. **Retention periods** for account deletion and audit logs - BR-14 defers to
    "the approved privacy policy", which we do not have yet.
-2. **Verification evidence** required for individual (non-company) employers
-   (§6.1 says "if required by policy").
-3. **Conditional filters** (§7.1, BR-12): the legally permitted justifications for
-   age/gender filtering need to be enumerated, since moderation must check them.
+2. ~~**Verification evidence** required for individual (non-company) employers~~ -
+   **no longer blocking.** Declared as data in `employer-requirements.ts` (§5a.1);
+   the current default is that an individual need not upload an identity document and
+   a company must upload a registration certificate. Still wants sign-off.
+3. ~~**Conditional filters** (§7.1, BR-12)~~ - **no longer blocking, but wants legal
+   review.** Five permitted justifications are enumerated in
+   `modules/vacancies/age-gender-justifications.ts`, each declaring which restriction
+   kinds it supports and arguing for itself; the four labels are a
+   `restriction_justification` dictionary. Nothing on that list has been reviewed by a
+   lawyer, which is why every entry is tagged `default`.
 4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and
    working, but four of them carry a conventional default rather than an approved
    list, and the occupation set is a starting point rather than a classifier. See

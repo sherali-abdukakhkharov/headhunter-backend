@@ -320,6 +320,335 @@ export const MESSAGES = {
     en: 'The file could not be downloaded. Please try again.',
   },
 
+  // --- candidate profile (§5) ---------------------------------------------
+  // A record that is not there, or belongs to someone else. One message for both:
+  // confirming that an id exists but is another candidate's is information we do
+  // not owe (§11.1), and the caller's fix is the same either way.
+  'candidate.record_not_found': {
+    'uz-Latn': 'Yozuv topilmadi.',
+    'uz-Cyrl': 'Ёзув топилмади.',
+    ru: 'Запись не найдена.',
+    en: 'The record was not found.',
+  },
+  'candidate.profile_not_found': {
+    'uz-Latn': 'Nomzod profili topilmadi.',
+    'uz-Cyrl': 'Номзод профили топилмади.',
+    ru: 'Профиль кандидата не найден.',
+    en: 'The candidate profile was not found.',
+  },
+  'candidate.attachment_purpose_invalid': {
+    'uz-Latn': 'Bu turdagi fayl profilga qoʻshilmaydi.',
+    'uz-Cyrl': 'Бу турдаги файл профилга қўшилмайди.',
+    ru: 'Файл этого типа не добавляется в профиль.',
+    en: 'A file of this kind is not part of the profile.',
+  },
+
+  // --- employers (§6.1, BR-03) ---------------------------------------------
+  'employer.profile_not_found': {
+    'uz-Latn': 'Ish beruvchi profili topilmadi.',
+    'uz-Cyrl': 'Иш берувчи профили топилмади.',
+    ru: 'Профиль работодателя не найден.',
+    en: 'The employer profile was not found.',
+  },
+  // BR-03: the fix is "finish the profile", which is why it is not the same message
+  // as "not verified yet" - the two need different actions from the employer.
+  'employer.profile_incomplete': {
+    'uz-Latn': 'Avval ish beruvchi profilini toʻliq toʻldiring.',
+    'uz-Cyrl': 'Аввал иш берувчи профилини тўлиқ тўлдиринг.',
+    ru: 'Сначала заполните профиль работодателя полностью.',
+    en: 'Complete the employer profile first.',
+  },
+  'employer.not_verified': {
+    'uz-Latn': 'Bu amal uchun profil tasdiqlanishi kerak.',
+    'uz-Cyrl': 'Бу амал учун профил тасдиқланиши керак.',
+    ru: 'Для этого действия профиль должен быть подтверждён.',
+    en: 'This action requires a verified profile.',
+  },
+  'employer.type_immutable': {
+    'uz-Latn': 'Ish beruvchi turini keyinchalik oʻzgartirib boʻlmaydi.',
+    'uz-Cyrl': 'Иш берувчи турини кейинчалик ўзгартириб бўлмайди.',
+    ru: 'Тип работодателя нельзя изменить позже.',
+    en: 'The employer type cannot be changed later.',
+  },
+  'employer.verification_not_submittable': {
+    'uz-Latn': 'Joriy holatda tasdiqlashga yuborib boʻlmaydi.',
+    'uz-Cyrl': 'Жорий ҳолатда тасдиқлашга юбориб бўлмайди.',
+    ru: 'В текущем состоянии отправка на проверку невозможна.',
+    en: 'A submission is not possible in the current state.',
+  },
+  'employer.verification_evidence_missing': {
+    'uz-Latn': 'Talab qilingan hujjatlar toʻliq yuklanmagan.',
+    'uz-Cyrl': 'Талаб қилинган ҳужжатлар тўлиқ юкланмаган.',
+    ru: 'Загружены не все требуемые документы.',
+    en: 'Not all required documents were uploaded.',
+  },
+  'employer.verification_not_pending': {
+    'uz-Latn': 'Bu soʻrov koʻrib chiqilmoqda emas.',
+    'uz-Cyrl': 'Бу сўров кўриб чиқилмоқда эмас.',
+    ru: 'Эта заявка не находится на рассмотрении.',
+    en: 'This submission is not under review.',
+  },
+  'employer.verification_reason_required': {
+    'uz-Latn': 'Rad etish yoki tuzatish uchun sabab koʻrsatilishi shart.',
+    'uz-Cyrl': 'Рад этиш ёки тузатиш учун сабаб кўрсатилиши шарт.',
+    ru: 'Для отказа или замечаний необходимо указать причину.',
+    en: 'A reason is required to reject or request changes.',
+  },
+
+  // --- vacancies (§6.3, §6.4, BR-04, BR-11, BR-12) -------------------------
+  'vacancy.not_found': {
+    'uz-Latn': 'Vakansiya topilmadi.',
+    'uz-Cyrl': 'Вакансия топилмади.',
+    ru: 'Вакансия не найдена.',
+    en: 'The vacancy was not found.',
+  },
+  'vacancy.not_editable': {
+    'uz-Latn': 'Bu vakansiyani tahrirlash mumkin emas.',
+    'uz-Cyrl': 'Бу вакансияни таҳрирлаш мумкин эмас.',
+    ru: 'Эту вакансию нельзя редактировать.',
+    en: 'This vacancy can no longer be edited.',
+  },
+  // Distinct from the above: the employer's action is to wait, not to give up.
+  'vacancy.under_moderation': {
+    'uz-Latn': 'Vakansiya koʻrib chiqilmoqda, shu vaqtda tahrirlanmaydi.',
+    'uz-Cyrl': 'Вакансия кўриб чиқилмоқда, шу вақтда таҳрирланмайди.',
+    ru: 'Вакансия на проверке и пока не редактируется.',
+    en: 'The vacancy is under review and cannot be edited yet.',
+  },
+  'vacancy.not_submittable': {
+    'uz-Latn': 'Joriy holatda nashrga yuborib boʻlmaydi.',
+    'uz-Cyrl': 'Жорий ҳолатда нашрга юбориб бўлмайди.',
+    ru: 'В текущем состоянии публикация невозможна.',
+    en: 'It cannot be submitted for publication in its current state.',
+  },
+  'vacancy.transition_not_allowed': {
+    'uz-Latn': 'Bu holatga oʻtish mumkin emas.',
+    'uz-Cyrl': 'Бу ҳолатга ўтиш мумкин эмас.',
+    ru: 'Такой переход состояния невозможен.',
+    en: 'That status change is not allowed.',
+  },
+  'vacancy.deadline_passed': {
+    'uz-Latn': 'Arizalar muddati oʻtgan. Muddatni yangilang.',
+    'uz-Cyrl': 'Аризалар муддати ўтган. Муддатни янгиланг.',
+    ru: 'Срок приёма заявок истёк. Обновите срок.',
+    en: 'The application deadline has passed. Update it first.',
+  },
+  // BR-12: the reason must be one moderation can actually validate.
+  'vacancy.restriction_not_justified': {
+    'uz-Latn': 'Yosh yoki jins cheklovi uchun asos toʻgʻri koʻrsatilmagan.',
+    'uz-Cyrl': 'Ёш ёки жинс чеклови учун асос тўғри кўрсатилмаган.',
+    ru: 'Для ограничения по возрасту или полу не указано допустимое основание.',
+    en: 'The age or gender restriction has no permitted justification.',
+  },
+  'vacancy.not_under_moderation': {
+    'uz-Latn': 'Bu vakansiya koʻrib chiqilmoqda emas.',
+    'uz-Cyrl': 'Бу вакансия кўриб чиқилмоқда эмас.',
+    ru: 'Эта вакансия не находится на проверке.',
+    en: 'This vacancy is not under review.',
+  },
+  'vacancy.moderation_reason_required': {
+    'uz-Latn': 'Rad etish uchun sabab koʻrsatilishi shart.',
+    'uz-Cyrl': 'Рад этиш учун сабаб кўрсатилиши шарт.',
+    ru: 'Для отказа необходимо указать причину.',
+    en: 'A reason is required to reject a vacancy.',
+  },
+
+  // --- applications (§5.6, §8.1, BR-06, BR-07) -----------------------------
+  'application.not_found': {
+    'uz-Latn': 'Ariza topilmadi.',
+    'uz-Cyrl': 'Ариза топилмади.',
+    ru: 'Заявка не найдена.',
+    en: 'The application was not found.',
+  },
+  // BR-07. The candidate's fix is to look at the application they already have.
+  'application.already_applied': {
+    'uz-Latn': 'Siz bu vakansiyaga allaqachon ariza topshirgansiz.',
+    'uz-Cyrl': 'Сиз бу вакансияга аллақачон ариза топширгансиз.',
+    ru: 'Вы уже откликнулись на эту вакансию.',
+    en: 'You have already applied to this vacancy.',
+  },
+  // BR-06, and BR-04/BR-11 in the same message: from the candidate's side "closed",
+  // "paused" and "deadline passed" are one fact - applications are not being taken.
+  'application.vacancy_closed': {
+    'uz-Latn': 'Bu vakansiyaga arizalar qabul qilinmayapti.',
+    'uz-Cyrl': 'Бу вакансияга аризалар қабул қилинмаяпти.',
+    ru: 'Эта вакансия больше не принимает заявки.',
+    en: 'This vacancy is no longer accepting applications.',
+  },
+  'application.final': {
+    'uz-Latn': 'Ariza yakunlangan, uni oʻzgartirib boʻlmaydi.',
+    'uz-Cyrl': 'Ариза якунланган, уни ўзгартириб бўлмайди.',
+    ru: 'Заявка завершена и не может быть изменена.',
+    en: 'The application is final and cannot be changed.',
+  },
+  'application.transition_not_allowed': {
+    'uz-Latn': 'Bu bosqichga oʻtish mumkin emas.',
+    'uz-Cyrl': 'Бу босқичга ўтиш мумкин эмас.',
+    ru: 'Такой переход этапа невозможен.',
+    en: 'That stage change is not allowed.',
+  },
+  // §8.1's second column: each stage names who may set it.
+  'application.wrong_actor': {
+    'uz-Latn': 'Bu bosqichni siz oʻzgartira olmaysiz.',
+    'uz-Cyrl': 'Бу босқични сиз ўзгартира олмайсиз.',
+    ru: 'Этот этап меняет не ваша сторона.',
+    en: 'This stage is not yours to set.',
+  },
+  'candidate.profile_required': {
+    'uz-Latn': 'Ariza topshirish uchun avval profilni toʻldiring.',
+    'uz-Cyrl': 'Ариза топшириш учун аввал профилни тўлдиринг.',
+    ru: 'Чтобы откликнуться, сначала заполните профиль.',
+    en: 'Fill in your profile before applying.',
+  },
+  'complaint.already_reported': {
+    'uz-Latn': 'Siz bu haqda allaqachon xabar bergansiz.',
+    'uz-Cyrl': 'Сиз бу ҳақда аллақачон хабар бергансиз.',
+    ru: 'Вы уже пожаловались на это.',
+    en: 'You have already reported this.',
+  },
+
+  // --- candidate search (§7) ----------------------------------------------
+  // BR-12 on the search side: an age or gender filter needs the same justification a
+  // vacancy's restriction needs, from the same list, covering the same kinds.
+  'search.restriction_not_justified': {
+    'uz-Latn':
+      'Yosh yoki jins boʻyicha filtr uchun ruxsat etilgan asos koʻrsatilishi shart.',
+    'uz-Cyrl':
+      'Ёш ёки жинс бўйича филтр учун рухсат этилган асос кўрсатилиши шарт.',
+    ru: 'Для фильтра по возрасту или полу нужно указать допустимое обоснование.',
+    en: 'An age or gender filter needs a permitted justification.',
+  },
+  'search.occupation_required': {
+    'uz-Latn': 'Kasb boʻyicha tajribani filtrlash uchun kasbni tanlang.',
+    'uz-Cyrl': 'Касб бўйича тажрибани филтрлаш учун касбни танланг.',
+    ru: 'Чтобы фильтровать по опыту в профессии, выберите профессию.',
+    en: 'Choose an occupation to filter by experience in it.',
+  },
+
+  // --- invitations (§8.2) --------------------------------------------------
+  'invitation.not_found': {
+    'uz-Latn': 'Taklif topilmadi.',
+    'uz-Cyrl': 'Таклиф топилмади.',
+    ru: 'Приглашение не найдено.',
+    en: 'The invitation was not found.',
+  },
+  'invitation.already_invited': {
+    'uz-Latn': 'Bu nomzod allaqachon taklif qilingan va javob kutilmoqda.',
+    'uz-Cyrl': 'Бу номзод аллақачон таклиф қилинган ва жавоб кутилмоқда.',
+    ru: 'Этот кандидат уже приглашён, ответ ещё не получен.',
+    en: 'This candidate already has an invitation awaiting a reply.',
+  },
+  'invitation.final': {
+    'uz-Latn': 'Taklifga allaqachon javob berilgan.',
+    'uz-Cyrl': 'Таклифга аллақачон жавоб берилган.',
+    ru: 'На приглашение уже дан ответ.',
+    en: 'This invitation has already been answered.',
+  },
+  'invitation.response_not_allowed': {
+    'uz-Latn': 'Bu javob taklifning joriy holatida mumkin emas.',
+    'uz-Cyrl': 'Бу жавоб таклифнинг жорий ҳолатида мумкин эмас.',
+    ru: 'Такой ответ невозможен в текущем состоянии приглашения.',
+    en: 'That reply is not possible in the invitation’s current state.',
+  },
+  // Either a vacancy or a general invitation's own details, never both and never neither.
+  'invitation.shape_invalid': {
+    'uz-Latn':
+      'Taklif yoki vakansiyaga, yoki kasb koʻrsatilgan holda yuboriladi.',
+    'uz-Cyrl': 'Таклиф ёки вакансияга, ёки касб кўрсатилган ҳолда юборилади.',
+    ru: 'Приглашение отправляется либо на вакансию, либо с указанием профессии.',
+    en: 'An invitation is either to a vacancy or states an occupation of its own.',
+  },
+  'invitation.dictionary_item_invalid': {
+    'uz-Latn': 'Taklifdagi tanlangan qiymatlardan biri notoʻgʻri.',
+    'uz-Cyrl': 'Таклифдаги танланган қийматлардан бири нотўғри.',
+    ru: 'Одно из выбранных значений приглашения недопустимо.',
+    en: 'One of the values chosen for the invitation is not valid.',
+  },
+  // --- interviews (§8.3) ---------------------------------------------------
+  'interview.not_found': {
+    'uz-Latn': 'Suhbat (intervyu) topilmadi.',
+    'uz-Cyrl': 'Суҳбат (интервью) топилмади.',
+    ru: 'Собеседование не найдено.',
+    en: 'The interview was not found.',
+  },
+  'interview.final': {
+    'uz-Latn': 'Bu suhbat bekor qilingan.',
+    'uz-Cyrl': 'Бу суҳбат бекор қилинган.',
+    ru: 'Это собеседование отменено.',
+    en: 'This interview has been cancelled.',
+  },
+  'interview.response_not_allowed': {
+    'uz-Latn': 'Bu javob suhbatning joriy holatida mumkin emas.',
+    'uz-Cyrl': 'Бу жавоб суҳбатнинг жорий ҳолатида мумкин эмас.',
+    ru: 'Такой ответ невозможен в текущем состоянии собеседования.',
+    en: 'That reply is not possible in the interview’s current state.',
+  },
+  // §8.3: "location / link required according to interview type".
+  'interview.detail_required': {
+    'uz-Latn': 'Suhbat turiga mos maydonni toʻldiring: manzil yoki havola.',
+    'uz-Cyrl': 'Суҳбат турига мос майдонни тўлдиринг: манзил ёки ҳавола.',
+    ru: 'Заполните поле, которого требует тип собеседования: адрес или ссылка.',
+    en: 'Fill in the field this interview type requires: an address or a link.',
+  },
+
+  // --- chat (§9.1) ---------------------------------------------------------
+  'chat.no_interaction': {
+    'uz-Latn':
+      'Suhbatni boshlash uchun ariza yoki qabul qilingan taklif boʻlishi kerak.',
+    'uz-Cyrl':
+      'Суҳбатни бошлаш учун ариза ёки қабул қилинган таклиф бўлиши керак.',
+    ru: 'Чтобы начать переписку, нужен отклик или принятое приглашение.',
+    en: 'A chat needs an application or an accepted invitation first.',
+  },
+  'chat.conversation_not_found': {
+    'uz-Latn': 'Suhbat topilmadi.',
+    'uz-Cyrl': 'Суҳбат топилмади.',
+    ru: 'Переписка не найдена.',
+    en: 'The conversation was not found.',
+  },
+  'chat.message_not_found': {
+    'uz-Latn': 'Xabar topilmadi.',
+    'uz-Cyrl': 'Хабар топилмади.',
+    ru: 'Сообщение не найдено.',
+    en: 'The message was not found.',
+  },
+  // §9.1: a closed interaction stays in history and stops accepting messages.
+  'chat.read_only': {
+    'uz-Latn': 'Bu suhbat yopilgan: endi faqat oʻqish mumkin.',
+    'uz-Cyrl': 'Бу суҳбат ёпилган: энди фақат ўқиш мумкин.',
+    ru: 'Переписка закрыта: она доступна только для чтения.',
+    en: 'This conversation is closed and is now read-only.',
+  },
+  'chat.blocked': {
+    'uz-Latn': 'Bu suhbat bloklangan.',
+    'uz-Cyrl': 'Бу суҳбат блокланган.',
+    ru: 'Переписка заблокирована.',
+    en: 'This conversation is blocked.',
+  },
+
+  'invitation.vacancy_not_open': {
+    'uz-Latn': 'Bu vakansiyaga taklif yuborib boʻlmaydi: u faol emas.',
+    'uz-Cyrl': 'Бу вакансияга таклиф юбориб бўлмайди: у фаол эмас.',
+    ru: 'Пригласить на эту вакансию нельзя: она не активна.',
+    en: 'You cannot invite anyone to this vacancy: it is not active.',
+  },
+
+  // --- idempotency (ARCHITECTURE.md §7) ------------------------------------
+  // The client reused a key for a different request, which is its bug: a key means
+  // "this one operation", so two operations under it is broken key generation.
+  'idempotency.key_reused': {
+    'uz-Latn': 'Bu soʻrov kaliti boshqa soʻrov uchun ishlatilgan.',
+    'uz-Cyrl': 'Бу сўров калити бошқа сўров учун ишлатилган.',
+    ru: 'Этот ключ запроса уже использован для другого запроса.',
+    en: 'That request key was already used for a different request.',
+  },
+  'idempotency.in_progress': {
+    'uz-Latn': 'Xuddi shu soʻrov bajarilmoqda. Birozdan soʻng tekshiring.',
+    'uz-Cyrl': 'Худди шу сўров бажарилмоқда. Бироздан сўнг текширинг.',
+    ru: 'Такой же запрос выполняется. Проверьте результат чуть позже.',
+    en: 'The same request is already in progress. Check the result shortly.',
+  },
+
   // --- validation (§3.2 "validation messages shall be localized") --------
   'validation.failed': {
     'uz-Latn': 'Kiritilgan maʼlumotlarni tekshirib chiqing.',
@@ -416,6 +745,73 @@ export const MESSAGES = {
     'uz-Cyrl': 'Камида битта қиймат танланиши керак.',
     ru: 'Необходимо выбрать хотя бы одно значение.',
     en: 'At least one value must be selected.',
+  },
+  'validation.too_many_items': {
+    'uz-Latn': 'Koʻpi bilan {max} ta qiymat tanlash mumkin.',
+    'uz-Cyrl': 'Кўпи билан {max} та қиймат танлаш мумкин.',
+    ru: 'Можно выбрать не более {max} значений.',
+    en: 'At most {max} values may be selected.',
+  },
+  'validation.date_in_future': {
+    'uz-Latn': 'Sana kelajakda boʻlishi mumkin emas.',
+    'uz-Cyrl': 'Сана келажакда бўлиши мумкин эмас.',
+    ru: 'Дата не может быть в будущем.',
+    en: 'The date cannot be in the future.',
+  },
+  'validation.min_age': {
+    'uz-Latn': 'Yoshingiz kamida {min} boʻlishi kerak.',
+    'uz-Cyrl': 'Ёшингиз камида {min} бўлиши керак.',
+    ru: 'Возраст должен быть не менее {min} лет.',
+    en: 'You must be at least {min} years old.',
+  },
+  'validation.date_order': {
+    'uz-Latn': 'Tugash sanasi boshlanish sanasidan oldin boʻlmasligi kerak.',
+    'uz-Cyrl': 'Тугаш санаси бошланиш санасидан олдин бўлмаслиги керак.',
+    ru: 'Дата окончания не может быть раньше даты начала.',
+    en: 'The end date cannot be before the start date.',
+  },
+  'validation.current_has_no_end': {
+    'uz-Latn': 'Hozirgi ish joyi uchun tugash sanasi koʻrsatilmaydi.',
+    'uz-Cyrl': 'Ҳозирги иш жойи учун тугаш санаси кўрсатилмайди.',
+    ru: 'Для текущего места работы дата окончания не указывается.',
+    en: 'A current job cannot have an end date.',
+  },
+  'validation.must_be_url': {
+    'uz-Latn': 'Havola http:// yoki https:// bilan boshlanishi kerak.',
+    'uz-Cyrl': 'Ҳавола http:// ёки https:// билан бошланиши керак.',
+    ru: 'Ссылка должна начинаться с http:// или https://.',
+    en: 'The link must start with http:// or https://.',
+  },
+
+  // --- schema-driven writes (docs/API_CONTRACTS.md §4.6) -------------------
+  // A selected id that is not an active item of the field's dictionary type.
+  // Separate from `must_be_id`, which is about the format: the realistic cause
+  // here is a client cache old enough to still offer a deactivated item, and
+  // "reload the list" is different advice from "that is not an id".
+  'validation.dictionary_item_invalid': {
+    'uz-Latn': 'Tanlangan qiymat endi mavjud emas. Roʻyxatni yangilang.',
+    'uz-Cyrl': 'Танланган қиймат энди мавжуд эмас. Рўйхатни янгиланг.',
+    ru: 'Выбранное значение больше не доступно. Обновите список.',
+    en: 'The selected value is no longer available. Refresh the list.',
+  },
+  'validation.district_not_in_region': {
+    'uz-Latn': 'Tuman tanlangan viloyatga tegishli emas.',
+    'uz-Cyrl': 'Туман танланган вилоятга тегишли эмас.',
+    ru: 'Район не относится к выбранному региону.',
+    en: 'The district does not belong to the selected region.',
+  },
+  'validation.salary_range_order': {
+    'uz-Latn': 'Boshlangʻich summa yuqori summadan katta boʻlmasligi kerak.',
+    'uz-Cyrl': 'Бошланғич сумма юқори суммадан катта бўлмаслиги керак.',
+    ru: 'Начальная сумма не должна превышать конечную.',
+    en: 'The lower amount must not exceed the upper one.',
+  },
+  // §4.3: "Negotiable, 5-8M" is a contradiction the salary filter cannot rank.
+  'validation.salary_negotiable_excludes_range': {
+    'uz-Latn': 'Kelishilgan holatda summa koʻrsatilmaydi.',
+    'uz-Cyrl': 'Келишилган ҳолатда сумма кўрсатилмайди.',
+    ru: 'При оплате по договорённости сумма не указывается.',
+    en: 'A negotiable rate cannot also state an amount.',
   },
 } as const satisfies MessageCatalog;
 

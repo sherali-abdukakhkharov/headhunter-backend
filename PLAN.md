@@ -19,12 +19,12 @@ a profile contract.
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
 | M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
-| M3 | Candidate profile + files | M6, M7 | next - file storage already done |
-| M4 | Employer profile + verification | M5, M7 | after M1 |
-| M5 | Vacancies + moderation | M6, M7 | after M2+M4 |
-| M6 | Vacancy discovery + applications | M8 | after M3+M5 |
-| M7 | Candidate search + invitations + shortlists | M8 | after M3+M5 |
-| M8 | Chat + interviews | - | after M6+M7 |
+| M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access delivered in M6, once its inputs existed |
+| M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
+| M5 | Vacancies + moderation | M6, M7 | **done**; BR-12 restrictions wait for M10 by design |
+| M6 | Vacancy discovery + applications | M8 | **done - the MVP loop closes here** |
+| M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
+| M8 | Chat + interviews | - | **done** |
 | M10 | Admin module + audit | - | after M4+M5 |
 | M9 | Notifications + push | - | **last feature milestone**, after M10 |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
@@ -143,6 +143,33 @@ default that still needs sign-off.
 preferences saves, reports completeness, becomes searchable only when complete
 and visible, and its CV is reachable only by an authorized employer.
 
+*Status: done, with one part deliberately deferred.* Everything above is built and
+tested: the schema endpoint, the uniform field write with server-side
+re-validation, stored completeness with a missing-field list, the BR-02 gate, the
+privacy toggle that does not refresh `last_meaningful_update_at`, the bespoke
+experience and education sub-resources, and profile attachments with §5.4's
+replace-by-superseding.
+
+**BR-09's employer access to a CV is not built**, because two of the helper's three
+inputs do not exist yet - there is no employer profile before M4 and no
+application or invitation before M6/M7, so "an allowed hiring interaction" has
+nothing to evaluate. Today a CV is reachable **only by its owner**, which is
+stricter than BR-09 asks, so the gap exposes nothing; it is a missing capability,
+not a missing check. It lands with M4's verified employer and M7's candidate
+serializer, which is where the callers are. Building the helper now would mean an
+abstraction with no caller and a rule tested only against invented inputs.
+
+Two decisions worth knowing before building on this:
+
+- **The field schema is one declaration serving three jobs** - the client's form,
+  the server's re-validation of a write, and the completeness calculation. That is
+  what makes §4.1's rule ("every `requiredForSearchable` code resolves to a
+  rendered field") true by construction rather than by review. M5's vacancy schema
+  should reuse the same shape.
+- **A profile has no category until a primary occupation is chosen**, and only the
+  fields common to all five categories exist until then. The client's first profile
+  screen is therefore choosing the target work.
+
 ## M4 - Employer profile + verification
 
 **Covers** §6.1 · **BR-03** · **UAT-04**
@@ -152,6 +179,29 @@ and visible, and its CV is reachable only by an authorized employer.
 - Status: `not_submitted | under_review | verified | rejected | changes_required`,
   with admin reason text.
 - BR-03 precondition wired into invitation and vacancy-submit routes.
+
+*Status: done.* Three decisions worth carrying into M5:
+
+- **`EMPLOYER_VERIFICATION_ENABLED` is off**, for the same reason `MODERATION_ENABLED`
+  exists below: the admin module is M10, so nobody can approve a submission, and
+  BR-03 would strand every employer in `under_review` and make the employer half of
+  the product unreachable. Submit therefore transitions straight to `verified` — and
+  **still writes its BR-08 history row**, with a null actor and an
+  `auto_verified_no_reviewer` reason, so the audit trail never claims a person
+  reviewed anything. The statuses, transitions, evidence rules and BR-03 are all
+  implemented; only the queue is absent, and flipping the flag needs no client change.
+- **§6.1's open question is answered as data, not deferred.** What each employer type
+  must upload lives in `employer-requirements.ts` with a `spec | default` provenance
+  tag per value, exactly as dictionary content does. The client's answer is one edit
+  to one file — no migration, no endpoint, no release. This is what stopped the
+  milestone being blocked, and the same move is available for BR-12's permitted
+  age/gender justifications, which currently block M5's moderation.
+- **BR-03 is one method, not three checks.** `EmployersService.gate` returns the two
+  conditions separately, because "finish your profile" and "wait for verification"
+  are different refusals. M5's vacancy submit and M7's search and invitations call it
+  rather than reading the status; a precondition duplicated across three modules is
+  one that drifts, and the failure mode is an unverified employer reaching candidate
+  contact details.
 
 ## M5 - Vacancies + moderation
 
@@ -177,6 +227,30 @@ and visible, and its CV is reachable only by an authorized employer.
   the history never claims a human approved it. Flipping the flag on when M10
   lands needs no client change.
 
+*Status: done.* Four things worth carrying forward:
+
+- **BR-12 overrides the flag, deliberately.** A vacancy carrying an age or gender
+  restriction goes to `under_moderation` whatever `MODERATION_ENABLED` says, because
+  BR-12 makes "administrator review" part of the rule rather than an optimisation. The
+  consequence is real and accepted: such a vacancy **cannot be published until M10**.
+  That is the right failure — the alternative is auto-approving a restriction nobody
+  checked — and the employer sees the status rather than silence. Changing a
+  restriction on an already-live vacancy sends it back for review for the same reason.
+- **BR-12's permitted reasons are enumerated as data**, like M4's evidence rules:
+  `age-gender-justifications.ts` for the rule (which reason supports which
+  restriction, with an argument per entry) and a `restriction_justification` dictionary
+  for the four labels. The split is deliberate — a dictionary row is admin-editable
+  (§10.3), and widening BR-12 must not be a content edit. **It wants legal review.**
+- **The vacancy field schema shares the candidate profile's mechanism entirely** — one
+  resolver, one validator, one contract test over both targets. The contract test also
+  pins that shared field codes mean the same thing on both sides, which is what M7's
+  UAT-06 prefill depends on: it maps a vacancy's requirements onto candidate filters by
+  code.
+- **BR-06 has one definition**, `isOpenForApplications(status, deadline, today)`,
+  exported for M6. The feed filter and the in-transaction apply check must both use it;
+  a feed advertising a vacancy the apply route refuses is the failure that guards
+  against.
+
 ## M6 - Discovery + applications
 
 **Covers** §5.5, §5.6, §8.1 · **BR-06, BR-07, BR-08** · **UAT-08, UAT-15**
@@ -189,6 +263,32 @@ and visible, and its CV is reachable only by an authorized employer.
 - Employer application management: grouping, filters, stage moves, internal notes
   not visible to candidates, hired-count against required worker count (§6.5).
 - `Idempotency-Key` support on apply (ARCHITECTURE.md §7).
+
+*Status: done. **The MVP core loop is complete*** - an employer publishes, a candidate
+finds and applies, the employer moves them through the stages to a hire. Verified end to
+end through hh.qitmir.uz.
+
+Four things worth carrying into M7:
+
+- **BR-09 is built**, and it is one pure function
+  (`infra/privacy/contact-exposure.ts`) taking (viewer, visibility, interaction). It
+  was deferred out of M3 for want of its inputs and landed here as soon as they existed.
+  M7's candidate search **must** build its cards from `expose()` and never from the
+  profile row: §11.1 forbids a phone number on a search card, and a card is not an
+  interaction. Adding invitations as the second interaction is one line in
+  `CandidateViewService`, not a change to the rule.
+- **The employer's file access is a separate route**,
+  `GET /applications/:id/files/:fileId/content`. `GET /files/:id/content` stays
+  owner-only: an employer's entitlement comes from the application, so the route that
+  serves them has to be the one that can see it. BR-09 is re-evaluated per download,
+  because a client may hold a path from a moment when the interaction still existed.
+- **Idempotency and BR-07 are both needed and do different jobs.** The index prevents a
+  duplicate but answers a retry with a conflict, indistinguishable from "somebody else
+  got there first". The key makes an interrupted-but-committed request replay as the
+  success it was. M7's invitations and M8's messages need the same treatment.
+- **One visibility fragment behind every discovery read.** BR-04, BR-06 and BR-11 live
+  in it, and a feed that advertised a vacancy the apply route refuses would look like a
+  bug in Apply. M7's candidate search wants the same discipline with BR-02's gate.
 
 ## M7 - Candidate search + invitations
 
@@ -204,6 +304,34 @@ and visible, and its CV is reachable only by an authorized employer.
 - **BR-09 contact-exposure helper** applied to every candidate serializer; cards
   never carry phone numbers (§11.1).
 
+*Status: done.* §7.4's controlled example is walkable end to end - open the search from a
+vacancy, review the ranked operators, save the good ones, invite them, and read the invited
+and accepted counts against the target. Five things to carry into M8:
+
+- **The query is four stages and the order is the performance story**: filter and count,
+  score, sort and take the page, and only then build the cards. The card's aggregates run
+  for at most one page. M8's message lists should be shaped the same way.
+- **A card carries no contact details and BR-09 is not asked about it.** §11.1 is
+  unconditional for cards, so the query does not join `users` and the type has no field for
+  a phone number; a test asserts that over the compiled SQL. The rule still decides the
+  profile view, through M6's single gatherer.
+- **Both of BR-09's interactions now exist.** An accepted invitation was the second, and
+  adding it was one line in the gatherer - which is what passing both flags explicitly was
+  for. M8's chat gate (§9.1) should read applications and invitations rather than invent a
+  third notion of "may these two talk"; §8.2 already says acceptance "enables the
+  corresponding communication flow".
+- **An interaction is derived from data, never from an id in the URL.** Wiring the second
+  entry point onto M6's reader exposed that trusting the path would let a view requested
+  through a *withdrawn* application re-grant what the withdrawal took back. M6's own test
+  caught it because it asserted the side effect rather than the exception.
+- **Three §7.1/§7.3 items could not be built as worded**, and the client answered two of
+  them the same day. Specialization became a **dictionary** on both the profile and the
+  vacancy (schema versions bumped to 2, clients refetch, old free text deleted rather than
+  guessed at), and proximity shipped as a **tiered** sort with its own reference field.
+  The third was never a gap: remote-work readiness is a `work_format` id, not a boolean.
+  The pattern is worth keeping - where the specification's wording and BR-13 disagree, the
+  id-shaped form is the one that works in four languages.
+
 ## M8 - Chat + interviews
 
 **Covers** §9.1, §8.3 · **UAT-09**
@@ -212,6 +340,20 @@ and visible, and its CV is reachable only by an authorized employer.
   read state, report/block, read-only when the interaction closes.
 - Interview scheduling with type-dependent required fields and candidate
   response.
+
+*Status: done.* Three things to carry into M10 and M9:
+
+- **The gate is one service, asked live.** `HiringInteractionService` answers BR-09 and
+  §9.1 alike, and stores nothing - so a withdrawal closes the channel and a new
+  interaction reopens it with no repair step anywhere. M10's admin actions should read it
+  rather than add a third notion of who may talk to whom.
+- **`delivered` is deliberately missing from the message state.** §9.1 asks for it "where
+  supported by the backend", and it is a property of push: M9 adds the dispatcher, and the
+  column with it. Adding one now would have meant a field set at the same instant as
+  `createdAt`, which answers nothing.
+- **Chat reports are `complaints` rows** with `target_type = 'message'`, so M10's review
+  queue already covers them - the generic table M6 built is now carrying its third target
+  kind without a schema change.
 
 ## M9 - Notifications
 

@@ -57,6 +57,18 @@ export interface DictionaryManifest {
   schemas: SchemaVersion[];
 }
 
+/** What a write path needs to decide whether an id may be stored in a field. */
+export interface DictionaryItemFacts {
+  id: string;
+  typeCode: string;
+  group: string | null;
+  category: DictionaryCategory | null;
+  parentId: string | null;
+  rank: number | null;
+  isActive: boolean;
+  mergedIntoId: string | null;
+}
+
 /** One row of the resolved-label query, in database naming. */
 interface ResolvedRow {
   id: string;
@@ -227,6 +239,58 @@ export class DictionariesService {
 
     const rows = await this.resolveRows(locale, { ids });
     return rows.map(toItem);
+  }
+
+  /**
+   * The facts a write path needs about the ids it was handed.
+   *
+   * Labels are deliberately absent: this answers "may this id be stored in this
+   * field", which is a question about type, activity and hierarchy. One query for
+   * every id in a request, because the alternative - a lookup per field - turns a
+   * profile save into a dozen round trips.
+   *
+   * Inactive and merged items come back with their flags rather than being
+   * omitted, so a caller can tell "no such item" from "that one was retired",
+   * which are different messages to a user.
+   */
+  async lookupForValidation(
+    ids: string[],
+  ): Promise<Map<string, DictionaryItemFacts>> {
+    const facts = new Map<string, DictionaryItemFacts>();
+
+    if (ids.length === 0) {
+      return facts;
+    }
+
+    const rows = await this.db
+      .selectFrom('dictionary_items')
+      .select([
+        'id',
+        'type_code',
+        'item_group',
+        'category',
+        'parent_id',
+        'rank',
+        'is_active',
+        'merged_into_id',
+      ])
+      .where('id', 'in', ids)
+      .execute();
+
+    for (const row of rows) {
+      facts.set(row.id, {
+        id: row.id,
+        typeCode: row.type_code,
+        group: row.item_group,
+        category: row.category,
+        parentId: row.parent_id,
+        rank: row.rank,
+        isActive: row.is_active,
+        mergedIntoId: row.merged_into_id,
+      });
+    }
+
+    return facts;
   }
 
   /**

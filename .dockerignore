@@ -1,0 +1,28 @@
+# Everything the image must not carry. The first two entries are the ones that
+# matter most: `node_modules` from a Windows host is the wrong platform's binaries,
+# and `.env` holds the bot token, the JWT secret and the database password - a
+# secret baked into an image layer survives every later attempt to remove it.
+node_modules
+.env
+.env.*
+!.env.example
+
+dist
+coverage
+*.log
+
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Tunnel credentials: a bearer credential for the Cloudflare tunnel, mounted into
+# cloudflared at runtime and never part of the API image.
+docker/cloudflared
+
+# Documentation and tests are not needed to run the service. Tests deliberately so:
+# `pnpm test` runs on a developer machine and in CI, not from the runtime image.
+*.md
+docs
+**/*.spec.ts
