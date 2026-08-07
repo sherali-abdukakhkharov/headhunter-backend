@@ -79,6 +79,42 @@ would mean nothing. The seam is one route with one purpose check, which is the s
 shape this can have. It wants client sign-off, like the other decisions this project
 answers as data.
 
+### 2026-08-07 (M8) - A permission asked live needs nothing un-set when it ends
+§9.1 gives chat two sentences: it becomes available after a permitted hiring interaction,
+and a closed interaction stays in history but may become read-only. The obvious build is a
+flag on the conversation, and it is wrong: the flag would have to be cleared by a
+withdrawal, a declined invitation and anything else that ends an interaction - from
+modules with no reason to know chat exists. One of them eventually forgets, and the
+failure is a channel to somebody who has left.
+*Asking the question live costs one query per read and pays for itself twice:* the
+read-only rule needs no code at all, and **reopening** works for free - a new application
+restores the channel with nothing to repair.
+*The general shape:* a permission derived from state does not need to be denormalized
+until it is measurably slow, and denormalizing it means owning every event that
+invalidates it.
+
+### 2026-08-07 (M8) - The third caller is when to extract, and this one had to be extracted
+"Is there a live hiring interaction between these two people" was a method on
+`ApplicationsService` and a private query in `CandidateViewService`. M8's chat gate was the
+third caller, which is the rule-of-three CLAUDE.md states - but the duplication was the
+smaller reason. BR-09 and §9.1's gate are the *same question*, and two implementations
+would eventually give an employer a phone number they cannot message, or a channel to
+somebody whose contact details are closed.
+*Where it lives and why:* `infra/privacy/hiring-interaction.service.ts`, beside the rule it
+feeds, with no module dependencies. That matters structurally - `invitations` imports
+`applications` for the download route, so the gatherer must not import either, or the
+graph has a cycle. Reading another module's table is normal in this codebase; a module
+cycle is not.
+
+### 2026-08-07 (M8) - A missing feature is better than a fake one: no `delivered` state
+§9.1 asks for "sent, delivered and read states **where supported by the backend**". Sent
+is the row existing and read is a timestamp, but delivered is a property of push - which
+is M9. A `delivered_at` column set at the same instant as `created_at` would satisfy a
+checklist and tell a user nothing true.
+*The clause "where supported by the backend" is the specification giving permission to
+leave it out*, and reading it that way is more honest than a column nobody can trust. It
+arrives with the dispatcher that can set it.
+
 ### 2026-08-07 (M7, later the same day) - Two of the three gaps closed, on client direction
 The entry below recorded three §7.1/§7.3 items that could not be built as worded. The
 client answered two of them within the hour, and both answers were the id-shaped one.

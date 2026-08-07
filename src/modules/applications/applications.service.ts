@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'kysely';
+import { type Transaction, sql } from 'kysely';
 
 import {
   ConflictError,
@@ -7,7 +7,7 @@ import {
   NotFoundError,
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
-import type { ApplicationStatus, UserRole } from '@infra/db/database.types';
+import type { DB, ApplicationStatus, UserRole } from '@infra/db/database.types';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { formatDateOnly } from '@infra/time/format';
 import { ConfigService } from '@nestjs/config';
@@ -224,68 +224,9 @@ export class ApplicationsService {
     actor: { userId: string; role: UserRole },
     reason: string | null = null,
   ): Promise<Application> {
-    const outcome = await this.db.transaction().execute(async (trx) => {
-      const current = await trx
-        .selectFrom('applications')
-        .select(['id', 'status', 'vacancy_id'])
-        .where('id', '=', applicationId)
-        .forUpdate()
-        .executeTakeFirst();
-
-      if (!current) {
-        return { error: 'application.not_found' } as const;
-      }
-
-      if (isTerminal(current.status)) {
-        return { error: 'application.final' } as const;
-      }
-
-      if (!canTransition(current.status, to)) {
-        return { error: 'application.transition_not_allowed' } as const;
-      }
-
-      // §8.1's second column. The route's role guard already narrows this, but the rule
-      // belongs with the machine - a future admin route must not be able to withdraw on
-      // a candidate's behalf by accident.
-      if (actorFor(to) !== actor.role) {
-        return { error: 'application.wrong_actor' } as const;
-      }
-
-      await trx
-        .updateTable('applications')
-        .set({
-          status: to,
-          rejection_reason: to === 'rejected' ? reason : null,
-          updated_at: sql`now()`,
-        })
-        .where('id', '=', applicationId)
-        .execute();
-
-      await trx
-        .insertInto('application_stage_history')
-        .values({
-          application_id: applicationId,
-          from_status: current.status,
-          to_status: to,
-          actor_user_id: actor.userId,
-          actor_role: actor.role,
-          reason,
-        })
-        .execute();
-
-      // §6.5 shows hires against the required worker count. Incremented here rather
-      // than counted on read so the employer dashboard is one row, and in the same
-      // transaction so it cannot disagree with the applications it counts.
-      if (to === 'hired') {
-        await trx
-          .updateTable('vacancies')
-          .set({ hired_count: sql`hired_count + 1`, updated_at: sql`now()` })
-          .where('id', '=', current.vacancy_id)
-          .execute();
-      }
-
-      return { ok: true } as const;
-    });
+    const outcome = await this.db
+      .transaction()
+      .execute((trx) => this.moveWithin(trx, applicationId, to, actor, reason));
 
     if ('error' in outcome) {
       switch (outcome.error) {
@@ -301,6 +242,134 @@ export class ApplicationsService {
     }
 
     return this.byId(applicationId);
+  }
+
+  /**
+   * The transition itself, inside a transaction the caller owns.
+   *
+   * Returns an outcome instead of throwing, because a throw here would roll back writes
+   * the caller has already made - the M1 trap MEMORY.md records. The caller raises the
+   * error after its own commit, or before making any write of its own.
+   */
+  private async moveWithin(
+    trx: Transaction<DB>,
+    applicationId: string,
+    to: ApplicationStatus,
+    actor: { userId: string; role: UserRole },
+    reason: string | null,
+  ) {
+    const current = await trx
+      .selectFrom('applications')
+      .select(['id', 'status', 'vacancy_id'])
+      .where('id', '=', applicationId)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (!current) {
+      return { error: 'application.not_found' } as const;
+    }
+
+    if (isTerminal(current.status)) {
+      return { error: 'application.final' } as const;
+    }
+
+    if (!canTransition(current.status, to)) {
+      return { error: 'application.transition_not_allowed' } as const;
+    }
+
+    // §8.1's second column. The route's role guard already narrows this, but the rule
+    // belongs with the machine - a future admin route must not be able to withdraw on
+    // a candidate's behalf by accident.
+    if (actorFor(to) !== actor.role) {
+      return { error: 'application.wrong_actor' } as const;
+    }
+
+    await trx
+      .updateTable('applications')
+      .set({
+        status: to,
+        rejection_reason: to === 'rejected' ? reason : null,
+        updated_at: sql`now()`,
+      })
+      .where('id', '=', applicationId)
+      .execute();
+
+    await trx
+      .insertInto('application_stage_history')
+      .values({
+        application_id: applicationId,
+        from_status: current.status,
+        to_status: to,
+        actor_user_id: actor.userId,
+        actor_role: actor.role,
+        reason,
+      })
+      .execute();
+
+    // §6.5 shows hires against the required worker count. Incremented here rather
+    // than counted on read so the employer dashboard is one row, and in the same
+    // transaction so it cannot disagree with the applications it counts.
+    if (to === 'hired') {
+      await trx
+        .updateTable('vacancies')
+        .set({ hired_count: sql`hired_count + 1`, updated_at: sql`now()` })
+        .where('id', '=', current.vacancy_id)
+        .execute();
+    }
+
+    return { ok: true } as const;
+  }
+
+  /**
+   * Moves an application to the `interview` stage as part of somebody else's transaction
+   * (§8.1, §8.3).
+   *
+   * Scheduling an interview and reaching §8.1's `interview` stage are one event: the
+   * stage table says the candidate is told "date, time, type and location/link" when it
+   * is set, which is exactly the interview. Two calls would let the pair disagree - a
+   * stage with no interview, or an interview the stage never announced - so
+   * `InterviewsService` calls this inside the transaction that writes the interview.
+   *
+   * Idempotent by design. An application already at `interview`, `offer` or `hired` is
+   * left alone: those are not backwards moves to refuse, they are stages that have
+   * already passed this one. A terminal application throws, and it does so **before** the
+   * caller has written anything.
+   */
+  async ensureInterviewStage(
+    trx: Transaction<DB>,
+    applicationId: string,
+    employerUserId: string,
+  ): Promise<void> {
+    const current = await trx
+      .selectFrom('applications')
+      .select('status')
+      .where('id', '=', applicationId)
+      .executeTakeFirst();
+
+    if (!current) {
+      throw new NotFoundError('application.not_found');
+    }
+
+    if (isTerminal(current.status)) {
+      throw new ConflictError('application.final');
+    }
+
+    if (!canTransition(current.status, 'interview')) {
+      // Already at or past the interview stage: nothing to do.
+      return;
+    }
+
+    const outcome = await this.moveWithin(
+      trx,
+      applicationId,
+      'interview',
+      { userId: employerUserId, role: 'employer' },
+      null,
+    );
+
+    if ('error' in outcome) {
+      throw new ConflictError('application.transition_not_allowed');
+    }
   }
 
   async byId(applicationId: string): Promise<Application> {

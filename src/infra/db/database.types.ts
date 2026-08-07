@@ -45,6 +45,14 @@ export type Int8 = ColumnType<
   bigint | number | string
 >;
 
+export type InterviewStatus =
+  | 'cancelled'
+  | 'confirmed'
+  | 'reschedule_requested'
+  | 'scheduled';
+
+export type InterviewType = 'external_link' | 'in_person' | 'phone';
+
 export type InvitationStatus =
   | 'accepted'
   | 'declined'
@@ -338,6 +346,33 @@ export interface IdempotencyKeys {
   user_id: string;
 }
 
+export interface Interviews {
+  application_id: string;
+  created_at: Generated<Timestamp>;
+  created_by_user_id: string | null;
+  id: Generated<string>;
+  instructions: string | null;
+  location: string | null;
+  meeting_link: string | null;
+  responded_at: Timestamp | null;
+  response_note: string | null;
+  scheduled_at: Timestamp;
+  status: Generated<InterviewStatus>;
+  type: InterviewType;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface InterviewStatusHistory {
+  actor_role: UserRole | null;
+  actor_user_id: string | null;
+  created_at: Generated<Timestamp>;
+  from_status: InterviewStatus | null;
+  id: Generated<string>;
+  interview_id: string;
+  reason: string | null;
+  to_status: InterviewStatus;
+}
+
 export interface Invitations {
   candidate_user_id: string;
   created_at: Generated<Timestamp>;
@@ -573,6 +608,8 @@ export interface DB {
   employer_verification_history: EmployerVerificationHistory;
   employers: Employers;
   idempotency_keys: IdempotencyKeys;
+  interview_status_history: InterviewStatusHistory;
+  interviews: Interviews;
   invitation_status_history: InvitationStatusHistory;
   invitations: Invitations;
   messages: Messages;

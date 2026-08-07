@@ -564,6 +564,33 @@ export const MESSAGES = {
     ru: 'Одно из выбранных значений приглашения недопустимо.',
     en: 'One of the values chosen for the invitation is not valid.',
   },
+  // --- interviews (§8.3) ---------------------------------------------------
+  'interview.not_found': {
+    'uz-Latn': 'Suhbat (intervyu) topilmadi.',
+    'uz-Cyrl': 'Суҳбат (интервью) топилмади.',
+    ru: 'Собеседование не найдено.',
+    en: 'The interview was not found.',
+  },
+  'interview.final': {
+    'uz-Latn': 'Bu suhbat bekor qilingan.',
+    'uz-Cyrl': 'Бу суҳбат бекор қилинган.',
+    ru: 'Это собеседование отменено.',
+    en: 'This interview has been cancelled.',
+  },
+  'interview.response_not_allowed': {
+    'uz-Latn': 'Bu javob suhbatning joriy holatida mumkin emas.',
+    'uz-Cyrl': 'Бу жавоб суҳбатнинг жорий ҳолатида мумкин эмас.',
+    ru: 'Такой ответ невозможен в текущем состоянии собеседования.',
+    en: 'That reply is not possible in the interview’s current state.',
+  },
+  // §8.3: "location / link required according to interview type".
+  'interview.detail_required': {
+    'uz-Latn': 'Suhbat turiga mos maydonni toʻldiring: manzil yoki havola.',
+    'uz-Cyrl': 'Суҳбат турига мос майдонни тўлдиринг: манзил ёки ҳавола.',
+    ru: 'Заполните поле, которого требует тип собеседования: адрес или ссылка.',
+    en: 'Fill in the field this interview type requires: an address or a link.',
+  },
+
   // --- chat (§9.1) ---------------------------------------------------------
   'chat.no_interaction': {
     'uz-Latn':

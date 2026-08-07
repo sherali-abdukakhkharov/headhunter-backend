@@ -612,6 +612,34 @@ and Telegram performs none on a bot upload.
 - **Interviews** store type (phone/in-person/external link), timestamp in the
   configured zone, location-or-link required by type, instructions, and the
   candidate's confirm / request-another-time response.
+
+*Built in M8, and five decisions are worth carrying forward.*
+
+- **Nothing records that a conversation is permitted.** The gate is asked live, of
+  `HiringInteractionService`, on every send. A flag written at creation would have to be
+  un-set by everything that can end an interaction - a withdrawal, a declined invitation
+  - from modules with no reason to know chat exists, and the failure mode is a channel to
+  somebody who has left. Asking live also makes §9.1's read-only rule free, and reopening
+  free with it.
+- **That service is the third caller of one question**, after BR-09's gatherer and the
+  employer's candidate view. It lives in `infra/privacy` with no module dependencies, so
+  nothing can form a cycle around it, and the two rules it feeds - who may see a phone
+  number, and who may send a message - cannot drift apart.
+- **Read state is two timestamps on the conversation.** There are exactly two
+  participants, so "has the other side read this" is one comparison and the unread count
+  is one aggregate; a `message_reads` table would carry a row per message per person to
+  answer the same question. **There is no `delivered` state** until M9's dispatcher can
+  set it honestly.
+- **A block is read-only for both sides**, whoever set it. The alternative is a mute, and
+  the messages stay readable because the moderator reviewing the report needs them.
+- **Scheduling an interview moves the application to §8.1's `interview` stage in the same
+  transaction.** The stage table says the candidate is told "date, time, type and
+  location/link" when it is set - that *is* the interview - so two calls would let the
+  pair disagree. `ApplicationsService.ensureInterviewStage` runs inside the interview's
+  transaction, keeping the stage machine and its BR-08 row in the module that owns them.
+  §8.3's conditional "location / link required according to interview type" is a CHECK
+  constraint with a pure-function twin, so the message names the field and the rule holds
+  against any write path.
 - **Notifications** (§9.2): nine event types, each with a defined recipient. Every
   notification is an in-app row plus a push attempt. Preferences may disable
   non-critical categories; **security and account notices are not disableable**.

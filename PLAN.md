@@ -24,7 +24,7 @@ a profile contract.
 | M5 | Vacancies + moderation | M6, M7 | **done**; BR-12 restrictions wait for M10 by design |
 | M6 | Vacancy discovery + applications | M8 | **done - the MVP loop closes here** |
 | M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
-| M8 | Chat + interviews | - | next |
+| M8 | Chat + interviews | - | **done** |
 | M10 | Admin module + audit | - | after M4+M5 |
 | M9 | Notifications + push | - | **last feature milestone**, after M10 |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
@@ -340,6 +340,20 @@ and accepted counts against the target. Five things to carry into M8:
   read state, report/block, read-only when the interaction closes.
 - Interview scheduling with type-dependent required fields and candidate
   response.
+
+*Status: done.* Three things to carry into M10 and M9:
+
+- **The gate is one service, asked live.** `HiringInteractionService` answers BR-09 and
+  §9.1 alike, and stores nothing - so a withdrawal closes the channel and a new
+  interaction reopens it with no repair step anywhere. M10's admin actions should read it
+  rather than add a third notion of who may talk to whom.
+- **`delivered` is deliberately missing from the message state.** §9.1 asks for it "where
+  supported by the backend", and it is a property of push: M9 adds the dispatcher, and the
+  column with it. Adding one now would have meant a field set at the same instant as
+  `createdAt`, which answers nothing.
+- **Chat reports are `complaints` rows** with `target_type = 'message'`, so M10's review
+  queue already covers them - the generic table M6 built is now carrying its third target
+  kind without a schema change.
 
 ## M9 - Notifications
 

@@ -617,12 +617,51 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
 - [x] Test: hiding a profile removes it from a saved list it was already on
 - [ ] Measure p95 against the 3s budget before optimizing anything
 
-## M8 - Chat + interviews
+## M8 - Chat + interviews *(done)*
 
-- [ ] Gated conversation creation and message send
-- [ ] Attachments, per-recipient read state, report/block, read-only on close
-- [ ] Interviews with type-dependent required fields + candidate response
-- [ ] `Idempotency-Key` on message send
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4g.
+
+### Schema *(done - `20260807100000_create_conversations`, `20260807130000_create_interviews`)*
+- [x] `conversations` (one per employer/candidate pair), `messages` with a one-file
+      attachment, `conversation_blocks`. **No column says a conversation is permitted** -
+      that is asked live, so nothing has to remember to un-set it
+- [x] Read state as two timestamps on the conversation, not a `message_reads` table: two
+      participants make it one comparison and one aggregate
+- [x] `interviews` with §8.3's conditional requirement as a CHECK over all three permitted
+      shapes, plus `interview_status_history` for BR-08
+
+### Chat *(done)*
+- [x] Gated conversation creation and message send, through the **one**
+      `HiringInteractionService` that BR-09 already uses - extracted on its third caller,
+      so "may see a phone number" and "may send a message" cannot drift apart
+- [x] Attachments (sender-owned files only), per-recipient read state, report as a
+      `complaints` row with `target_type = 'message'`, block that is read-only for both
+      sides, read-only when the interaction closes - and readable throughout
+- [x] `Idempotency-Key` on message send
+- [x] **No `delivered` state**: §9.1 asks for it "where supported by the backend", and it
+      is a property of push. It arrives with M9's dispatcher rather than as a column set
+      at the same instant as `created_at`
+
+### Interviews *(done)*
+- [x] Type-dependent required fields (§8.3), refused with a field-level violation and a
+      CHECK constraint behind it
+- [x] Scheduling moves the application to §8.1's `interview` stage **in the same
+      transaction**, with its BR-08 row - the stage and the interview are one event
+- [x] Candidate confirm / request-another-time; `confirmed` is not terminal, because plans
+      change; rescheduling always resets the answer
+- [x] `cancelled`, which §8.3 does not list - the alternative is a stale interview nobody
+      can retract
+
+### Tests *(done - 35 unit, 39 integration)*
+- [x] The two rule tables pinned exactly, including §8.3's absence checks - a phone
+      interview carrying a meeting link is refused
+- [x] Integration: no conversation without a permitted interaction, a sent invitation is
+      not enough, withdrawal closes sending and keeps the history, a new interaction
+      reopens it, a rejection deliberately does not close it, a block stops both sides,
+      read state per recipient, an attachment must be the sender's own
+- [x] Integration: scheduling moves the stage atomically, a rejected application is
+      refused **and writes nothing**, and the CHECK constraints refuse a direct write that
+      the service would have refused too
 
 ## M9 - Notifications *(deferred: last feature milestone, after M10)*
 

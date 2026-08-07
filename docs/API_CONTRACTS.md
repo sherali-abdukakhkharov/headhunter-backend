@@ -1174,6 +1174,101 @@ application stages, from `/vacancies/{id}/applications/counts`.
 
 ---
 
+## 4g. Chat and interviews
+
+Built 2026-08-07 with M8. §9.1's gated conversation and §8.3's interview scheduling.
+
+```
+POST  /conversations                                  ->  Conversation
+GET   /conversations                                   ->  { items: Conversation[] }
+GET   /conversations/{id}                               ->  Conversation
+GET   /conversations/{id}/messages?limit=&before=         ->  { items: Message[] }
+POST  /conversations/{id}/messages                        ->  Message
+PUT   /conversations/{id}/read                             ->  204
+POST  /conversations/{id}/block                            ->  204
+DELETE/conversations/{id}/block                            ->  204
+POST  /conversations/{id}/messages/{messageId}/report        ->  { id }
+GET   /conversations/{id}/messages/{messageId}/file           ->  bytes
+
+POST  /applications/{id}/interviews                        ->  Interview   (employer)
+GET   /applications/{id}/interviews                         ->  { items }   (both)
+PUT   /interviews/{id}                                       ->  Interview   (employer)
+POST  /interviews/{id}/cancel                                 ->  Interview   (employer)
+GET   /interviews/mine                                         ->  { items }  (candidate)
+POST  /interviews/{id}/respond                                  ->  Interview  (candidate)
+GET   /interviews/{id}/history                                   ->  { items }
+```
+
+### Chat opens on an interaction, and closes with it
+
+`POST /conversations` takes a `counterpartUserId` and needs a **permitted hiring
+interaction**: a live application, or an accepted invitation. It is the same question
+BR-09 asks, answered by the same service — an employer who may see a phone number and one
+who may send a message are the same employer. `chat.no_interaction` otherwise.
+
+There is **one conversation per pair**, not per vacancy, so opening is idempotent. Which
+side you are on follows from your active role, so a multi-role account can hold both
+kinds of thread.
+
+**The gate is re-asked on every send**, never stored: an interaction can end while a
+client holds the screen. `canSend` on the conversation is the live answer, and
+`chat.read_only` is the refusal. The thread stays readable either way — §9.1 keeps closed
+interactions in history. A new interaction reopens it with no repair step.
+
+### Read state, and what is missing from it
+
+Read state is one timestamp per participant: `PUT /conversations/{id}/read` marks
+everything up to now, `unreadCount` counts the other side's messages after it, and
+`isReadByRecipient` appears on the messages **you** sent.
+
+**There is no `delivered` state.** §9.1 asks for sent, delivered and read "where supported
+by the backend"; delivery is a property of push, which is M9, and a field set at the same
+instant as `createdAt` would be a fake answer. It arrives with the dispatcher that can set
+it honestly.
+
+### Blocking and reporting (§9.1)
+
+A block makes the thread read-only for **both** sides, whoever set it — a block that let
+the blocker keep writing would be a mute. `isBlocked` says that it happened; `blockedByMe`
+says whether it was you. Messages stay readable, because a moderator reviewing the report
+needs them. Reports are `complaints` rows with `target_type = 'message'`, the same queue
+M10 reviews vacancy reports through, one open report per person per message.
+
+### Attachments
+
+One file per message, and it must be a file the **sender owns** — knowing an id is not
+owning it. `downloadPath` points at `/conversations/{id}/messages/{id}/file`, the third
+entitlement-bearing download route in the product; `/files/{id}/content` stays owner-only.
+
+### Interviews (§8.3)
+
+`POST /applications/{id}/interviews` schedules one and **moves the application to §8.1's
+`interview` stage in the same transaction**, with its BR-08 history row: the stage table
+says the candidate is told "date, time, type and location/link" when that stage is set,
+and that is the interview. An application already at or past the stage is left alone; a
+terminal one is refused.
+
+`type` decides which detail is required, and the server refuses the others —
+`in_person` needs `location`, `external_link` needs `meetingLink`, `phone` needs and
+permits neither. A `422 interview.detail_required` names the offending field, and a CHECK
+constraint enforces the same three shapes underneath.
+
+Statuses: `scheduled` · `confirmed` · `reschedule_requested` · `cancelled`.
+
+- **`confirmed` is not terminal.** A candidate who confirms and then finds a clash may
+  still ask for another time; only `cancelled` ends an interview.
+- **Rescheduling always resets the answer.** `PUT /interviews/{id}` is a full replacement,
+  because the type decides which fields may exist — a patch could leave a phone interview
+  holding an address — and a new time has not been confirmed whatever was said about the
+  old one.
+- **`cancelled` is not in §8.3's list**, and is here because the alternative is a stale
+  interview nobody can retract.
+
+`scheduledAt` is an instant, stored as `timestamptz` and returned with the platform offset
+(§2), so "14:00" is the same moment for both sides.
+
+---
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped
