@@ -409,6 +409,57 @@ export class VacanciesService {
   }
 
   /**
+   * §10.2's "pause, or remove a vacancy with an audit record", by an administrator.
+   *
+   * Deliberately a separate method from `changeStatus` rather than an ownership flag on
+   * it: the employer's version starts from `read`, which is what refuses another
+   * employer's vacancy, and a boolean that switched that off would be one parameter away
+   * from being passed by mistake. The transition table and the BR-08 history row are the
+   * same; only the actor and the ownership check differ.
+   *
+   * The audit row §10.2 asks for is the caller's, written against the same actor - see
+   * `AdminModerationService`.
+   */
+  async administrate(
+    vacancyId: string,
+    to: Extract<VacancyStatus, 'paused' | 'closed'>,
+    actor: { userId: string; role: UserRole },
+    reason: string | null,
+  ): Promise<Vacancy> {
+    const aggregate = await loadVacancy(this.db, vacancyId);
+
+    if (!aggregate) {
+      throw new NotFoundError('vacancy.not_found');
+    }
+
+    const from = aggregate.row.status;
+
+    if (!canTransition(from, to)) {
+      throw new ConflictError('vacancy.transition_not_allowed');
+    }
+
+    const written = await this.db.transaction().execute(async (trx) => {
+      await this.applyStatus(trx, vacancyId, from, to, { reason, actor });
+
+      if (to === 'closed') {
+        await trx
+          .updateTable('vacancies')
+          .set({ closure_reason: reason })
+          .where('id', '=', vacancyId)
+          .execute();
+      }
+
+      return loadVacancy(trx, vacancyId);
+    });
+
+    if (!written) {
+      throw new Error(`Vacancy ${vacancyId} vanished mid-write`);
+    }
+
+    return this.project(written);
+  }
+
+  /**
    * The one place `vacancies.status` changes, always with its BR-08 history row.
    *
    * Private and transaction-scoped: a caller able to set the status without writing

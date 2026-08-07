@@ -3,7 +3,9 @@ import {
   type ExecutionContext,
   Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common';
+import { sql } from 'kysely';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
 
@@ -29,6 +31,8 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  */
 @Injectable()
 export class AccountStatusGuard implements CanActivate {
+  private readonly logger = new Logger(AccountStatusGuard.name);
+
   constructor(@Inject(KYSELY) private readonly db: Database) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -43,7 +47,7 @@ export class AccountStatusGuard implements CanActivate {
 
     const row = await this.db
       .selectFrom('users')
-      .select('status')
+      .select(['status', 'restricted_until'])
       .where('id', '=', user.id)
       .executeTakeFirst();
 
@@ -56,9 +60,66 @@ export class AccountStatusGuard implements CanActivate {
     }
 
     if (row.status === 'restricted') {
-      throw new ForbiddenError('account.restricted_action');
+      // §10.4 asks for a *temporary* restriction, and this is where "temporary" is
+      // realized: the row is already loaded, so noticing that the end date has passed
+      // costs nothing, and the restriction is lifted here rather than by a scheduled job
+      // this deployment has no scheduler for. The lift writes its BR-08 history row.
+      if (!(await this.expireRestriction(user.id))) {
+        throw new ForbiddenError('account.restricted_action');
+      }
     }
 
     return true;
+  }
+
+  /**
+   * Lifts a restriction whose end date has passed, and reports whether it did.
+   *
+   * The `WHERE` clause carries the whole condition, so two concurrent requests cannot both
+   * write the history row: the second updates nothing and reads `numUpdatedRows` of zero.
+   * It then re-reads the status, because "I did not lift it" and "it was not expired" are
+   * different answers and only the second is a refusal.
+   */
+  private async expireRestriction(userId: string): Promise<boolean> {
+    const lifted = await this.db.transaction().execute(async (trx) => {
+      const result = await trx
+        .updateTable('users')
+        .set({
+          status: 'active',
+          restricted_until: null,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', userId)
+        .where('status', '=', 'restricted')
+        .where('restricted_until', 'is not', null)
+        .where(sql<boolean>`restricted_until <= now()`)
+        .executeTakeFirst();
+
+      if (result.numUpdatedRows === 0n) {
+        return false;
+      }
+
+      // BR-08: no status change without its history row. A null actor is honest - nobody
+      // decided this, the clock did.
+      await trx
+        .insertInto('account_status_history')
+        .values({
+          user_id: userId,
+          from_status: 'restricted',
+          to_status: 'active',
+          actor_user_id: null,
+          actor_role: null,
+          reason: 'restriction_expired',
+        })
+        .execute();
+
+      return true;
+    });
+
+    if (lifted) {
+      this.logger.log(`Restriction on user ${userId} expired and was lifted`);
+    }
+
+    return lifted;
   }
 }

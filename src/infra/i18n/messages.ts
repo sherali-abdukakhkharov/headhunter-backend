@@ -564,6 +564,90 @@ export const MESSAGES = {
     ru: 'Одно из выбранных значений приглашения недопустимо.',
     en: 'One of the values chosen for the invitation is not valid.',
   },
+  // --- administration (§10) ------------------------------------------------
+  // §10.2 and §10.4 make a reason mandatory for administrator decisions; one key covers
+  // them, because from the caller's side the fix is the same.
+  'admin.reason_required': {
+    'uz-Latn': 'Bu amal uchun sabab koʻrsatilishi shart.',
+    'uz-Cyrl': 'Бу амал учун сабаб кўрсатилиши шарт.',
+    ru: 'Для этого действия обязательно указать причину.',
+    en: 'This action requires a reason.',
+  },
+  'admin.cannot_target_self': {
+    'uz-Latn': 'Administrator oʻz hisobiga bu amalni qoʻllay olmaydi.',
+    'uz-Cyrl': 'Администратор ўз ҳисобига бу амални қўллай олмайди.',
+    ru: 'Администратор не может применить это действие к своей учётной записи.',
+    en: 'An administrator cannot apply this to their own account.',
+  },
+  'admin.status_unchanged': {
+    'uz-Latn': 'Hisob allaqachon shu holatda.',
+    'uz-Cyrl': 'Ҳисоб аллақачон шу ҳолатда.',
+    ru: 'Учётная запись уже в этом состоянии.',
+    en: 'The account is already in that state.',
+  },
+  'user.not_found': {
+    'uz-Latn': 'Foydalanuvchi topilmadi.',
+    'uz-Cyrl': 'Фойдаланувчи топилмади.',
+    ru: 'Пользователь не найден.',
+    en: 'The user was not found.',
+  },
+  'complaint.not_found': {
+    'uz-Latn': 'Shikoyat topilmadi.',
+    'uz-Cyrl': 'Шикоят топилмади.',
+    ru: 'Жалоба не найдена.',
+    en: 'The complaint was not found.',
+  },
+  'complaint.not_open': {
+    'uz-Latn': 'Bu shikoyat allaqachon koʻrib chiqilgan.',
+    'uz-Cyrl': 'Бу шикоят аллақачон кўриб чиқилган.',
+    ru: 'Эта жалоба уже рассмотрена.',
+    en: 'That complaint has already been reviewed.',
+  },
+
+  // --- dictionary management (§10.3) ---------------------------------------
+  'dictionary.type_not_found': {
+    'uz-Latn': 'Bunday lugʻat turi mavjud emas.',
+    'uz-Cyrl': 'Бундай луғат тури мавжуд эмас.',
+    ru: 'Такого типа справочника не существует.',
+    en: 'There is no such dictionary type.',
+  },
+  'dictionary.item_not_found': {
+    'uz-Latn': 'Lugʻat elementi topilmadi.',
+    'uz-Cyrl': 'Луғат элементи топилмади.',
+    ru: 'Элемент справочника не найден.',
+    en: 'The dictionary item was not found.',
+  },
+  'dictionary.code_taken': {
+    'uz-Latn': 'Bu kod shu turda allaqachon ishlatilgan.',
+    'uz-Cyrl': 'Бу код шу турда аллақачон ишлатилган.',
+    ru: 'Этот код уже используется в этом типе.',
+    en: 'That code is already used in this type.',
+  },
+  'dictionary.state_unchanged': {
+    'uz-Latn': 'Element allaqachon shu holatda.',
+    'uz-Cyrl': 'Элемент аллақачон шу ҳолатда.',
+    ru: 'Элемент уже в этом состоянии.',
+    en: 'The item is already in that state.',
+  },
+  'dictionary.merge_into_itself': {
+    'uz-Latn': 'Elementni oʻzi bilan birlashtirib boʻlmaydi.',
+    'uz-Cyrl': 'Элементни ўзи билан бирлаштириб бўлмайди.',
+    ru: 'Элемент нельзя объединить с самим собой.',
+    en: 'An item cannot be merged into itself.',
+  },
+  'dictionary.merge_type_mismatch': {
+    'uz-Latn': 'Faqat bir turdagi elementlarni birlashtirish mumkin.',
+    'uz-Cyrl': 'Фақат бир турдаги элементларни бирлаштириш мумкин.',
+    ru: 'Объединять можно только элементы одного типа.',
+    en: 'Only items of the same type can be merged.',
+  },
+  'dictionary.survivor_already_merged': {
+    'uz-Latn': 'Tanlangan element allaqachon boshqasiga birlashtirilgan.',
+    'uz-Cyrl': 'Танланган элемент аллақачон бошқасига бирлаштирилган.',
+    ru: 'Выбранный элемент уже объединён с другим.',
+    en: 'The chosen item has already been merged into another.',
+  },
+
   // --- interviews (§8.3) ---------------------------------------------------
   'interview.not_found': {
     'uz-Latn': 'Suhbat (intervyu) topilmadi.',

@@ -648,6 +648,40 @@ and Telegram performs none on a bot upload.
 
 ---
 
+## 10a. Administration and the audit log
+
+§10 is a role inside the mobile app, so its routes are ordinary endpoints behind
+`@RequireRole('admin')` (§1). Four decisions from M10 are worth keeping.
+
+- **The audit log is append-only in the database.** Three *statement-level* triggers refuse
+  `UPDATE`, `DELETE` and `TRUNCATE` on `admin_audit_log`. Statement-level because a
+  row-level trigger never fires for an `UPDATE` that matches no rows, so `UPDATE ... WHERE
+  false` would report a success it did not perform; `TRUNCATE` needs its own trigger or it
+  is the one-line way around the other two. A service with no update method is a fact about
+  today's code - this is a fact about the data.
+- **The actor reference is `RESTRICT`, and that collides with BR-14 on purpose.** An audit
+  row that forgot who acted is not an audit row, so a user who has acted as an
+  administrator cannot be deleted until the retention policy says what to do about it. A
+  cascade would resolve the collision by quietly destroying the trail.
+- **What the log adds, given six BR-08 history tables.** It is the cross-cutting record.
+  Where an action also writes a history row, that row is authoritative (same transaction as
+  the change) and the audit row is the index over it; where an action has **no** history
+  table - a dictionary edit, a complaint review, a warning that changes no status - the
+  audit row *is* the record and is written in the same transaction.
+- **The admin module implements no rule that belongs to an aggregate.** Verification and
+  moderation decisions call M4's and M5's methods; §10.2's "pause or remove" is a separate
+  `VacanciesService.administrate` rather than an ownership flag on the employer's own
+  status change, because a boolean that switches off an ownership check is one parameter
+  away from being passed by mistake.
+
+**§10.4's temporary restriction has no scheduler.** `AccountStatusGuard` already reads the
+user's row on every mutating request for BR-10, so an expired `restricted_until` is noticed
+and lifted there, with its BR-08 history row and a null actor - nobody decided it, the clock
+did. A read-only request does not trigger the lift, which is the stated cost of not having a
+scheduler to own it.
+
+---
+
 ## 11. Non-functional budget
 
 | Area | Target (§12.4) | How we hold it |

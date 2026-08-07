@@ -674,14 +674,66 @@ Client direction 2026-08-04: MVP first, notifications last to build and test.
 - [?] Push provider - FCM only (recommended) vs FCM + APNs. No longer urgent;
       needed before this milestone opens, not before the MVP.
 
-## M10 - Admin + audit
+## M10 - Admin + audit *(done)*
 
-- [ ] Dashboard counters (§10.1)
-- [ ] Verification + moderation decisions with mandatory reasons
-- [ ] Complaints over users, vacancies, messages, profiles
-- [ ] User search, warn/restrict/block/unblock with reason (UAT-14)
-- [ ] Dictionary management incl. localized labels and skill merge
-- [ ] **Append-only audit log**; test asserts no update/delete path exists
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
+
+### Schema *(done - `20260807140000_create_admin_audit_log`)*
+- [x] `admin_audit_log`, **append-only in the database**: three statement-level triggers
+      refuse `UPDATE`, `DELETE` and `TRUNCATE`. Statement-level because a row trigger never
+      fires for an `UPDATE` matching nothing, and `TRUNCATE` needs its own or it is the
+      one-line way around the other two
+- [x] The actor is `ON DELETE RESTRICT`, so a user who has acted as an administrator cannot
+      be deleted - which collides with BR-14 on purpose rather than letting a cascade take
+      the trail with it. Even the test cannot clean up after itself
+- [x] `users.restricted_until`, which is what makes §10.4's restriction *temporary*
+
+### Endpoints *(done)*
+- [x] Dashboard counters (§10.1) in one statement - eleven `count`s as scalar subqueries,
+      because a request per tile would be the slowest screen for the person who opens it
+      most
+- [x] Verification and moderation decisions with mandatory reasons, delegating to M4's and
+      M5's machines - the queue, the actor and the audit row are all M10 adds
+- [x] Verification evidence download, scoped to that employer's own submissions and logged
+      (§11.1) - the fourth entitlement-bearing file route
+- [x] §10.2's "pause, or remove a vacancy": `VacanciesService.administrate`, a separate
+      method from the employer's `changeStatus` rather than an ownership flag on it
+- [x] Complaints over users, vacancies, messages and profiles from the one generic table,
+      with the target resolved per kind, and the audit row written **in the same
+      transaction** because nothing else records a review
+- [x] User search by partial phone, name, role, status or registration date; warn (audit row
+      only, no status change), restrict/block/unblock with a mandatory reason, a BR-08 row
+      and an audit row in one transaction (UAT-14)
+- [x] An administrator cannot target their own account, and an account awaiting deletion is
+      left to BR-14
+- [x] Dictionary management (§10.3): create, edit labels and metadata, activate/deactivate,
+      merge. The four-locale rule, the revision bump and the merge's double bump stay the
+      database's; there is **no delete route** at all
+- [x] `GET /admin/audit` — §10.4's read, by actor or by target
+
+### The two MVP flags are on *(both default to `true` since M10)*
+- [x] `EMPLOYER_VERIFICATION_ENABLED` and `MODERATION_ENABLED` flipped, and **no domain code
+      changed** - which was the promise M4 and M5 made when they were switched off
+- [x] **A BR-12 restricted vacancy can finally publish.** Unreachable from M5 by design; it
+      needed a reviewer, not code
+- [ ] Grant the first administrator on the deployed instance (`INSERT INTO user_roles`), or
+      the flags have to stay off there: an instance with no admin parks every employer in
+      `under_review`. There is deliberately no route that grants the role
+
+### Tests *(done - 34 integration)*
+- [x] **Test: no update or delete path exists on the audit log** - all three triggers,
+      including an `UPDATE` that matches nothing, which is the case a row-level trigger
+      would let through
+- [x] A BR-12 restricted vacancy queued with its restriction shown, then published on
+      approval
+- [x] Mandatory reasons refused when blank, on all five decision kinds
+- [x] Warning writes an audit row and **no** `account_status_history` row; blocking writes
+      both
+- [x] A restriction with a past end date is lifted by the guard, with a null-actor history
+      row; a block is not
+- [x] Dictionary: activation refused until the fourth label exists, the type version bumps
+      on a label edit, a duplicate code is refused, and a merge leaves the loser resolvable
+- [x] The audit log answers both of its questions - by actor and by target
 
 ## M11 - Hardening
 

@@ -1269,6 +1269,126 @@ Statuses: `scheduled` · `confirmed` · `reschedule_requested` · `cancelled`.
 
 ---
 
+## 4h. Administration
+
+Built 2026-08-07 with M10. §10, as ordinary routes behind `@RequireRole('admin')` — there
+is no web panel (§2.4), so nothing else distinguishes them.
+
+```
+GET   /admin/dashboard?from=&to=                      ->  DashboardDto
+
+GET   /admin/verification                              ->  { items }        (§10.2)
+POST  /admin/verification/{employerUserId}              ->  204
+GET   /admin/employers/{employerUserId}/evidence/{fileId} ->  bytes
+
+GET   /admin/moderation                                  ->  { items }
+GET   /admin/moderation/{vacancyId}                       ->  VacancyReview
+POST  /admin/moderation/{vacancyId}                        ->  204
+PUT   /admin/vacancies/{vacancyId}/status                   ->  204
+
+GET   /admin/complaints?targetType=                          ->  { items }
+GET   /admin/complaints/{id}                                  ->  { complaint, target }
+POST  /admin/complaints/{id}/review                            ->  204
+
+GET   /admin/users?phone=&name=&role=&status=&registeredFrom=   ->  { items }  (§10.4)
+GET   /admin/users/{userId}                                      ->  AdminUserDetail
+POST  /admin/users/{userId}/warn                                  ->  204
+PUT   /admin/users/{userId}/status                                 ->  204
+
+POST  /admin/dictionaries/{typeCode}/items                          ->  { id }   (§10.3)
+PUT   /admin/dictionaries/items/{itemId}                             ->  204
+PUT   /admin/dictionaries/items/{itemId}/active                        ->  204
+POST  /admin/dictionaries/items/{itemId}/merge                          ->  204
+
+GET   /admin/audit?actorUserId=&targetType=&targetId=                    ->  { items }
+```
+
+### The two flags are on, and this is what turned them on
+
+`EMPLOYER_VERIFICATION_ENABLED` and `MODERATION_ENABLED` **default to true since M10**.
+Both were off because nobody could approve anything; the decision machines were built in
+M4 and M5 with their transitions, mandatory reasons and BR-08 history rows, and M10 adds
+the queue, the actor and the audit row. Turning them on needed no client change, as
+promised.
+
+**A BR-12 restricted vacancy can finally publish.** It was sent for review regardless of
+the flag from M5 onward, which meant it could not publish at all — the right failure, and
+now a resolved one. The moderation queue marks which items carry a restriction, and
+approving one is the only way it ever goes live.
+
+**Both flags need an administrator to exist.** There is no route that grants the `admin`
+role — `POST /auth/roles` refuses it by design — so the first one is a single `INSERT INTO
+user_roles`. On an instance with no administrator, set both flags to false or every
+employer parks in `under_review` and every vacancy in `under_moderation`.
+
+### The audit log is append-only in the database (§10.4)
+
+Three **statement-level** triggers refuse `UPDATE`, `DELETE` and `TRUNCATE`. Statement-level
+rather than row-level because a row trigger never fires for an `UPDATE` that matches
+nothing, so `UPDATE ... WHERE false` would report a success it did not perform. Immutability
+is therefore a property of the table, not of the module having no write path — it holds
+against a migration, a `psql` session and the next service.
+
+The actor reference is `ON DELETE RESTRICT`: an audit row that forgot who acted is not an
+audit row, so **a user who has acted as an administrator cannot be deleted** until BR-14's
+purge decides what to do about it. That conversation is forced deliberately rather than
+resolved by a cascade that would take the trail with it.
+
+What the log is *for*, given that six tables already record status changes with their actor
+(BR-08): it is the cross-cutting record. For a decision that also writes a BR-08 row, that
+row is authoritative — written inside the same transaction as the change — and the audit
+row is the index over it. For an action with **no** history table (a dictionary edit, a
+complaint review, a warning that changes no status) the audit row *is* the record, and is
+written in the same transaction as the change.
+
+### Decisions all carry a mandatory reason
+
+Verification rejection and "changes required" (§6.1), vacancy rejection (§10.2), an
+administrative pause or removal, a complaint resolution, and all four §10.4 user actions.
+`admin.reason_required` where M10 enforces it; the M4 and M5 codes where they do.
+
+### §10.4's user management
+
+Search by partial phone, name, role, status or registration date. The name is matched
+against a candidate's profile, an individual employer's own name and a company's public or
+legal name, because an administrator should not have to know which kind of account it is.
+This is a text match, and unlike §7.1's specialization filter that is fine here: one
+administrator looking for one account they already know of, not a rule two users must agree
+on across four interface variants.
+
+**An administrator sees phone numbers.** That is BR-09's `admin` branch, not an exception
+to it, and every search and every read is logged (§11.1).
+
+- **Warn** changes no status. The audit row is the whole record of it — which is the
+  clearest answer to why the log exists at all.
+- **Restrict / block / unblock** write `users.status`, an `account_status_history` row
+  (BR-08) and an audit row in one transaction. BR-10's guard already refuses every mutation
+  for both restricted and blocked accounts.
+- **`restrictedUntil` makes a restriction temporary.** The guard lifts it on the first
+  mutating request after the date passes, writing the history row for the change with a
+  null actor — nobody decided it, the clock did. Lazy rather than scheduled because this
+  deployment has no scheduler; the cost is that a read-only request does not trigger the
+  lift, so the user's own profile may still read `restricted` until they next try to write.
+- An administrator **cannot target their own account**, because no route would undo it.
+- An account awaiting deletion is left alone: BR-14 owns that state.
+
+### §10.3's dictionary management
+
+Create, edit (metadata or labels), activate, deactivate, merge. Four rules are the
+database's, not this module's, and hold against any write path:
+
+- **All four locales before activation** — a deferrable constraint trigger, with the
+  required set derived from the `locale_code` enum. A new item is inactive by default, so a
+  draft with three labels is a legitimate state.
+- **Every write bumps the global revision** through a trigger, so clients learn of a change
+  through the delta they already poll.
+- **A merge bumps both rows**, so one delta carries the loser in `removed` (with
+  `mergedIntoId`) and the survivor in `items`.
+- **Nothing is ever hard-deleted.** There is no delete route: deactivate, or merge into a
+  survivor, so historical references still resolve.
+
+---
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped

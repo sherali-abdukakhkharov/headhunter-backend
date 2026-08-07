@@ -59,6 +59,18 @@ export type InvitationStatus =
   | 'details_requested'
   | 'sent';
 
+export type Json = JsonValue;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
 
 export type Numeric = ColumnType<string, number | string, number | string>;
@@ -101,6 +113,17 @@ export interface AccountStatusHistory {
   reason: string | null;
   to_status: AccountStatus;
   user_id: string;
+}
+
+export interface AdminAuditLog {
+  action: string;
+  actor_user_id: string;
+  created_at: Generated<Timestamp>;
+  details: Json | null;
+  id: Generated<string>;
+  reason: string | null;
+  target_id: string | null;
+  target_type: string;
 }
 
 export interface ApplicationNotes {
@@ -498,6 +521,7 @@ export interface Users {
   last_login_at: Timestamp | null;
   locale: Generated<LocaleCode>;
   phone: string | null;
+  restricted_until: Timestamp | null;
   status: Generated<AccountStatus>;
   telegram_user_id: Int8 | null;
   telegram_username: string | null;
@@ -586,6 +610,7 @@ export interface VerificationSubmissions {
 
 export interface DB {
   account_status_history: AccountStatusHistory;
+  admin_audit_log: AdminAuditLog;
   app_meta: AppMeta;
   application_notes: ApplicationNotes;
   application_stage_history: ApplicationStageHistory;

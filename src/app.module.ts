@@ -10,6 +10,7 @@ import { RoleGuard } from '@infra/api/guards/role.guard';
 import { DatabaseModule } from '@infra/db/database.module';
 import { type AppEnv, envSchema } from '@infra/env-schema';
 import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
+import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CandidateSearchModule } from '@modules/candidate-search/candidate-search.module';
 import { CandidatesModule } from '@modules/candidates/candidates.module';
@@ -75,6 +76,7 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     InvitationsModule,
     ChatModule,
     InterviewsModule,
+    AdminModule,
     FilesHttpModule,
     HealthModule,
   ],

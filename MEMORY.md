@@ -79,6 +79,52 @@ would mean nothing. The seam is one route with one purpose check, which is the s
 shape this can have. It wants client sign-off, like the other decisions this project
 answers as data.
 
+### 2026-08-07 (M10) - Immutability is a property of the table, not of the code around it
+§10.4 asks for an "immutable audit log". The obvious build is a service with no update
+method, and it proves nothing: it is a fact about today's code, not about the data, and it
+survives neither a migration nor a `psql` session nor the next service somebody writes.
+*What shipped instead:* three **statement-level** triggers on `admin_audit_log` refusing
+`UPDATE`, `DELETE` and `TRUNCATE`. Statement-level is the load-bearing detail - a row-level
+trigger never fires for an `UPDATE` that matches no rows, so `UPDATE ... WHERE false` would
+succeed and report a success it did not perform. And `TRUNCATE` needs its own trigger or it
+is the one-line way around the other two.
+*The consequence to accept, not design around:* the actor is `ON DELETE RESTRICT`, so a
+user who has acted as an administrator **cannot be deleted**. That collides with BR-14's
+erasure duty, and the collision is the point - a cascade would quietly take the trail with
+it, so the constraint forces the retention conversation instead of pre-empting it. Even the
+test cannot clean up after itself, which is the guarantee working.
+
+### 2026-08-07 (M10) - The two MVP flags came off, and nothing else had to change
+`EMPLOYER_VERIFICATION_ENABLED` and `MODERATION_ENABLED` were false from M4 and M5 because
+nobody could approve anything. M10 flipped both defaults to true and **no domain code
+changed**: M4's `VerificationService.decide` and M5's `VacanciesService.moderate` already
+held the transitions, the mandatory reasons and the BR-08 history rows, so the admin module
+added a queue, an actor and an audit row.
+*That is the whole argument for the pattern.* When a milestone is missing its actor, build
+the rule with the actor as a parameter and disable the *route*, not the rule. The
+alternative - stubbing the rule and writing it later - is the version where turning the flag
+on is a rewrite.
+*The proof it was only ever the missing reviewer:* a BR-12 restricted vacancy, which was
+sent for review regardless of the flag and therefore could not publish at all from M5, now
+publishes the moment an administrator approves it. That unreachable state was recorded as
+"the right failure" at the time, and it turned out to need no code to resolve.
+*What the flags mean now:* they stay, because an instance with **no administrator account**
+has to be able to turn them off. There is deliberately no route that grants the `admin`
+role, so the first one is one `INSERT INTO user_roles`.
+
+### 2026-08-07 (M10) - "Temporary" without a scheduler: lift it in the guard that already looked
+§10.4 asks to "temporarily restrict" a user, and this deployment has no scheduler. A
+`restricted_until` column that only a cron job nobody runs would act on is worse than no
+column at all.
+*Where it went instead:* `AccountStatusGuard` already reads the user's row on every mutating
+request to enforce BR-10, so noticing that the end date has passed costs nothing - and it
+lifts the restriction there, writing the BR-08 history row with a **null actor**, because
+nobody decided it, the clock did. The `WHERE` clause carries the whole condition, so two
+concurrent requests cannot both write the row.
+*The imperfection, stated rather than hidden:* a read-only request does not trigger the
+lift, so the user's own profile may still read `restricted` until their next write attempt -
+which is the moment the restriction actually bites.
+
 ### 2026-08-07 (M8) - A permission asked live needs nothing un-set when it ends
 §9.1 gives chat two sentences: it becomes available after a permitted hiring interaction,
 and a closed interaction stays in history but may become read-only. The obvious build is a

@@ -52,40 +52,41 @@ export interface AppEnv {
   /**
    * Whether a verification submission waits for a human decision (§6.1).
    *
-   * **Off for the MVP**, and the reasoning is the same as `MODERATION_ENABLED` in
-   * PLAN.md's M5: the admin module is M10, so there is nobody who *can* approve a
-   * submission. With it off, submitting transitions straight to `verified` - and
-   * still writes its BR-08 history row, with a null actor and an
-   * `auto_verified_no_reviewer` reason, so the audit trail never claims a person
-   * reviewed anything.
+   * **On since M10** (2026-08-07), which is what it was always waiting for: §10.2's
+   * queue and `POST /admin/verification/{id}` give a submission somebody who *can*
+   * decide it. Turning it on needed no client change, exactly as promised - the five
+   * statuses, the transitions, the evidence requirement and BR-03 were all implemented
+   * from M4.
    *
-   * Everything else stays implemented: the five statuses, the transition rules, the
-   * evidence requirement and BR-03's precondition. Turning this on when M10 lands
-   * needs no client change.
+   * It stays a flag, and the reason changed rather than disappeared: an instance with
+   * no administrator account yet has to be able to turn it off, or every employer parks
+   * in `under_review` with nobody to decide. The first administrator is granted by SQL
+   * (`INSERT INTO user_roles`) - `POST /auth/roles` refuses `admin` by design, and there
+   * is deliberately no route that grants it.
    *
-   * *Why not simply skip verification until M10:* BR-03 blocks vacancy submission
-   * and invitations on a verified employer, so an employer who submits would park in
-   * `under_review` forever and the entire employer half of the product would be
-   * unreachable - exactly the trap PLAN.md records for BR-04.
+   * With it off, submitting transitions straight to `verified` and still writes its
+   * BR-08 history row with a null actor and an `auto_verified_no_reviewer` reason, so
+   * the trail never claims a person reviewed anything.
    */
   EMPLOYER_VERIFICATION_ENABLED: boolean;
 
   /**
    * Whether a submitted vacancy waits for a moderator (§6.4, BR-04).
    *
-   * **Off for the MVP**, for the reason PLAN.md's M5 records: the admin module is M10,
-   * so nobody can approve a vacancy, and BR-04 would leave every submission parked in
-   * `under_moderation` - closing the whole employer-posts-candidate-applies loop the
-   * MVP exists to demonstrate. With it off, submit transitions `draft → active`
-   * directly, **still writing its BR-08 history row** with a null actor and an
+   * **On since M10** (2026-08-07): §10.2's queue and `POST /admin/moderation/{id}` are
+   * the moderator BR-04 always assumed. With it off, submit transitions `draft → active`
+   * directly, still writing its BR-08 row with a null actor and an
    * `auto_approved_no_moderator` reason.
    *
-   * *What it deliberately does not cover:* a vacancy carrying a BR-12 age or gender
-   * restriction is sent for review **regardless of this flag**. BR-12 requires
-   * "administrator review", and a flag that exists to stop ordinary vacancies being
-   * stranded must not become a way to publish a restriction nobody checked. Such a
-   * vacancy therefore cannot be published until M10 lands - which is the right
-   * outcome, and the employer is told so.
+   * *The part that never depended on this flag:* a vacancy carrying a BR-12 age or
+   * gender restriction is sent for review **regardless**, because BR-12 makes
+   * "administrator review" part of the rule. From M5 until M10 that meant such a vacancy
+   * could not publish at all - the right failure, and now a resolved one: the moderation
+   * queue shows which items carry a restriction, and approving one is the only way it
+   * ever publishes.
+   *
+   * It stays a flag for the same reason as `EMPLOYER_VERIFICATION_ENABLED`: an instance
+   * with no administrator account has to be able to turn it off.
    */
   MODERATION_ENABLED: boolean;
 
@@ -264,12 +265,14 @@ export const envSchema = Joi.object<AppEnv, true>({
   // routes still need to be closable without a revert - see OtpEnabledGuard.
   OTP_LOGIN_ENABLED: Joi.boolean().default(true),
 
-  // Off until the admin module (M10) gives submissions a reviewer. See AppEnv.
-  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(false),
+  // **On since M10**, which gives submissions a reviewer (§10.2). It stays a flag
+  // because an instance with no administrator account yet has to be able to turn it
+  // off: otherwise every employer parks in `under_review` with nobody to decide.
+  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(true),
 
-  // Off until M10 gives vacancies a moderator. BR-12 restrictions are reviewed
-  // regardless - see AppEnv.
-  MODERATION_ENABLED: Joi.boolean().default(false),
+  // **On since M10**, which gives vacancies a moderator (§10.2, BR-04). Same caveat as
+  // above: an instance with no administrator has to be able to turn it off.
+  MODERATION_ENABLED: Joi.boolean().default(true),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.

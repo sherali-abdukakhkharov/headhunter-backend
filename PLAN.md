@@ -25,8 +25,8 @@ a profile contract.
 | M6 | Vacancy discovery + applications | M8 | **done - the MVP loop closes here** |
 | M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
 | M8 | Chat + interviews | - | **done** |
-| M10 | Admin module + audit | - | after M4+M5 |
-| M9 | Notifications + push | - | **last feature milestone**, after M10 |
+| M10 | Admin module + audit | - | **done**; both MVP flags now on |
+| M9 | Notifications + push | - | **next** — the last feature milestone |
 | M11 | Hardening: performance, security, offline, acceptance | release | last |
 
 ---
@@ -375,6 +375,31 @@ and accepted counts against the target. Five things to carry into M8:
 - Dictionary management including localized labels and skill merging.
 - **Append-only audit log** - no update or delete path exists, enforced by
   permissions and asserted in a test.
+
+*Status: done, and it is the milestone that closes two deferrals.* Four things to carry
+forward:
+
+- **Both MVP flags are on, and no domain code changed to turn them on.** M4's
+  `VerificationService.decide` and M5's `VacanciesService.moderate` already held the
+  transitions, the mandatory reasons and the BR-08 rows; M10 supplied the queue, the actor
+  and the audit row. That is the whole argument for the pattern: when a milestone is missing
+  its *actor*, build the rule with the actor as a parameter and disable the route, not the
+  rule.
+- **A BR-12 restricted vacancy publishes for the first time.** It was unreachable from M5
+  by design, and resolving it needed a reviewer rather than a line of code.
+- **Immutability is enforced by the table.** Three statement-level triggers refuse `UPDATE`,
+  `DELETE` and `TRUNCATE` on the audit log — a service with no write path is a fact about
+  today's code, not about the data. The actor is `RESTRICT`, so an administrator who has
+  acted cannot be deleted: that collides with **BR-14** deliberately, and M11 has to resolve
+  it rather than let a cascade take the trail.
+- **§10.4's "temporary" restriction has no scheduler behind it.** `AccountStatusGuard`
+  already reads the user's row on every mutation, so it lifts an expired restriction there
+  and writes the history row with a null actor. The stated imperfection: a read-only request
+  does not trigger the lift.
+
+Still open here, and it is an ops step rather than code: **the deployed instance has no
+administrator account.** There is deliberately no route that grants the role, so the first
+one is one `INSERT INTO user_roles` — until then that instance has to keep both flags off.
 
 ## M11 - Hardening and acceptance
 
