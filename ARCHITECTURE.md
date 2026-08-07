@@ -646,6 +646,28 @@ and Telegram performs none on a bot upload.
   Store the notification independent of push success - push is best-effort, the
   in-app list is the record.
 
+*Built in M9, and four decisions are worth carrying forward.*
+
+- **The row stores a message key and its parameters, never rendered text.** `users.locale`
+  is a setting that can change after the event, so rendering at write time would freeze a
+  user's history in the language they used last month. The list resolves through the same
+  catalog and the same `x-lang` fallback chain as every error message. A consequence worth
+  knowing: a status name cannot be interpolated into a sentence, because an enum code would
+  reach the reader untranslated - the text says what happened and the deep link carries the
+  detail.
+- **A disabled category stores nothing**, rather than storing a row the list filters out. A
+  badge counting notifications somebody asked not to receive is the same thing as not
+  switching the category off. Absence of a preference means enabled.
+- **The always-on category is a CHECK constraint**, not only a service rule: a row
+  disabling `account` cannot exist, so no write path produces a user who is not told they
+  have been restricted.
+- **`notify` never throws, and is never awaited for its push.** A notification is a message
+  *about* something that happened and must not be able to prevent it - the opposite of the
+  audit log's rule, and deliberately so. The provider sits behind a `PushSender` interface
+  with a no-op implementation that reports `failed` rather than pretending, so an instance
+  with no credential is degraded rather than broken, and Huawei's Push Kit would be a
+  second adapter rather than a rewrite.
+
 ---
 
 ## 10a. Administration and the audit log

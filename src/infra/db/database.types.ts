@@ -73,6 +73,25 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export type LocaleCode = 'en' | 'ru' | 'uz-Cyrl' | 'uz-Latn';
 
+export type NotificationCategory =
+  | 'account'
+  | 'applications'
+  | 'interviews'
+  | 'invitations'
+  | 'messages';
+
+export type NotificationEvent =
+  | 'account_action'
+  | 'application_created'
+  | 'application_status_changed'
+  | 'interview_changed'
+  | 'interview_scheduled'
+  | 'invitation_received'
+  | 'invitation_responded'
+  | 'message_received'
+  | 'vacancy_moderated'
+  | 'verification_decided';
+
 export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type OtpPurpose =
@@ -301,6 +320,17 @@ export interface DeletionRequests {
   user_id: string;
 }
 
+export interface DeviceTokens {
+  app_version: string | null;
+  created_at: Generated<Timestamp>;
+  disabled_at: Timestamp | null;
+  id: Generated<string>;
+  last_seen_at: Generated<Timestamp>;
+  platform: string;
+  token: string;
+  user_id: string;
+}
+
 export interface DictionaryItems {
   category: DictionaryCategory | null;
   code: string;
@@ -435,6 +465,25 @@ export interface Messages {
   file_id: string | null;
   id: Generated<string>;
   sender_user_id: string;
+}
+
+export interface NotificationPreferences {
+  category: NotificationCategory;
+  enabled: boolean;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
+export interface Notifications {
+  category: NotificationCategory;
+  created_at: Generated<Timestamp>;
+  event: NotificationEvent;
+  id: Generated<string>;
+  params: Json | null;
+  read_at: Timestamp | null;
+  target_id: string | null;
+  target_type: string | null;
+  user_id: string;
 }
 
 export interface OtpCodes {
@@ -627,6 +676,7 @@ export interface DB {
   conversation_blocks: ConversationBlocks;
   conversations: Conversations;
   deletion_requests: DeletionRequests;
+  device_tokens: DeviceTokens;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;
   dictionary_types: DictionaryTypes;
@@ -638,6 +688,8 @@ export interface DB {
   invitation_status_history: InvitationStatusHistory;
   invitations: Invitations;
   messages: Messages;
+  notification_preferences: NotificationPreferences;
+  notifications: Notifications;
   otp_codes: OtpCodes;
   rate_limit_counters: RateLimitCounters;
   saved_candidates: SavedCandidates;

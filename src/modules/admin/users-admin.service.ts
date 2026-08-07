@@ -9,6 +9,8 @@ import {
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AccountStatus, UserRole } from '@infra/db/database.types';
 
+import { NotificationsService } from '@modules/notifications/notifications.service';
+
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
 
 export interface UserSearchFilters {
@@ -79,6 +81,7 @@ export class AdminUsersService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -247,6 +250,14 @@ export class AdminUsersService {
         reason,
       }),
     );
+
+    // §9.2 row 9: "Administrative restriction or complaint decision → Affected user".
+    // A warning that the person is never told about is not a warning.
+    await this.notifications.notify({
+      userId,
+      event: 'account_action',
+      target: { type: 'user', id: userId },
+    });
   }
 
   /**
@@ -348,6 +359,15 @@ export class AdminUsersService {
 
       throw new ConflictError('admin.status_unchanged');
     }
+
+    // §9.2 row 9 again. An `account` notice, so it reaches them whatever their
+    // preferences say - being restricted is exactly the thing a user must not be able to
+    // mute.
+    await this.notifications.notify({
+      userId,
+      event: 'account_action',
+      target: { type: 'user', id: userId },
+    });
   }
 
   private async assertExists(userId: string): Promise<void> {

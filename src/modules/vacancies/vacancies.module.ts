@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
 import { EmployersModule } from '@modules/employers/employers.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasModule } from '@modules/schemas/schemas.module';
 
@@ -19,7 +20,12 @@ import { VacanciesService } from './vacancies.service';
  * `vacancy-status.ts` so the feed cannot advertise a vacancy the apply route refuses.
  */
 @Module({
-  imports: [SchemasModule, DictionariesModule, EmployersModule],
+  imports: [
+    SchemasModule,
+    DictionariesModule,
+    EmployersModule,
+    NotificationsModule,
+  ],
   controllers: [VacanciesController],
   providers: [VacanciesService, FieldValidatorService],
   exports: [VacanciesService],

@@ -663,16 +663,58 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4g.
       refused **and writes nothing**, and the CHECK constraints refuse a direct write that
       the service would have refused too
 
-## M9 - Notifications *(deferred: last feature milestone, after M10)*
+## M9 - Notifications *(done)*
 
-Client direction 2026-08-04: MVP first, notifications last to build and test.
+Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4i.
 
-- [ ] `notifications` rows for all nine §9.2 events with correct recipients
-- [ ] Unread count, mark read, preferences
-- [ ] Security/account notices not disableable
-- [ ] Device token registration + push dispatch, independent of the stored row
-- [?] Push provider - FCM only (recommended) vs FCM + APNs. No longer urgent;
-      needed before this milestone opens, not before the MVP.
+### Schema *(done - `20260807150000_create_notifications`)*
+- [x] `notifications` storing an **event code and its parameters, never text**:
+      `users.locale` can change after the event, and a list frozen in last month's language
+      is the §3.2 failure the catalog exists to prevent
+- [x] `notification_preferences` per category, with §9.2's always-on category as a **CHECK
+      constraint** so a row disabling it cannot exist
+- [x] `device_tokens`, unique on the token across users - a token identifies an app
+      installation, not a person, and phones here are handed on
+
+### Endpoints and events *(done)*
+- [x] All nine §9.2 events with the recipients the specification names, emitted by the six
+      modules that own them (ten codes: "interview created or changed" is one setting and
+      two sentences)
+- [x] Unread count over a partial index, mark one, mark all, list filtered to unread
+- [x] Preferences, including the always-on category **listed and flagged** rather than
+      hidden - a user who cannot find it will assume it is off
+- [x] Security and account notices not disableable: vacancy moderation, verification
+      result and administrative action, each of which the user must act on and cannot act
+      on unseen
+- [x] Device registration and push dispatch, independent of the stored row: `notify` never
+      throws and never awaits the push
+- [x] **FCM over HTTP v1**, direct rather than through `firebase-admin` - the SDK exists to
+      hide an OAuth2 exchange and one POST, and `jose` already signs JWTs here for Telegram
+
+### The provider decision *(answered 2026-08-07: FCM, client direction)*
+- [x] FCM only, with the APNs key uploaded to Firebase so iOS goes through the same call.
+      Free, and works with a sideloaded APK - what it needs is Google Play services on the
+      device
+- [x] A phone without them (a post-2019 Huawei) loses the banner and nothing else, because
+      the in-app row is the record. Huawei Push Kit would be a second `PushSender`, not a
+      rewrite
+- [ ] **Owed by the client: the Firebase service-account JSON** for
+      `FCM_SERVICE_ACCOUNT_BASE64`. Until it arrives the no-op sender reports `failed`
+      rather than pretending, and warns at boot and per dispatch
+- [ ] Owed later: an APNs `.p8` in that Firebase project, when iOS becomes real
+
+### Tests *(done - 42 unit, 18 integration)*
+- [x] **The four translations of every event key interpolate exactly the same
+      placeholders** - a placeholder present in Russian and missing in Uzbek renders as
+      braces to one user and no request in review would surface it
+- [x] One row read in three languages returns three sentences and one id
+- [x] A disabled category stores nothing at all; the always-on one is refused by the
+      service *and* by the constraint
+- [x] A token registered by a second account moves; an unregistered one is disabled and
+      revived by re-registration
+- [x] The row survives a sender that fails and a user with no device at all
+- [x] Every other integration suite now constructs the real notifications service, so a
+      miswired event fails where it is emitted
 
 ## M10 - Admin + audit *(done)*
 

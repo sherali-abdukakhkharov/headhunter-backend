@@ -564,6 +564,88 @@ export const MESSAGES = {
     ru: 'Одно из выбранных значений приглашения недопустимо.',
     en: 'One of the values chosen for the invitation is not valid.',
   },
+  // --- notifications (§9.2) ------------------------------------------------
+  // Not errors, and the only entries here that are not. They live in this catalog on
+  // purpose: a notification stores a key and its parameters rather than text, because
+  // `users.locale` can change after it is written and §3.2 requires all four variants.
+  // The list is therefore rendered in whatever language the reader is using *now*.
+  'notification.application_created': {
+    'uz-Latn': '«{vacancy}» vakansiyasiga yangi ariza keldi.',
+    'uz-Cyrl': '«{vacancy}» вакансиясига янги ариза келди.',
+    ru: 'Новый отклик на вакансию «{vacancy}».',
+    en: 'A new application for “{vacancy}”.',
+  },
+  // No status name in the sentence: a stage code interpolated here would reach the
+  // reader untranslated, and §3.2 does not allow that. The client shows the stage from
+  // the target it links to, where it already renders one.
+  'notification.application_status_changed': {
+    'uz-Latn': '«{vacancy}» boʻyicha arizangiz holati oʻzgardi.',
+    'uz-Cyrl': '«{vacancy}» бўйича аризангиз ҳолати ўзгарди.',
+    ru: 'Статус вашего отклика на «{vacancy}» изменился.',
+    en: 'The status of your application for “{vacancy}” has changed.',
+  },
+  'notification.invitation_received': {
+    'uz-Latn': '{employer} sizni ishga taklif qildi.',
+    'uz-Cyrl': '{employer} сизни ишга таклиф қилди.',
+    ru: '{employer} приглашает вас на работу.',
+    en: '{employer} has invited you to work.',
+  },
+  'notification.invitation_responded': {
+    'uz-Latn': '{candidate} taklifingizga javob berdi.',
+    'uz-Cyrl': '{candidate} таклифингизга жавоб берди.',
+    ru: '{candidate} ответил на ваше приглашение.',
+    en: '{candidate} answered your invitation.',
+  },
+  'notification.message_received': {
+    'uz-Latn': '{sender} sizga xabar yubordi.',
+    'uz-Cyrl': '{sender} сизга хабар юборди.',
+    ru: '{sender} отправил вам сообщение.',
+    en: '{sender} sent you a message.',
+  },
+  'notification.interview_scheduled': {
+    'uz-Latn': 'Suhbat belgilandi: {when}.',
+    'uz-Cyrl': 'Суҳбат белгиланди: {when}.',
+    ru: 'Назначено собеседование: {when}.',
+    en: 'An interview has been scheduled for {when}.',
+  },
+  'notification.interview_changed': {
+    'uz-Latn': 'Suhbat vaqti oʻzgardi: {when}.',
+    'uz-Cyrl': 'Суҳбат вақти ўзгарди: {when}.',
+    ru: 'Время собеседования изменено: {when}.',
+    en: 'The interview has been moved to {when}.',
+  },
+  'notification.vacancy_moderated': {
+    'uz-Latn': '«{vacancy}» vakansiyasi moderatsiyadan oʻtdi.',
+    'uz-Cyrl': '«{vacancy}» вакансияси модерациядан ўтди.',
+    ru: 'Вакансия «{vacancy}» прошла проверку модератора.',
+    en: 'Your vacancy “{vacancy}” has been reviewed.',
+  },
+  'notification.verification_decided': {
+    'uz-Latn': 'Tashkilotingiz tekshiruvi yakunlandi.',
+    'uz-Cyrl': 'Ташкилотингиз текшируви якунланди.',
+    ru: 'Проверка вашей организации завершена.',
+    en: 'Your organisation’s verification is complete.',
+  },
+  'notification.account_action': {
+    'uz-Latn': 'Hisobingiz boʻyicha maʼmuriy qaror qabul qilindi.',
+    'uz-Cyrl': 'Ҳисобингиз бўйича маъмурий қарор қабул қилинди.',
+    ru: 'По вашей учётной записи принято административное решение.',
+    en: 'An administrative decision has been made about your account.',
+  },
+  'notification.not_found': {
+    'uz-Latn': 'Bildirishnoma topilmadi.',
+    'uz-Cyrl': 'Билдиришнома топилмади.',
+    ru: 'Уведомление не найдено.',
+    en: 'The notification was not found.',
+  },
+  // §9.2: "security and account notices remain enabled".
+  'notification.category_not_disableable': {
+    'uz-Latn': 'Hisob va xavfsizlik bildirishnomalarini oʻchirib boʻlmaydi.',
+    'uz-Cyrl': 'Ҳисоб ва хавфсизлик билдиришномаларини ўчириб бўлмайди.',
+    ru: 'Уведомления об учётной записи и безопасности отключить нельзя.',
+    en: 'Account and security notices cannot be switched off.',
+  },
+
   // --- administration (§10) ------------------------------------------------
   // §10.2 and §10.4 make a reason mandatory for administrator decisions; one key covers
   // them, because from the caller's side the fix is the same.

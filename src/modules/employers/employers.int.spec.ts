@@ -11,6 +11,9 @@ import type { Database } from '@infra/db/database.module';
 import type { EmployerType } from '@infra/db/database.types';
 import { createIntTestDb } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { EMPLOYER_REQUIREMENTS } from './employer-requirements';
 import { EmployersService } from './employers.service';
@@ -40,6 +43,14 @@ let autoVerify: VerificationService;
 /** Review on - what M10 turns on. */
 let queued: VerificationService;
 
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
+
 const users: string[] = [];
 
 function config(reviewEnabled: boolean): ConfigService<AppEnv, true> {
@@ -55,9 +66,19 @@ function config(reviewEnabled: boolean): ConfigService<AppEnv, true> {
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
+
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
   employers = new EmployersService(db);
-  autoVerify = new VerificationService(db, employers, config(false));
-  queued = new VerificationService(db, employers, config(true));
+  autoVerify = new VerificationService(
+    db,
+    employers,
+    notifications,
+    config(false),
+  );
+  queued = new VerificationService(db, employers, notifications, config(true));
 });
 
 afterAll(async () => {

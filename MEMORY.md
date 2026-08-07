@@ -79,6 +79,36 @@ would mean nothing. The seam is one route with one purpose check, which is the s
 shape this can have. It wants client sign-off, like the other decisions this project
 answers as data.
 
+### 2026-08-07 (M9) - A notification stores a key, because the reader's language can change
+The obvious build renders the sentence when the event happens and stores the string. It is
+wrong for this product: `users.locale` is a setting, and a candidate who switches to
+Russian would find their whole notification history frozen in the language they used last
+month - the §3.2 failure the message catalog exists to prevent, arriving through the one
+door nobody guards.
+*What shipped:* the row holds an event code and its parameters, and the list is rendered at
+read time against the request's `x-lang`, through the same catalog and the same fallback
+chain as every error message.
+*The consequence that shaped the copy:* a **status name cannot be interpolated**. "Your
+application is now {status}" would reach the reader with an English enum in it, so the
+sentences say what happened and the screen they link to shows the detail. That was worth
+more than the four extra words.
+*The test that matters:* the four translations of one key must interpolate exactly the same
+placeholders. A placeholder present in Russian and missing in Uzbek renders as literal
+braces to one of two users, and no request in review would ever surface it.
+
+### 2026-08-07 (M9) - The no-op sender reports failure, never success
+With no FCM credential the push sender is a no-op, exactly as `OTP_STATIC_CODE` stands in
+for an SMS provider. The detail worth keeping: it returns `failed`, not `sent`.
+*Why:* a no-op that claimed success would produce clean logs on an instance that delivers
+nothing, and would train everybody to believe push works. It also keeps the dispatcher's
+invalid-token cleanup honest, since "sent" and "not configured" would otherwise be the same
+row in the same table.
+*What makes this safe to ship without the credential at all:* ARCHITECTURE.md §10's rule
+that the in-app row is the record. A phone with no Google Play services - a post-2019
+Huawei, which is a real share of this market - loses the banner and nothing else. That is
+also the answer to "should we add Huawei Push Kit": it is a second adapter behind
+`PushSender` if the client ever asks, not a rewrite.
+
 ### 2026-08-07 (M10) - Immutability is a property of the table, not of the code around it
 §10.4 asks for an "immutable audit log". The obvious build is a service with no update
 method, and it proves nothing: it is a fact about today's code, not about the data, and it

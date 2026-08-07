@@ -12,6 +12,7 @@ import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { formatDateOnly } from '@infra/time/format';
 import { ConfigService } from '@nestjs/config';
 import type { AppEnv } from '@infra/env-schema';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { isOpenForApplications } from '@modules/vacancies/vacancy-status';
 
 import { actorFor, canTransition, isTerminal } from './application-status';
@@ -40,6 +41,7 @@ export class ApplicationsService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly idempotency: IdempotencyService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -77,6 +79,24 @@ export class ApplicationsService {
       { vacancyId, coverNote },
       () => this.insertApplication(candidateUserId, vacancyId, coverNote),
     );
+
+    // §9.2 row 1: "New application → Employer". Fired after the commit, and unable to
+    // undo it: `notify` swallows and logs its own failures, because an application must
+    // not fail because a notification did.
+    const vacancy = await this.db
+      .selectFrom('vacancies')
+      .select(['employer_user_id', 'title'])
+      .where('id', '=', vacancyId)
+      .executeTakeFirst();
+
+    if (vacancy) {
+      await this.notifications.notify({
+        userId: vacancy.employer_user_id,
+        event: 'application_created',
+        params: { vacancy: vacancy.title ?? '' },
+        target: { type: 'application', id },
+      });
+    }
 
     return this.byId(id);
   }
@@ -241,7 +261,26 @@ export class ApplicationsService {
       }
     }
 
-    return this.byId(applicationId);
+    const application = await this.byId(applicationId);
+
+    // §9.2 row 2: "Application status changed → Candidate". Only the employer's moves
+    // are announced - a candidate who withdrew does not need telling that they did.
+    if (actor.role === 'employer') {
+      const vacancy = await this.db
+        .selectFrom('vacancies')
+        .select('title')
+        .where('id', '=', application.vacancyId)
+        .executeTakeFirst();
+
+      await this.notifications.notify({
+        userId: application.candidateUserId,
+        event: 'application_status_changed',
+        params: { vacancy: vacancy?.title ?? '' },
+        target: { type: 'application', id: applicationId },
+      });
+    }
+
+    return application;
   }
 
   /**

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { FilesModule } from '@infra/files/files.module';
 import { IdempotencyModule } from '@infra/idempotency/idempotency.module';
 import { PrivacyModule } from '@infra/privacy/privacy.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
@@ -17,7 +18,7 @@ import { ChatService } from './chat.service';
  * two would drift.
  */
 @Module({
-  imports: [PrivacyModule, FilesModule, IdempotencyModule],
+  imports: [PrivacyModule, FilesModule, IdempotencyModule, NotificationsModule],
   controllers: [ChatController],
   providers: [ChatService],
 })

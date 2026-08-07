@@ -21,6 +21,9 @@ import { InvitationsService } from '@modules/invitations/invitations.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { ChatService } from './chat.service';
 
@@ -41,6 +44,14 @@ let vacancies: VacanciesService;
 let applications: ApplicationsService;
 let invitations: InvitationsService;
 let chat: ChatService;
+
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
 
 const users: string[] = [];
 
@@ -73,16 +84,29 @@ const filesStub = {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
 
   employers = new EmployersService(db);
   candidates = new CandidatesService(db, schemas, validator);
-  vacancies = new VacanciesService(db, schemas, validator, employers, config);
+  vacancies = new VacanciesService(
+    db,
+    schemas,
+    validator,
+    employers,
+    notifications,
+    config,
+  );
   applications = new ApplicationsService(
     db,
     new IdempotencyService(db),
+    notifications,
     config,
   );
   invitations = new InvitationsService(
@@ -90,6 +114,7 @@ beforeAll(() => {
     employers,
     dictionaries,
     new IdempotencyService(db),
+    notifications,
     config,
   );
   chat = new ChatService(
@@ -97,6 +122,7 @@ beforeAll(() => {
     new HiringInteractionService(db),
     filesStub,
     new IdempotencyService(db),
+    notifications,
   );
 });
 
@@ -182,9 +208,10 @@ async function newEmployer(): Promise<string> {
     description: 'Marketplace operator hiring call-centre staff.',
   });
 
-  await new VerificationService(db, employers, config).submit(employerUserId, [
-    await storedFile(employerUserId, 'company_registration'),
-  ]);
+  await new VerificationService(db, employers, notifications, config).submit(
+    employerUserId,
+    [await storedFile(employerUserId, 'company_registration')],
+  );
 
   return employerUserId;
 }

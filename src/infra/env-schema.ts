@@ -183,6 +183,22 @@ export interface AppEnv {
   RATE_LIMIT_SEARCH_PER_IP: number;
 
   /**
+   * The Firebase service-account JSON, base64-encoded, or empty to disable push.
+   *
+   * Base64 because the document is multi-line and its private key contains newlines,
+   * which `.env` files handle badly enough that most failures would be quoting mistakes.
+   *
+   * **Empty is a supported state, not a broken one** (§9.2): notifications are still
+   * stored and read in-app, and the no-op sender logs a warning per dispatch rather than
+   * claiming a delivery. The same shape as `OTP_STATIC_CODE` on the login path - the
+   * product is complete before the third-party account exists, and the credential's
+   * arrival changes configuration rather than code.
+   */
+  FCM_SERVICE_ACCOUNT_BASE64: string;
+  /** How long to wait on Google, per request. Push is best effort; nothing retries. */
+  FCM_TIMEOUT_MS: number;
+
+  /**
    * How far §7.2's count-before-open counts before answering "n+".
    *
    * Configuration rather than a constant for the reason every other limit here is: the
@@ -343,6 +359,12 @@ export const envSchema = Joi.object<AppEnv, true>({
   // §7.2: "the current number of matching candidates ... where technically reasonable".
   // 200 is where a client renders "200+" rather than a number anyone reads.
   SEARCH_COUNT_CAP: Joi.number().integer().min(1).default(200),
+
+  // Push (§9.2). Empty by default and empty is fine - see AppEnv. Unlike
+  // OTP_STATIC_CODE this is *not* refused in production: an instance with no push is a
+  // degraded instance, not an unsafe one, and the in-app list still carries every notice.
+  FCM_SERVICE_ACCOUNT_BASE64: Joi.string().allow('').default(''),
+  FCM_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

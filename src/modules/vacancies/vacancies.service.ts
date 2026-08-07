@@ -20,6 +20,7 @@ import type {
 import type { AppEnv } from '@infra/env-schema';
 import { formatDateOnly } from '@infra/time/format';
 import { EmployersService } from '@modules/employers/employers.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { requiredForSearchable } from '@modules/schemas/schema-resolver';
 import { SchemasService } from '@modules/schemas/schemas.service';
@@ -77,6 +78,7 @@ export class VacanciesService {
     private readonly schemas: SchemasService,
     private readonly validator: FieldValidatorService,
     private readonly employers: EmployersService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.moderationEnabled = config.get('MODERATION_ENABLED', { infer: true });
@@ -366,6 +368,16 @@ export class VacanciesService {
     if (!written) {
       throw new Error(`Vacancy ${vacancyId} vanished mid-write`);
     }
+
+    // §9.2 row 7: "Vacancy moderation result → Employer". An `account` notice, and
+    // deliberately not disableable: an employer who muted this could not learn why their
+    // vacancy is invisible (BR-04).
+    await this.notifications.notify({
+      userId: written.row.employer_user_id,
+      event: 'vacancy_moderated',
+      params: { vacancy: written.row.title ?? '' },
+      target: { type: 'vacancy', id: vacancyId },
+    });
 
     return this.project(written);
   }

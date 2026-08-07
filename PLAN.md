@@ -26,8 +26,8 @@ a profile contract.
 | M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
 | M8 | Chat + interviews | - | **done** |
 | M10 | Admin module + audit | - | **done**; both MVP flags now on |
-| M9 | Notifications + push | - | **next** — the last feature milestone |
-| M11 | Hardening: performance, security, offline, acceptance | release | last |
+| M9 | Notifications + push | - | **done**; FCM behind a seam, credential owed |
+| M11 | Hardening: performance, security, offline, acceptance | release | **next**, and last |
 
 ---
 
@@ -363,6 +363,24 @@ and accepted counts against the target. Five things to carry into M8:
   mark read; preferences with non-disableable security notices.
 - Push dispatch (provider decision pending), device token registration, delivery
   independent of the stored record.
+
+*Status: done.* The provider question is answered - **FCM**, client direction 2026-08-07 -
+and four things are worth carrying into M11:
+
+- **A notification stores a message key and its parameters, never text.** `users.locale`
+  can change after the event, so rendering at write time would freeze a user's history in
+  the language they used last month. The consequence to remember when writing any new
+  notification: a status name cannot be interpolated, because an enum code would reach the
+  reader untranslated.
+- **The credential is the only thing owed**, and its absence is a supported state: the
+  no-op sender reports `failed` rather than pretending, and every notification is still
+  written and readable in-app. Setting `FCM_SERVICE_ACCOUNT_BASE64` is the whole
+  difference.
+- **FCM needs Google Play services on the device, not a Play Store install** - so a
+  sideloaded APK is fine, and a post-2019 Huawei is not. Those users lose the banner and
+  nothing else. Huawei Push Kit is a second `PushSender` if the client ever asks.
+- **Every integration suite now constructs the real notifications service**, so a miswired
+  event fails in the suite that owns the flow rather than in M9's.
 
 ## M10 - Admin module + audit
 

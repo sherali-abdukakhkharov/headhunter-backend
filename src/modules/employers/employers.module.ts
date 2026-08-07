@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { NotificationsModule } from '@modules/notifications/notifications.module';
+
 import { EmployersController } from './employers.controller';
 import { EmployersService } from './employers.service';
 import { VerificationService } from './verification.service';
@@ -15,6 +17,7 @@ import { VerificationService } from './verification.service';
  * contact details.
  */
 @Module({
+  imports: [NotificationsModule],
   controllers: [EmployersController],
   providers: [EmployersService, VerificationService],
   exports: [EmployersService, VerificationService],

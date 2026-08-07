@@ -21,6 +21,9 @@ import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { CandidateSearchService } from './candidate-search.service';
 import type { CandidateSearchFilters } from './search-filters';
@@ -46,6 +49,14 @@ let applications: ApplicationsService;
 let search: CandidateSearchService;
 let searchCapped: CandidateSearchService;
 let candidateView: CandidateViewService;
+
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
 
 const users: string[] = [];
 
@@ -86,6 +97,11 @@ const filesStub = {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
@@ -93,10 +109,18 @@ beforeAll(() => {
   employers = new EmployersService(db);
   candidates = new CandidatesService(db, schemas, validator);
   history = new HistoryService(db, candidates, config);
-  vacancies = new VacanciesService(db, schemas, validator, employers, config);
+  vacancies = new VacanciesService(
+    db,
+    schemas,
+    validator,
+    employers,
+    notifications,
+    config,
+  );
   applications = new ApplicationsService(
     db,
     new IdempotencyService(db),
+    notifications,
     config,
   );
   search = new CandidateSearchService(db, employers, filesStub, config);
@@ -219,9 +243,10 @@ async function newEmployer(verified = true): Promise<string> {
 
   // EMPLOYER_VERIFICATION_ENABLED is off, so this verifies directly - with its honest
   // audit row (M4).
-  await new VerificationService(db, employers, config).submit(employerUserId, [
-    file.id,
-  ]);
+  await new VerificationService(db, employers, notifications, config).submit(
+    employerUserId,
+    [file.id],
+  );
 
   return employerUserId;
 }

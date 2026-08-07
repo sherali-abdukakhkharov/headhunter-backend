@@ -19,6 +19,8 @@ import {
   EMPLOYER_REQUIREMENTS,
   requiredEvidence,
 } from './employer-requirements';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+
 import { EmployersService } from './employers.service';
 
 export interface VerificationSubmission {
@@ -66,6 +68,7 @@ export class VerificationService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly employers: EmployersService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.reviewEnabled = config.get('EMPLOYER_VERIFICATION_ENABLED', {
@@ -250,6 +253,15 @@ export class VerificationService {
         decision,
         { reason, actor },
       );
+    });
+
+    // §9.2 row 8: "Employer verification result → Employer". An `account` notice, so it
+    // reaches them whatever their preferences say - BR-03 blocks everything on this
+    // outcome, and a muted result would leave them unable to act and unable to know why.
+    await this.notifications.notify({
+      userId: employerUserId,
+      event: 'verification_decided',
+      target: { type: 'employer', id: employerUserId },
     });
 
     return this.state(employerUserId);

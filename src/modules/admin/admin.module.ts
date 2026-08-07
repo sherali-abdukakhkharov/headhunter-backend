@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { FilesModule } from '@infra/files/files.module';
 import { EmployersModule } from '@modules/employers/employers.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { VacanciesModule } from '@modules/vacancies/vacancies.module';
 
 import { AdminController } from './admin.controller';
@@ -25,7 +26,7 @@ import { AdminUsersService } from './users-admin.service';
  * Nothing here re-implements a rule that lives in the module that owns the aggregate.
  */
 @Module({
-  imports: [EmployersModule, VacanciesModule, FilesModule],
+  imports: [EmployersModule, VacanciesModule, FilesModule, NotificationsModule],
   controllers: [AdminController],
   providers: [
     AuditService,

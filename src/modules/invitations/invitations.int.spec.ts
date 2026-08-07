@@ -21,6 +21,9 @@ import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { InvitationsService } from './invitations.service';
 
@@ -42,6 +45,14 @@ let candidates: CandidatesService;
 let vacancies: VacanciesService;
 let invitations: InvitationsService;
 let candidateView: CandidateViewService;
+
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
 
 const users: string[] = [];
 
@@ -77,18 +88,31 @@ const filesStub = {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
 
   employers = new EmployersService(db);
   candidates = new CandidatesService(db, schemas, validator);
-  vacancies = new VacanciesService(db, schemas, validator, employers, config);
+  vacancies = new VacanciesService(
+    db,
+    schemas,
+    validator,
+    employers,
+    notifications,
+    config,
+  );
   invitations = new InvitationsService(
     db,
     employers,
     dictionaries,
     new IdempotencyService(db),
+    notifications,
     config,
   );
   candidateView = new CandidateViewService(
@@ -182,7 +206,7 @@ async function newEmployer(verified = true): Promise<string> {
   });
 
   if (verified) {
-    await new VerificationService(db, employers, config).submit(
+    await new VerificationService(db, employers, notifications, config).submit(
       employerUserId,
       [await evidenceFile(employerUserId)],
     );

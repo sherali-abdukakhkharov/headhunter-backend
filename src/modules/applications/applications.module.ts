@@ -4,6 +4,7 @@ import { FilesModule } from '@infra/files/files.module';
 import { IdempotencyModule } from '@infra/idempotency/idempotency.module';
 import { PrivacyModule } from '@infra/privacy/privacy.module';
 import { EmployersModule } from '@modules/employers/employers.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
@@ -25,7 +26,13 @@ import { CandidateViewService } from './candidate-view.service';
  * implementations is a privacy rule that drifts.
  */
 @Module({
-  imports: [IdempotencyModule, EmployersModule, FilesModule, PrivacyModule],
+  imports: [
+    IdempotencyModule,
+    EmployersModule,
+    FilesModule,
+    PrivacyModule,
+    NotificationsModule,
+  ],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, CandidateViewService],
   exports: [ApplicationsService, CandidateViewService],

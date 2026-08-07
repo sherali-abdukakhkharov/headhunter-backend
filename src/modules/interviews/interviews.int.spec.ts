@@ -19,6 +19,9 @@ import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { InterviewsService } from './interviews.service';
 
@@ -40,6 +43,14 @@ let vacancies: VacanciesService;
 let applications: ApplicationsService;
 let interviews: InterviewsService;
 
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
+
 const users: string[] = [];
 
 const config = {
@@ -56,19 +67,32 @@ const config = {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
 
   employers = new EmployersService(db);
   candidates = new CandidatesService(db, schemas, validator);
-  vacancies = new VacanciesService(db, schemas, validator, employers, config);
+  vacancies = new VacanciesService(
+    db,
+    schemas,
+    validator,
+    employers,
+    notifications,
+    config,
+  );
   applications = new ApplicationsService(
     db,
     new IdempotencyService(db),
+    notifications,
     config,
   );
-  interviews = new InterviewsService(db, applications);
+  interviews = new InterviewsService(db, applications, notifications);
 });
 
 afterAll(async () => {
@@ -169,9 +193,10 @@ async function newEmployer(): Promise<string> {
     })
     .returning('id')
     .executeTakeFirstOrThrow();
-  await new VerificationService(db, employers, config).submit(employerUserId, [
-    file.id,
-  ]);
+  await new VerificationService(db, employers, notifications, config).submit(
+    employerUserId,
+    [file.id],
+  );
 
   return employerUserId;
 }

@@ -4,6 +4,7 @@ import { IdempotencyModule } from '@infra/idempotency/idempotency.module';
 import { ApplicationsModule } from '@modules/applications/applications.module';
 import { DictionariesModule } from '@modules/dictionaries/dictionaries.module';
 import { EmployersModule } from '@modules/employers/employers.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 import { InvitationsController } from './invitations.controller';
 import { InvitationsService } from './invitations.service';
@@ -30,6 +31,7 @@ import { InvitationsService } from './invitations.service';
     EmployersModule,
     DictionariesModule,
     ApplicationsModule,
+    NotificationsModule,
   ],
   controllers: [InvitationsController],
   providers: [InvitationsService],

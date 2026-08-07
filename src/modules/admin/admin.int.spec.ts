@@ -19,6 +19,9 @@ import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
@@ -54,6 +57,14 @@ let adminDictionaries: DictionaryAdminService;
 let guard: AccountStatusGuard;
 let dictionariesRead: DictionariesService;
 
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
+
 const users: string[] = [];
 const createdItems: string[] = [];
 
@@ -87,15 +98,27 @@ const filesStub = {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   dictionariesRead = dictionaries;
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
 
   employers = new EmployersService(db);
-  verification = new VerificationService(db, employers, config);
+  verification = new VerificationService(db, employers, notifications, config);
   candidates = new CandidatesService(db, schemas, validator);
-  vacancies = new VacanciesService(db, schemas, validator, employers, config);
+  vacancies = new VacanciesService(
+    db,
+    schemas,
+    validator,
+    employers,
+    notifications,
+    config,
+  );
   audit = new AuditService(db);
   dashboard = new DashboardService(db);
   moderation = new AdminModerationService(
@@ -105,7 +128,7 @@ beforeAll(() => {
     filesStub,
     audit,
   );
-  adminUsers = new AdminUsersService(db, audit);
+  adminUsers = new AdminUsersService(db, audit, notifications);
   adminDictionaries = new DictionaryAdminService(db, audit);
   guard = new AccountStatusGuard(db);
 });

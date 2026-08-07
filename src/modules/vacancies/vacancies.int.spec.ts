@@ -16,6 +16,9 @@ import { EmployersService } from '@modules/employers/employers.service';
 import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
+import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { AUTO_APPROVED_REASON } from './vacancy-status';
 import { VacanciesService } from './vacancies.service';
@@ -41,6 +44,14 @@ let autoPublish: VacanciesService;
 /** Moderation on - what M10 turns on. */
 let moderated: VacanciesService;
 
+/**
+ * The real notifications service over a no-op sender.
+ *
+ * Real rather than stubbed, so every one of these suites also exercises the notification
+ * write M9 added to the flow it covers; no-op sender, so nothing reaches FCM.
+ */
+let notifications: NotificationsService;
+
 const users: string[] = [];
 
 function config(moderationEnabled: boolean): ConfigService<AppEnv, true> {
@@ -61,6 +72,11 @@ function config(moderationEnabled: boolean): ConfigService<AppEnv, true> {
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
 
+  notifications = new NotificationsService(
+    db,
+    new PushDispatcher(db, new NoopPushSender()),
+  );
+
   const dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config(false));
   const validator = new FieldValidatorService(dictionaries, config(false));
@@ -71,6 +87,7 @@ beforeAll(() => {
     schemas,
     validator,
     employers,
+    notifications,
     config(false),
   );
   moderated = new VacanciesService(
@@ -78,6 +95,7 @@ beforeAll(() => {
     schemas,
     validator,
     employers,
+    notifications,
     config(true),
   );
 });
@@ -172,7 +190,12 @@ async function verifiedEmployer(): Promise<string> {
     description: 'Marketplace operator hiring call-centre staff.',
   });
 
-  const verification = new VerificationService(db, employers, config(false));
+  const verification = new VerificationService(
+    db,
+    employers,
+    notifications,
+    config(false),
+  );
   const purpose = await seededId('file_purpose', 'company_registration');
   const unique = randomUUID();
   const file = await db

@@ -14,6 +14,7 @@ import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { formatDateOnly } from '@infra/time/format';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { EmployersService } from '@modules/employers/employers.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { isOpenForApplications } from '@modules/vacancies/vacancy-status';
 
 import { canRespond, isTerminal } from './invitation-status';
@@ -105,6 +106,7 @@ export class InvitationsService {
     private readonly employers: EmployersService,
     private readonly dictionaries: DictionariesService,
     private readonly idempotency: IdempotencyService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -138,6 +140,14 @@ export class InvitationsService {
       input,
       () => this.insert(employerUserId, input),
     );
+
+    // §9.2 row 3: "New invitation or offer → Candidate".
+    await this.notifications.notify({
+      userId: input.candidateUserId,
+      event: 'invitation_received',
+      params: { employer: await this.employerName(employerUserId) },
+      target: { type: 'invitation', id },
+    });
 
     return this.byId(id);
   }
@@ -285,7 +295,39 @@ export class InvitationsService {
       }
     }
 
-    return this.byId(invitationId);
+    const invitation = await this.byId(invitationId);
+
+    // §9.2 row 4: "Invitation response → Employer".
+    await this.notifications.notify({
+      userId: invitation.employerUserId,
+      event: 'invitation_responded',
+      params: { candidate: await this.candidateName(candidateUserId) },
+      target: { type: 'invitation', id: invitationId },
+    });
+
+    return invitation;
+  }
+
+  /** The name a notification names them by - never a company's legal name (§6.1). */
+  private async employerName(employerUserId: string): Promise<string> {
+    const row = await this.db
+      .selectFrom('employers')
+      .leftJoin('companies', 'companies.employer_user_id', 'employers.user_id')
+      .select(['employers.full_name', 'companies.public_name'])
+      .where('employers.user_id', '=', employerUserId)
+      .executeTakeFirst();
+
+    return row?.public_name ?? row?.full_name ?? '';
+  }
+
+  private async candidateName(candidateUserId: string): Promise<string> {
+    const row = await this.db
+      .selectFrom('candidate_profiles')
+      .select('full_name')
+      .where('user_id', '=', candidateUserId)
+      .executeTakeFirst();
+
+    return row?.full_name ?? '';
   }
 
   async byId(invitationId: string): Promise<Invitation> {

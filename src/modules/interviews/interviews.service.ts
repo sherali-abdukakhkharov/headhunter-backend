@@ -14,6 +14,7 @@ import type {
   UserRole,
 } from '@infra/db/database.types';
 import { ApplicationsService } from '@modules/applications/applications.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 
 import { canRespond, detailViolation, isTerminal } from './interview-rules';
 
@@ -77,6 +78,7 @@ export class InterviewsService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly applications: ApplicationsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** §8.3's scheduling, by the employer who owns the vacancy. */
@@ -125,6 +127,8 @@ export class InterviewsService {
 
       return created.id;
     });
+
+    await this.announce(id, 'interview_scheduled');
 
     return this.byId(id);
   }
@@ -175,6 +179,8 @@ export class InterviewsService {
         role: 'employer',
       });
     });
+
+    await this.announce(interviewId, 'interview_changed');
 
     return this.byId(interviewId);
   }
@@ -288,6 +294,52 @@ export class InterviewsService {
       .execute();
 
     return rows.map(toInterview);
+  }
+
+  /**
+   * §9.2 row 6: "Interview created or changed → **Both parties**".
+   *
+   * Both, as written, even though one of them just performed the action: an employer's
+   * hiring is rarely one person, and the row says both. The time is formatted by the
+   * client from the target rather than interpolated here as a string, which is why the
+   * message carries the instant rather than a rendered date.
+   */
+  private async announce(
+    interviewId: string,
+    event: 'interview_scheduled' | 'interview_changed',
+  ): Promise<void> {
+    const row = await this.db
+      .selectFrom('interviews')
+      .innerJoin('applications', 'applications.id', 'interviews.application_id')
+      .innerJoin('vacancies', 'vacancies.id', 'applications.vacancy_id')
+      .select([
+        'interviews.scheduled_at',
+        'applications.candidate_user_id',
+        'vacancies.employer_user_id',
+      ])
+      .where('interviews.id', '=', interviewId)
+      .executeTakeFirst();
+
+    if (!row) {
+      return;
+    }
+
+    const params = { when: row.scheduled_at.toISOString() };
+
+    await this.notifications.notifyAll([
+      {
+        userId: row.candidate_user_id,
+        event,
+        params,
+        target: { type: 'interview', id: interviewId },
+      },
+      {
+        userId: row.employer_user_id,
+        event,
+        params,
+        target: { type: 'interview', id: interviewId },
+      },
+    ]);
   }
 
   /** BR-08's trail for one interview. */

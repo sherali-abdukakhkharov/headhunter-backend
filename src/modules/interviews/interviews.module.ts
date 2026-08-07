@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { ApplicationsModule } from '@modules/applications/applications.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 import { InterviewsController } from './interviews.controller';
 import { InterviewsService } from './interviews.service';
@@ -15,7 +16,7 @@ import { InterviewsService } from './interviews.service';
  * being reimplemented here.
  */
 @Module({
-  imports: [ApplicationsModule],
+  imports: [ApplicationsModule, NotificationsModule],
   controllers: [InterviewsController],
   providers: [InterviewsService],
 })

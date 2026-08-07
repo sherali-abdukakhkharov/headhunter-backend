@@ -11,6 +11,7 @@ import type { UserRole } from '@infra/db/database.types';
 import { type StoredFile, FilesService } from '@infra/files/files.service';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 
 export interface Conversation {
   id: string;
@@ -87,6 +88,7 @@ export class ChatService {
     private readonly interactions: HiringInteractionService,
     private readonly files: FilesService,
     private readonly idempotency: IdempotencyService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -217,6 +219,21 @@ export class ChatService {
     if (!message) {
       throw new NotFoundError('chat.message_not_found');
     }
+
+    // §9.2 row 5: "New chat message → Recipient" - the other participant, whichever side
+    // the sender is on. The name in the message is the **sender's**, so it cannot be
+    // `counterpartName`: that field is the other person as seen by whoever asked, and
+    // here the reader is the other person.
+    const isEmployerSending = userId === conversation.employerUserId;
+
+    await this.notifications.notify({
+      userId: isEmployerSending
+        ? conversation.candidateUserId
+        : conversation.employerUserId,
+      event: 'message_received',
+      params: { sender: await this.nameOf(userId, isEmployerSending) },
+      target: { type: 'conversation', id: conversationId },
+    });
 
     return message;
   }
@@ -556,6 +573,37 @@ export class ChatService {
     return row.employer_user_id === participantUserId
       ? row.employer_read_at
       : row.candidate_read_at;
+  }
+
+  /**
+   * How a sender is named in the recipient's notification.
+   *
+   * An employer by their public name, never a company's legal one (§6.1 keeps both
+   * because they differ, and the public one is the one meant to be shown).
+   */
+  private async nameOf(userId: string, isEmployer: boolean): Promise<string> {
+    if (isEmployer) {
+      const row = await this.db
+        .selectFrom('employers')
+        .leftJoin(
+          'companies',
+          'companies.employer_user_id',
+          'employers.user_id',
+        )
+        .select(['employers.full_name', 'companies.public_name'])
+        .where('employers.user_id', '=', userId)
+        .executeTakeFirst();
+
+      return row?.public_name ?? row?.full_name ?? '';
+    }
+
+    const row = await this.db
+      .selectFrom('candidate_profiles')
+      .select('full_name')
+      .where('user_id', '=', userId)
+      .executeTakeFirst();
+
+    return row?.full_name ?? '';
   }
 
   /** An attachment is a file the sender owns - never one they merely know the id of. */

@@ -1389,6 +1389,87 @@ database's, not this module's, and hold against any write path:
 
 ---
 
+## 4i. Notifications
+
+Built 2026-08-07 with M9. §9.2's nine events, their preferences, and push.
+
+```
+GET   /notifications?unreadOnly=&limit=&offset=   ->  { items: Notification[] }
+GET   /notifications/unread-count                  ->  { count }
+PUT   /notifications/{id}/read                      ->  204
+PUT   /notifications/read                            ->  { marked }
+GET   /notifications/preferences                      ->  { items }
+PUT   /notifications/preferences/{category}            ->  204
+POST  /notifications/devices                            ->  204
+DELETE/notifications/devices/{token}                     ->  204
+```
+
+### A notification stores a key, not a sentence
+
+This is the decision everything else follows from. The row holds an **event code and its
+parameters**; the text is rendered at read time from the same catalog and the same
+`x-lang` chain every error message uses. `users.locale` can change after a notification is
+written, and a list frozen in last month's language would be exactly the §3.2 failure the
+catalog exists to prevent.
+
+For the client that means: **branch on `event`, follow `targetType` / `targetId`, and show
+`text`** — never parse the sentence. A status name is deliberately *not* interpolated into
+any of them: a stage code inside the text would reach the reader untranslated, so the
+sentence says what happened and the screen it links to shows the detail.
+
+### The nine events (§9.2)
+
+| Event | Recipient | Category |
+|---|---|---|
+| `application_created` | Employer | `applications` |
+| `application_status_changed` | Candidate | `applications` |
+| `invitation_received` | Candidate | `invitations` |
+| `invitation_responded` | Employer | `invitations` |
+| `message_received` | The other participant | `messages` |
+| `interview_scheduled` / `interview_changed` | **Both parties** | `interviews` |
+| `vacancy_moderated` | Employer | `account` |
+| `verification_decided` | Employer | `account` |
+| `account_action` | The affected user | `account` |
+
+Ten codes for nine rows: "interview created or changed" is one line in §9.2 and one
+*setting*, but two sentences, and telling a candidate an interview "changed" when it has
+just been created is a small lie.
+
+### Preferences, and the category that has none
+
+§9.2: "settings may allow the user to disable non-critical categories, while security and
+account notices remain enabled". `account` is that category — `PUT
+/notifications/preferences/account` with `enabled: false` answers
+`notification.category_not_disableable`, and a CHECK constraint refuses the row underneath.
+
+It carries the three events a user must not be able to mute: a vacancy moderation result,
+a verification result and an administrative action. Each one they have to act on, and none
+of which they can act on unseen.
+
+**A disabled category stores nothing at all** — not a hidden row. A badge counting
+notifications somebody asked not to receive would be the same thing as not switching the
+category off. Absence of a preference means enabled, so a user who never opens the settings
+screen misses nothing.
+
+### Push is best effort, and the in-app row is the record
+
+`POST /notifications/devices` registers an FCM token; call it again after every SDK
+refresh. A token is **unique across users**, so registering one that belonged to another
+account *moves* it: a token identifies an app installation, not a person, and phones here
+are handed on. A token FCM reports as unregistered is disabled rather than deleted, and
+comes back to life if the app is reinstalled.
+
+Delivery never affects the record. The row is written first and the dispatch is fired
+without waiting for it, so:
+
+- A phone with **no Google Play services** (a post-2019 Huawei) loses the banner and
+  nothing else — every notification is in the list when they open the app.
+- An instance with **no FCM credential configured** behaves identically. The no-op sender
+  reports `failed` rather than pretending, and logs a warning per dispatch; boot logs one
+  too. Setting `FCM_SERVICE_ACCOUNT_BASE64` is the whole difference.
+
+---
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped
