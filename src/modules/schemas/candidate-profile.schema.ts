@@ -34,7 +34,7 @@ import type { FieldSchemaDefinition } from './schema-types';
  */
 export const CANDIDATE_PROFILE_SCHEMA: FieldSchemaDefinition = {
   target: 'candidate_profile',
-  version: 1,
+  version: 2,
   sections: [
     // --- personal (§5.1) ---------------------------------------------------
     {
@@ -458,7 +458,11 @@ export const CANDIDATE_PROFILE_SCHEMA: FieldSchemaDefinition = {
       fields: [
         {
           code: 'specialization',
-          kind: 'text',
+          // Ids, not text, since M7. §7.1 filters on specialization, and a text filter
+          // cannot behave identically in four interface variants (§3.3, BR-13) - a
+          // candidate's `Информатика` would never meet an employer's `Informatika`.
+          // Multi rather than single because a second degree is ordinary.
+          kind: 'dictionary_multi',
           labels: {
             'uz-Latn': 'Mutaxassislik',
             'uz-Cyrl': 'Мутахассислик',
@@ -466,8 +470,12 @@ export const CANDIDATE_PROFILE_SCHEMA: FieldSchemaDefinition = {
             en: 'Specialization',
           },
           storage: { kind: 'attribute' },
+          dictionaryType: 'specialization',
+          // The dictionary carries vocational fields as well as degrees, so offering
+          // this to the service and physical categories is a one-line change if the
+          // client wants it. Left as it was until they say so.
           categories: ['professional'],
-          validation: { maxLength: 120 },
+          validation: { maxItems: 3 },
         },
         {
           code: 'portfolio_url',

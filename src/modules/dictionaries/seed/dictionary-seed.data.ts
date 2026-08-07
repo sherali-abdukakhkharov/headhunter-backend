@@ -1,6 +1,7 @@
 import { INDUSTRY_SEED, SKILL_SEED } from './data/skills.data';
 import { OCCUPATION_SEED } from './data/occupations.data';
 import { REGION_SEED } from './data/locations.data';
+import { SPECIALIZATION_SEED } from './data/specializations.data';
 import type { SeedType } from './seed-types';
 
 export type { SeedItem, SeedProvenance, SeedType } from './seed-types';
@@ -41,6 +42,9 @@ export const DICTIONARY_SEED: SeedType[] = [
   SKILL_SEED,
   INDUSTRY_SEED,
   REGION_SEED,
+  // Added in M7: §7.1's specialization filter needs ids, not the free text the field
+  // used to carry - see the file header.
+  SPECIALIZATION_SEED,
   {
     code: 'language',
     provenance: 'default',

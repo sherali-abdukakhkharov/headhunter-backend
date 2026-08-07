@@ -553,9 +553,10 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
 - [x] Match score with per-group breakdown; `scoreGroups()` is the single source of the
       weights *and* of what the response reports, so the number that ranked a candidate
       and the number explaining it cannot disagree
-- [x] §7.3 sorts: match, recent, experience, salary - each with a total order, or two
-      pages of one search can repeat a candidate. **Location proximity is not offered**:
-      places are dictionary ids, not coordinates
+- [x] §7.3 sorts: match, recent, experience, salary and **tiered proximity** - same
+      district, then same region, then the rest, against `proximityDistrictId`. Each sort
+      ends with a total order, or two pages of one search can repeat a candidate. A real
+      distance needs a centroid per district and would not change the contract
 - [x] Vacancy→search prefill (UAT-06) as a pure function over the vacancy aggregate:
       mandatory requirements become filters, preferred ones deliberately do not, and a
       BR-12 restriction carries the justification the vacancy already holds
@@ -563,9 +564,11 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
 - [x] **BR-09** used by every candidate serializer: the card has no contact fields and the
       query never joins `users`; `CandidateViewService.forCandidate` is §7.3's "View
       profile" and reuses M6's one gatherer rather than a second copy of the rule
-- [x] §7.1's two filters that cannot be built as written: no free-text `specialization`
-      (a substring match on prose cannot behave identically in four variants, §3.3), and
-      remote-work readiness is a `work_format` id rather than a boolean
+- [x] §7.1's two filters that could not be built as written, both resolved as ids:
+      `specialization` is now a **dictionary** (60 items, `default`, client owns the final
+      list) on both the candidate profile and the vacancy, with both schema versions
+      bumped to 2 and the old free text deleted rather than guessed at; remote-work
+      readiness was never missing, it is a `work_format` id rather than a boolean
 - [x] BR-12 on the search side: an age or gender filter needs a justification from the
       same declaration a vacancy's restriction needs, covering the same kinds, and every
       accepted use is logged for M10's audit

@@ -457,6 +457,36 @@ describe('§7.1 filters', () => {
     expect(found).not.toContain(fresh);
   });
 
+  it('filters by specialization id, across scripts (§3.3, BR-13)', async () => {
+    const employerUserId = await newEmployer();
+    const softwareEngineering = await seededId(
+      'specialization',
+      'software_engineering',
+    );
+    const accounting = await seededId('specialization', 'accounting_audit');
+
+    // A professional-category profile: `specialization` is one of §5.2's category
+    // fields, so it only exists where the schema says it does.
+    const professional = await seededId('occupation', 'software_developer');
+    const engineer = await newCandidate({
+      primary_occupation_id: professional,
+      specialization: [softwareEngineering],
+    });
+    const accountant = await newCandidate({
+      primary_occupation_id: professional,
+      specialization: [accounting],
+    });
+
+    const found = await find(employerUserId, {
+      specializationIds: [softwareEngineering],
+    });
+
+    // The point of the dictionary: the same id whichever of the four variants either
+    // person is using. A text filter would have matched one spelling of one language.
+    expect(found).toContain(engineer);
+    expect(found).not.toContain(accountant);
+  });
+
   it('refuses to filter occupation experience with no occupation selected', async () => {
     const employerUserId = await newEmployer();
 
@@ -637,6 +667,76 @@ describe('§7.3’s ranking and card', () => {
     const scores = items.map((item) => item.matchScore);
 
     expect(scores).toEqual([...scores].sort((a, b) => b - a));
+  });
+
+  it('sorts by tiered proximity: same district, then same region, then the rest', async () => {
+    const employerUserId = await newEmployer();
+    const { regionId, districtId } = await region();
+    const otherDistrict = await db
+      .selectFrom('dictionary_items')
+      .select('id')
+      .where('parent_id', '=', regionId)
+      .where('id', '!=', districtId)
+      .where('is_active', '=', true)
+      .executeTakeFirstOrThrow();
+    const otherRegion = await db
+      .selectFrom('dictionary_items')
+      .select('id')
+      .where('type_code', '=', 'region')
+      .where('parent_id', 'is', null)
+      .where('id', '!=', regionId)
+      .executeTakeFirstOrThrow();
+    const farDistrict = await db
+      .selectFrom('dictionary_items')
+      .select('id')
+      .where('parent_id', '=', otherRegion.id)
+      .where('is_active', '=', true)
+      .executeTakeFirstOrThrow();
+
+    const near = await newCandidate({
+      region_id: regionId,
+      district_id: districtId,
+    });
+    const sameRegion = await newCandidate({
+      region_id: regionId,
+      district_id: otherDistrict.id,
+    });
+    const far = await newCandidate({
+      region_id: otherRegion.id,
+      district_id: farDistrict.id,
+    });
+
+    const { items } = await search.search(employerUserId, {
+      // No location *filter*: the point of the sort is to order candidates a wide search
+      // returned, and filtering by district would leave it nothing to order. That is why
+      // the reference point is its own field.
+      filters: { proximityDistrictId: districtId },
+      sort: 'proximity',
+      limit: 50,
+      offset: 0,
+    });
+    const order = idsIn(items);
+
+    // Tiers, not distances: places are dictionary ids here, and this is what the region
+    // tree can honestly support. Same district, then same region, then the rest.
+    expect(order.indexOf(near)).toBeLessThan(order.indexOf(sameRegion));
+    expect(order.indexOf(sameRegion)).toBeLessThan(order.indexOf(far));
+  });
+
+  it('leaves the order to the tiebreaker when there is nothing to be near', async () => {
+    const employerUserId = await newEmployer();
+    await newCandidate();
+
+    // Documented rather than refused: the result set is identical either way, and only
+    // the order within it is undefined.
+    await expect(
+      search.search(employerUserId, {
+        filters: {},
+        sort: 'proximity',
+        limit: 5,
+        offset: 0,
+      }),
+    ).resolves.toBeDefined();
   });
 
   it('scores an unfiltered search 100 for everyone rather than dividing by zero', async () => {

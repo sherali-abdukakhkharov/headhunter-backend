@@ -79,6 +79,25 @@ would mean nothing. The seam is one route with one purpose check, which is the s
 shape this can have. It wants client sign-off, like the other decisions this project
 answers as data.
 
+### 2026-08-07 (M7, later the same day) - Two of the three gaps closed, on client direction
+The entry below recorded three §7.1/§7.3 items that could not be built as worded. The
+client answered two of them within the hour, and both answers were the id-shaped one.
+*Specialization is now a dictionary.* 60 items in eight groups (`specializations.data.ts`,
+tagged `default`), and the field is `dictionary_multi` on **both** the candidate profile
+and the vacancy - they have to move together, because the schema contract test pins a
+shared field code to one meaning, and UAT-06's prefill copies it straight across. Both
+schema versions bumped to 2, so clients refetch. Existing free-text values were **deleted,
+not mapped**: "Информатика" could be `computer_science` or `information_systems`, and
+choosing for somebody would put a claim in their profile they did not make.
+*Proximity is tiered:* same district 2, same region 1, elsewhere 0. The trap, found by the
+first test written for it: measuring against the *district filter* collapses the tiers,
+because filtering by district has already excluded everyone who is not in it. The
+reference point therefore has its own field, `proximityDistrictId` - a wide filter plus a
+point to sort around is the only shape in which a proximity sort means anything.
+*The third gap stands:* remote-work readiness was never missing, only differently shaped -
+it is a `work_format` id, and saying so in the commit as though it were a gap was
+imprecise.
+
 ### 2026-08-07 (M7) - Two §7.1 filters could not be built as worded, and were not faked
 "Specialization" and "remote-work readiness" are listed as filters in §7.1. Neither shipped
 in that form: a free-text specialization filter is a substring match on prose, which cannot

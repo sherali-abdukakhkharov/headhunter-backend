@@ -66,6 +66,7 @@ export function prefillFilters(
     }));
 
   const educationLevelIds = idsOf('education_level_id');
+  const specializationIds = idsOf('specialization');
   const experienceYears = valueInt(mandatory, 'experience_years_min');
   const crewRequired = mandatory.some(
     (requirement) =>
@@ -91,12 +92,18 @@ export function prefillFilters(
 
     ...(languages.length ? { languages } : {}),
     ...(educationLevelIds.length ? { educationLevelIds } : {}),
+    // Ids on both sides since M7, so this is a straight copy - which is the point of the
+    // contract test that pins a shared field code to one meaning.
+    ...(specializationIds.length ? { specializationIds } : {}),
     ...(experienceYears === null
       ? {}
       : { experienceYearsMin: experienceYears }),
 
     ...(row.region_id ? { regionId: row.region_id } : {}),
     ...(row.district_id ? { districtIds: [row.district_id] } : {}),
+    // The point to sort around when the employer picks §7.3's proximity, carried
+    // separately so that widening the district filter does not lose it.
+    ...(row.district_id ? { proximityDistrictId: row.district_id } : {}),
 
     ...listFilter('employmentTypeIds', idsOf('employment_type_ids')),
     ...listFilter('workFormatIds', idsOf('work_format_ids')),

@@ -188,6 +188,13 @@ export function whereFilters(
     )`);
   }
 
+  if (filters.specializationIds?.length) {
+    // An attribute row per specialization, like every other dictionary multi-select on
+    // the profile - which is what makes this an indexed join rather than the substring
+    // match it was before M7.
+    conditions.push(attributeAny('specialization', filters.specializationIds));
+  }
+
   // --- location -----------------------------------------------------------
   if (filters.regionId) {
     conditions.push(sql`p.region_id = ${filters.regionId}::uuid`);
@@ -378,6 +385,12 @@ function matchedExpression(
           sql` OR `,
         )})
       )`;
+    case 'specialization':
+      return sql`(
+        SELECT count(DISTINCT ca.item_id) FROM candidate_attributes ca
+        WHERE ca.user_id = p.user_id AND ca.field_code = 'specialization'
+          AND ca.item_id = ANY(${filters.specializationIds ?? []}::uuid[])
+      )`;
     case 'location':
       return sql`(
         (CASE WHEN ${filters.regionId ?? null}::uuid IS NOT NULL
@@ -429,6 +442,43 @@ export function scoreExpression(groups: ScoreGroup[]): RawBuilder<unknown> {
   );
 
   return sql`ROUND(100 * (${sql.join(terms, sql` + `)}) / ${weightTotal})`;
+}
+
+/**
+ * §7.3's "location proximity", as tiers rather than a distance.
+ *
+ * Same district counts 2, the same region 1, anywhere else 0 - measured against
+ * `proximityDistrictId`, or the first filtered district if the caller did not name one.
+ * The region tier is that district's *parent*, read from the dictionary tree, so the
+ * caller supplies one id rather than two that could disagree.
+ *
+ * **Why tiers and not kilometres.** A place is a dictionary id in a two-level tree here;
+ * there are no coordinates on a candidate, a vacancy or a district. A distance computed
+ * from that tree would be a number nobody measured, presented in a control an employer
+ * would read as real. Tiers are exactly what the data supports, and adding a centroid per
+ * district later turns this into a real distance without changing the contract.
+ *
+ * **The reference point is deliberately not the district filter.** Filtering by district
+ * excludes everyone who is not in it, which would leave a proximity sort with nothing to
+ * order. The useful shape is a wide filter and a point to sort around - a region filter,
+ * or none at all, plus the vacancy's district.
+ *
+ * With no reference at all there is nothing to be near, so everyone scores 0 and the sort
+ * falls through to its tiebreaker: documented rather than refused, because the result set
+ * is identical either way and only the order within it is undefined.
+ */
+export function proximityRank(
+  filters: CandidateSearchFilters,
+): RawBuilder<unknown> {
+  const near = filters.proximityDistrictId ?? filters.districtIds?.[0] ?? null;
+
+  return sql`(
+    (CASE WHEN p.district_id = ${near}::uuid THEN 2 ELSE 0 END)
+    + (CASE WHEN p.region_id = COALESCE(
+          (SELECT di.parent_id FROM dictionary_items di WHERE di.id = ${near}::uuid),
+          ${filters.regionId ?? null}::uuid
+        ) THEN 1 ELSE 0 END)
+  )`;
 }
 
 /**
@@ -546,11 +596,6 @@ export function cardJoins(employerUserId: string): RawBuilder<unknown> {
  *
  * Every option ends with the same two tiebreakers, and that is not cosmetic: without a
  * total order, two pages of a paginated search can repeat or skip a candidate.
- *
- * **Location proximity is not offered.** §7.3 allows it "where permission exists", and
- * this data model has no coordinates - region and district are dictionary ids, which
- * make an exact filter and not a distance. Inventing one from a region hierarchy would
- * be a made-up number in a sort the employer would read as real.
  */
 export function orderBy(sort: CandidateSearchSort): RawBuilder<unknown> {
   const primary: Record<CandidateSearchSort, RawBuilder<unknown>> = {
@@ -560,6 +605,9 @@ export function orderBy(sort: CandidateSearchSort): RawBuilder<unknown> {
     // Cheapest expectation first: an employer sorting by expected pay is looking at a
     // budget. A candidate who stated none sorts last rather than as free.
     salary: sql`r.salary_from ASC NULLS LAST`,
+    // Nearest tier first (§7.3). Ties inside a tier fall to recency, which is the most
+    // useful second key when everyone is equally near.
+    proximity: sql`r.proximity_rank DESC`,
   };
 
   return sql`${primary[sort]}, r.last_meaningful_update_at DESC NULLS LAST, r.user_id`;

@@ -27,7 +27,7 @@ import type { FieldSchemaDefinition } from './schema-types';
  */
 export const VACANCY_SCHEMA: FieldSchemaDefinition = {
   target: 'vacancy',
-  version: 1,
+  version: 2,
   sections: [
     // --- what and how many (§6.3) -------------------------------------------
     {
@@ -497,7 +497,10 @@ export const VACANCY_SCHEMA: FieldSchemaDefinition = {
         },
         {
           code: 'specialization',
-          kind: 'text',
+          // Ids since M7, in step with the candidate field of the same code - the
+          // contract test pins that a shared code means the same thing on both sides,
+          // and UAT-06's prefill maps this straight onto the search filter.
+          kind: 'dictionary_multi',
           labels: {
             'uz-Latn': 'Mutaxassislik',
             'uz-Cyrl': 'Мутахассислик',
@@ -505,8 +508,9 @@ export const VACANCY_SCHEMA: FieldSchemaDefinition = {
             en: 'Specialization',
           },
           storage: { kind: 'requirement' },
+          dictionaryType: 'specialization',
           categories: ['professional'],
-          validation: { maxLength: 120 },
+          validation: { maxItems: 5 },
         },
       ],
     },

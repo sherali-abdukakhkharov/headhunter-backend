@@ -12,6 +12,7 @@ import type { DB } from '@infra/db/database.types';
 
 import type { CandidateSearchFilters } from './search-filters';
 import { scoreGroups } from './search-filters';
+import { SORTS } from './dto/candidate-search.dto';
 import {
   cardColumns,
   cardJoins,
@@ -19,6 +20,7 @@ import {
   orderBy,
   scoreExpression,
   whereFilters,
+  proximityRank,
 } from './search-query';
 
 /**
@@ -163,6 +165,17 @@ describe('whereFilters', () => {
     expect(two.match(/candidate_languages/g)).toHaveLength(2);
   });
 
+  it('matches a specialization by id, not by text (§3.3, BR-13)', () => {
+    const sqlText = whereSql({ specializationIds: ['s1'] });
+
+    expect(sqlText).toContain('candidate_attributes');
+    // The filter this replaced was an ILIKE over prose. Nothing here may compare text.
+    expect(sqlText).not.toContain('ILIKE');
+    expect(
+      whereFilters({ specializationIds: ['s1'] }, TODAY).compile(db).parameters,
+    ).toContain('specialization');
+  });
+
   it('lets a negotiable expectation pass a budget', () => {
     expect(whereSql({ salaryMax: 5_000_000 })).toContain(
       'p.salary_is_negotiable',
@@ -231,13 +244,38 @@ describe('orderBy', () => {
     ['recent', 'r.last_meaningful_update_at DESC'],
     ['experience', 'r.experience_years DESC'],
     ['salary', 'r.salary_from ASC'],
+    ['proximity', 'r.proximity_rank DESC'],
   ] as const)('%s sorts by its own key first', (sort, expected) => {
     expect(orderBy(sort).compile(db).sql.startsWith(expected)).toBe(true);
   });
 
   it('ends every sort with a total order, so pages cannot repeat a candidate', () => {
-    for (const sort of ['match', 'recent', 'experience', 'salary'] as const) {
+    for (const sort of SORTS) {
       expect(orderBy(sort).compile(db).sql).toMatch(/r\.user_id$/);
     }
+  });
+});
+
+describe('proximityRank', () => {
+  it('ranks the same district above the same region', () => {
+    const compiled = proximityRank({
+      regionId: 'r1',
+      districtIds: ['d1'],
+    }).compile(db);
+
+    // Tiers, not kilometres: there are no coordinates in this data model, and a distance
+    // computed from the region tree would be a number nobody measured.
+    expect(compiled.sql).toContain('THEN 2');
+    expect(compiled.sql).toContain('THEN 1');
+    expect(compiled.sql).not.toMatch(/earth|point|<->|distance/i);
+  });
+
+  it('ranks everybody equally when nothing was filtered on', () => {
+    // Nothing to be near, so the sort falls through to its tiebreaker rather than
+    // inventing an order.
+    const compiled = proximityRank({}).compile(db);
+
+    expect(compiled.parameters).toContain(null);
+    expect(compiled.sql).toContain('ELSE 0');
   });
 });

@@ -324,11 +324,13 @@ and accepted counts against the target. Five things to carry into M8:
   entry point onto M6's reader exposed that trusting the path would let a view requested
   through a *withdrawn* application re-grant what the withdrawal took back. M6's own test
   caught it because it asserted the side effect rather than the exception.
-- **Three §7.1/§7.3 items could not be built as worded** and are documented rather than
-  faked: a free-text specialization filter (a substring match on prose cannot behave
-  identically in four variants), remote-work readiness as a boolean (it is a `work_format`
-  id), and sorting by location proximity (there are no coordinates in this data model).
-  Each is a client conversation, not a bug.
+- **Three §7.1/§7.3 items could not be built as worded**, and the client answered two of
+  them the same day. Specialization became a **dictionary** on both the profile and the
+  vacancy (schema versions bumped to 2, clients refetch, old free text deleted rather than
+  guessed at), and proximity shipped as a **tiered** sort with its own reference field.
+  The third was never a gap: remote-work readiness is a `work_format` id, not a boolean.
+  The pattern is worth keeping - where the specification's wording and BR-13 disagree, the
+  id-shaped form is the one that works in four languages.
 
 ## M8 - Chat + interviews
 

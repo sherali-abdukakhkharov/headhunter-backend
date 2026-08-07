@@ -279,13 +279,15 @@ never include phone or full contact details.
   photo on the card and §5.4 keeps documents behind an interaction; both hold because a
   photo uploaded to be found by is not a document. The exception is one route, one
   purpose code, searchable profiles only.
-- **Two §7.1 filters could not be built as worded, and were not faked.** A free-text
-  `specialization` filter would be a substring match on prose, which cannot behave
-  identically in four interface variants (§3.3, BR-13) — education level and occupation
-  are the id-shaped ways to ask it. And "remote-work readiness" is a `work_format` id,
-  not a boolean. Likewise §7.3's location proximity: there are no coordinates in this
-  data model, and a distance invented from the region tree would be a made-up number in
-  a control an employer would read as real.
+- **Where §7.1's wording and the data model disagree, the id-shaped form wins.**
+  Specialization was free text and is now a `specialization` dictionary on both the
+  candidate profile and the vacancy (M7, on client direction): a substring match on prose
+  cannot behave identically in four interface variants (§3.3, BR-13). "Remote-work
+  readiness" is likewise a `work_format` id rather than a boolean. And §7.3's location
+  proximity is **tiered** — same district, then same region — because places here are
+  dictionary ids in a two-level tree, not coordinates; its reference point is its own
+  filter field, since filtering by district would exclude everyone the sort exists to
+  order.
 
 ---
 

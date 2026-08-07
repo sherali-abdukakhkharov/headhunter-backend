@@ -22,7 +22,13 @@ import { CATEGORIES } from '@modules/schemas/dto/schemas.dto';
 
 import type { CandidateSearchSort } from '../search-filters';
 
-export const SORTS = ['match', 'recent', 'experience', 'salary'] as const;
+export const SORTS = [
+  'match',
+  'recent',
+  'experience',
+  'salary',
+  'proximity',
+] as const;
 const MATCH_MODES = ['all', 'any'] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -159,6 +165,18 @@ export class CandidateSearchFiltersDto {
   @IsUUID('4', { each: true })
   educationLevelIds?: string[];
 
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      '§7.1’s "specialization where relevant", as `specialization` dictionary ids — any ' +
+      'of them matches. Ids and not text, because a substring match on prose cannot ' +
+      'behave identically in four interface variants (§3.3, BR-13).',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  specializationIds?: string[];
+
   // --- location -----------------------------------------------------------
   @ApiPropertyOptional()
   @IsOptional()
@@ -185,6 +203,16 @@ export class CandidateSearchFiltersDto {
   @IsOptional()
   @IsBoolean()
   willingToTravel?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Where to be near, for `sort: "proximity"` — a district id. Separate from ' +
+      '`districtIds` on purpose: filtering by district excludes everyone else, leaving a ' +
+      'proximity sort nothing to order. Prefilled from the vacancy’s district (UAT-06).',
+  })
+  @IsOptional()
+  @IsUUID()
+  proximityDistrictId?: string;
 
   // --- work preferences ---------------------------------------------------
   @ApiPropertyOptional({ type: [String] })
@@ -322,8 +350,11 @@ export class CandidateSearchRequestDto {
     enum: SORTS,
     default: 'match',
     description:
-      '§7.3’s options. Location proximity is not offered: this data model has ' +
-      'dictionary ids for places, not coordinates, so a distance would be invented.',
+      '§7.3’s options. `proximity` is tiered — same district, then same region, then ' +
+      'the rest — measured against the location this request filters on: there are no ' +
+      'coordinates in this data model, so a kilometre figure would be invented. With no ' +
+      'location filter there is nothing to be near, and the order falls through to ' +
+      'recency.',
   })
   @IsOptional()
   @IsIn(SORTS)

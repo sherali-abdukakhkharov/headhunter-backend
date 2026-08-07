@@ -30,6 +30,7 @@ import {
   matchedColumns,
   matchedJson,
   orderBy,
+  proximityRank,
   scoreExpression,
   whereFilters,
 } from './search-query';
@@ -461,7 +462,8 @@ export class CandidateSearchService {
     const result = await sql<CardRow>`
       WITH matched AS (
         SELECT p.user_id, p.last_meaningful_update_at, p.salary_from,
-          ${experienceYears(today)} AS experience_years
+          ${experienceYears(today)} AS experience_years,
+          ${proximityRank(request.filters)} AS proximity_rank
           ${sql.join(matched, sql``)}
         FROM candidate_profiles p
         WHERE ${where}

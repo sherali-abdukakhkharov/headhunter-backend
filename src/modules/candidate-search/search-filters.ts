@@ -63,6 +63,14 @@ export interface CandidateSearchFilters {
    * a floor later means copying the rank onto the row, as skills and languages do.
    */
   educationLevelIds?: string[];
+  /**
+   * §7.1's "specialization where relevant", as `specialization` dictionary ids.
+   *
+   * Ids and not text: a substring match on prose cannot behave identically in four
+   * interface variants (§3.3, BR-13), which is why the profile field stopped being free
+   * text. Any of the listed specializations matches.
+   */
+  specializationIds?: string[];
 
   // --- location -----------------------------------------------------------
   regionId?: string;
@@ -74,6 +82,17 @@ export interface CandidateSearchFilters {
    * it belongs in `workFormatIds` where every other selectable value lives (BR-13).
    */
   willingToTravel?: boolean;
+  /**
+   * Where to be near, for `sort: 'proximity'` (§7.3) - a district id.
+   *
+   * Its own field rather than a reuse of `districtIds`, because the two do opposite
+   * jobs: a district *filter* excludes everyone else, which would leave nothing for a
+   * proximity sort to order. The useful shape is a wide filter (a region, or none at
+   * all) with a point to sort around, which is exactly what a search opened from a
+   * vacancy has - the vacancy's own district. Falls back to the first filtered district
+   * when it is not given.
+   */
+  proximityDistrictId?: string;
 
   // --- work preferences ---------------------------------------------------
   employmentTypeIds?: string[];
@@ -113,8 +132,21 @@ export interface CandidateSearchFilters {
   restrictionJustificationId?: string;
 }
 
-/** §7.3's sort options. */
-export type CandidateSearchSort = 'match' | 'recent' | 'experience' | 'salary';
+/**
+ * §7.3's sort options.
+ *
+ * `proximity` is the tiered reading of "location proximity where permission exists":
+ * same district first, then same region, then everywhere else, measured against the
+ * location the search itself filters on. There are no coordinates in this data model -
+ * a place is a dictionary id in a two-level tree - so a kilometre figure would be
+ * invented. Tiers are what the tree can honestly support.
+ */
+export type CandidateSearchSort =
+  | 'match'
+  | 'recent'
+  | 'experience'
+  | 'salary'
+  | 'proximity';
 
 /**
  * The attribute field codes a work-attribute filter may match.
@@ -141,6 +173,7 @@ export type ScoreGroupCode =
   | 'occupation'
   | 'skills'
   | 'languages'
+  | 'specialization'
   | 'location'
   | 'preferences'
   | 'attributes';
@@ -172,6 +205,10 @@ const WEIGHTS: Record<ScoreGroupCode, number> = {
   occupation: 3,
   skills: 3,
   languages: 2,
+  // Between the two tiers: a specialization is close to what the work *is*, but an
+  // employer naming three of them will accept any, so it discriminates less than the
+  // occupation does.
+  specialization: 2,
   location: 1,
   preferences: 1,
   attributes: 1,
@@ -195,6 +232,7 @@ export function scoreGroups(filters: CandidateSearchFilters): ScoreGroup[] {
     occupation: filters.occupationIds?.length ?? 0,
     skills: filters.skillIds?.length ?? 0,
     languages: filters.languages?.length ?? 0,
+    specialization: filters.specializationIds?.length ?? 0,
     location:
       (filters.regionId ? 1 : 0) + (filters.districtIds?.length ? 1 : 0),
     preferences:

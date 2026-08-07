@@ -237,7 +237,8 @@ GET /dictionaries/items?ids=<uuid,uuid>
 
 `occupation` · `skill` · `industry` · `region` · `language` · `employment_type` ·
 `work_format` · `shift` · `attribute` · `skill_level` · `language_level` ·
-`education_level` · `payment_period` · `file_purpose` · `gender`
+`education_level` · `payment_period` · `file_purpose` · `gender` ·
+`restriction_justification` · `specialization`
 
 Everything selectable anywhere in the product is one of these. There is no
 inline enum in any contract: BR-13 requires a stable id plus four locales, and
@@ -251,6 +252,19 @@ rejected because §4.2's `kind` union has no `enum` member — deliberately, per
 Adding a type is **additive**: a field names its own `dictionaryType` and the client
 fetches whatever is named, so nothing existing changed. `file_purpose` also gained a
 `photo` item for §5.1's optional profile photo.
+
+**`restriction_justification` added 2026-08-05 with M5** for BR-12's permitted reasons —
+the labels are content, the rule about which reason supports which restriction is code.
+
+**`specialization` added 2026-08-07 with M7, and this one was not additive.** §7.1 filters
+on specialization, and the field was free text on both the candidate profile and the
+vacancy until then. A text filter cannot work across four interface variants: a
+candidate's `Информатика` never meets an employer's `Informatika` (§3.3, BR-13). Both
+fields are now `dictionary_multi` over this type, **both schema versions are bumped to 2**,
+and clients must refetch the two schemas. Existing free-text values were deleted rather
+than guessed at — mapping prose onto items would put a claim in somebody's profile they
+did not make, and re-picking is one tap. 60 items in eight groups, tagged `default`: the
+client owns the final list.
 
 ### 3.2 Categories — frozen
 
@@ -995,13 +1009,12 @@ reads with no side effects; they are rate limited as §12.5 requires of search.
 
 ### The filters (§7.1)
 
-All optional, all **dictionary ids** (BR-13). Two of §7.1's entries deliberately do not
-appear as they are worded:
+All optional, all **dictionary ids** (BR-13). Two of §7.1's entries do not appear as they
+are worded, and in both cases the id-shaped form is the one that works:
 
-- **No `specialization` text filter.** It would be a substring match on prose, which
-  cannot behave identically in four interface variants (§3.3). Education level and
-  occupation are the id-shaped ways to ask the same question; if the client wants
-  specialization, it needs a dictionary.
+- **`specializationIds`, not a text box.** A substring match on prose cannot behave
+  identically in four interface variants (§3.3), so specialization became a dictionary in
+  M7 — see §3.1. Any of the listed specializations matches.
 - **Remote-work readiness is `workFormatIds`**, not a boolean — remote is a
   `work_format` item, and every selectable value in this product is a row.
 
@@ -1031,10 +1044,19 @@ skill scores purely on that skill, and a search with no filters scores everyone 
 `groups` on the response is the same list with the weights, so a client can render the
 explanation without hardcoding them.
 
-Sorts: `match` (default), `recent`, `experience`, `salary`. **Location proximity is not
-offered** even though §7.3 allows it "where permission exists": places are dictionary ids
-here, not coordinates, and a distance derived from a region tree would be a made-up
-number in a control the employer would read as real.
+Sorts: `match` (default), `recent`, `experience`, `salary`, `proximity`.
+
+**`proximity` is tiered, not a distance** — same district, then same region, then
+everywhere else. §7.3 allows a proximity sort "where permission exists", and places are
+dictionary ids here rather than coordinates, so a kilometre figure would be invented;
+tiers are what the region tree honestly supports, and adding a centroid per district
+later would make it a real distance without changing this contract.
+
+The reference point is **`proximityDistrictId`**, its own filter field rather than a reuse
+of `districtIds`, because the two do opposite jobs: filtering by district excludes
+everyone else and leaves the sort nothing to order. The useful shape is a wide filter — a
+region, or none — plus a point to sort around, which is exactly what the prefill gives
+you. With no reference at all, the order falls through to recency.
 
 ### The profile photo is the one exception to BR-09's file gate
 
