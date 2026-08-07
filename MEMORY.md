@@ -30,6 +30,32 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M11) - The acceptance criteria are a test file, not a checklist
+
+§13's fifteen scenarios are the client's definition of done, and a walkthrough somebody
+performs by hand is evidence about one afternoon. `src/uat/uat.int.spec.ts` is one
+`describe` per row of that table, titled with the scenario and asserting the row's stated
+expected result - so "UAT-09 passes" is a fact about the current commit.
+
+Two things make it worth more than the module suites it overlaps:
+
+- It runs with `MODERATION_ENABLED` and `EMPLOYER_VERIFICATION_ENABLED` **on**, because
+  UAT-04 and UAT-05 describe a moderated product. With the MVP flags off it would pass
+  while testing something the client did not ask for.
+- It composes modules in the order a real user meets them, which is where the seams are:
+  register → profile → verify → publish → search → invite → apply → interview.
+
+It found no defect. Every failure in its first run was the *test* naming something the
+code does not - `draft` for `not_submitted`, `employer_verified` for
+`verification_decided`, snake_case on a projection that is camelCase. That is the expected
+shape for a file written from the specification rather than from the source, and it is why
+writing it that way was worth the extra hour.
+
+One of those failures was a real trap rather than a naming slip: a language level has both
+`sort_order` (the order a picker renders in) and `rank` (how strong the level is). The test
+compared C1 by `sort_order` and found nobody, twice. The product uses `rank` everywhere and
+is correct; anything comparing levels must do the same.
+
 ### 2026-08-07 (M11) - The public route surface is frozen by a test, not by review
 
 §12.5 asks for "server-side role and permission enforcement for every protected

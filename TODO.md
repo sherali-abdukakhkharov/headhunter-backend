@@ -793,4 +793,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
 - [ ] Scheduled backups + **rehearsed** restore, documented
 - [ ] §13.2 deliverables: OpenAPI, migrations, `.env.example`, deployment
       package, technical docs, test evidence
-- [ ] Walk all 15 UAT scenarios in the test environment
+- [x] Walk all 15 UAT scenarios - `src/uat/uat.int.spec.ts`, one `describe` per
+      row of §13's table, run with both moderation flags **on** because that is
+      the product the scenarios describe. 16 tests. They found no defect: every
+      failure on the first run was the test asserting a name the code never
+      used, which is what a walkthrough written against the spec rather than
+      against the code is supposed to feel like
