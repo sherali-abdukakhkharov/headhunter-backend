@@ -790,7 +790,17 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
         Telegram, which does not scan a bot upload. Stated as a gap, not fixed.
   - [ ] `API_DOCS_ENABLED` is on and the hostname is public: decide between
         turning it off and a Cloudflare Access policy on `/docs` + `/reference`
-- [ ] Scheduled backups + **rehearsed** restore, documented
+- [x] Scheduled backups + **rehearsed** restore, documented -
+      [docs/BACKUP.md](docs/BACKUP.md). Daily `pg_dump` at 21:00 UTC (02:00
+      Tashkent), 14 days, every dump verified with `pg_restore --list`. The drill
+      was run on 2026-08-07 and its output is in the doc: identical schema
+      (49/122/8/425/19), matching migration state, an append-only trigger firing
+      and BR-07's partial index intact with its predicate. Two gaps are stated
+      there rather than hidden:
+  - [ ] Off-machine copies - the dumps are on the same disk as the database.
+        Needs a decision on where Uzbek personal data may be stored first
+  - [ ] Point-in-time recovery: a daily dump means up to 24h of loss. Raise once
+        there is traffic worth losing
 - [ ] §13.2 deliverables: OpenAPI, migrations, `.env.example`, deployment
       package, technical docs, test evidence
 - [x] Walk all 15 UAT scenarios - `src/uat/uat.int.spec.ts`, one `describe` per

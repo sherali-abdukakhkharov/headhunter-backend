@@ -30,6 +30,27 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-07 (M11) - A restore drill checks behaviour, not `pg_restore`'s exit code
+
+`pg_restore` exiting 0 says the archive was replayed, not that the database is back.
+This one lost nothing, but the four checks in [docs/BACKUP.md](docs/BACKUP.md) are what
+would have caught it if it had: identical object counts (tables, indexes, triggers,
+constraints, enums), a matching `kysely_migration` state, an append-only trigger actually
+refusing a DELETE, and BR-07's partial unique index still carrying its `WHERE` clause.
+
+The last two are the point. So many of this product's rules *are* database objects - a
+partial index, a statement trigger, a CHECK - that a dump which restored the tables and
+quietly dropped a predicate would look completely healthy and permit two active
+applications. Object counts are a proxy; provoking a rule is the evidence.
+
+The restore script defaults to a scratch database and needs `--force` to touch anything
+else, because a drill that can destroy production is a drill nobody repeats.
+
+Two environment traps came out of it. **Never pass `--remove-orphans`** to any compose
+command here: all four files share one project name, so it would delete the API, the
+database and the tunnel. And run these from PowerShell or `pnpm`, never Git Bash - MSYS
+rewrites the container-absolute `/backup.sh` into `C:/Program Files/...` and tini dies.
+
 ### 2026-08-07 (M11) - The acceptance criteria are a test file, not a checklist
 
 §13's fifteen scenarios are the client's definition of done, and a walkthrough somebody

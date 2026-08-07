@@ -1,0 +1,44 @@
+# Scheduled database backups (§12.3).
+#
+#   pnpm backup:up      start the daily schedule
+#   pnpm backup:now     take one immediately
+#   pnpm backup:list    what is on disk
+#   pnpm restore        rehearse a restore into a scratch database
+#
+# A fourth compose file for the same reason the API and the tunnel have their own:
+# these are separate decisions with separate lifecycles. All four sit in one
+# directory, so Compose gives them one project name and therefore one network, which
+# is how this container reaches `postgres` by name with no network block anywhere.
+#
+# The image is the same postgres:18-alpine the database runs, and that is a
+# requirement rather than tidiness: pg_dump refuses to dump a server newer than
+# itself, so a pinned older client would start failing the day the server is
+# upgraded - at which point the backups stop and nothing else changes.
+services:
+  backup:
+    image: postgres:18-alpine
+    container_name: headhunter-backup
+    restart: unless-stopped
+    environment:
+      # Inside the network Postgres is a service name on its own port; the host's
+      # 5435 mapping does not exist here.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-headhunter}
+      DB_USER: ${DB_USER:-headhunter}
+      DB_PASSWORD: ${DB_PASSWORD:-local_dev_password}
+      BACKUP_DIR: /backups
+      # 21:00 UTC is 02:00 in Tashkent - the quietest hour for a recruitment app,
+      # and before the working day rather than during it.
+      BACKUP_AT_HOUR: ${BACKUP_AT_HOUR:-21}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      # A bind mount, not a named volume: a backup that lives inside Docker's own
+      # storage is lost to exactly the accident most likely to need it. `backups/` is
+      # gitignored - the dumps contain every phone number in the database.
+      - ./backups:/backups
+      - ./docker/backup/backup.sh:/backup.sh:ro
+      - ./docker/backup/restore.sh:/restore.sh:ro
+      - ./docker/backup/schedule.sh:/schedule.sh:ro
+    entrypoint: ['/bin/sh', '/schedule.sh']
+    init: true

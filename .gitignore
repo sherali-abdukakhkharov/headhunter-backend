@@ -45,6 +45,10 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Database dumps. Every phone number, every CV reference and every message in the
+# product is in here - a dump is the most sensitive file this repository can produce.
+/backups
+
 # Runtime data
 pids
 *.pid

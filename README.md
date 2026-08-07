@@ -73,6 +73,11 @@ pnpm api:up               # build the image and run the API in Docker (see below
 pnpm api:down / api:logs  # stop it / follow its logs
 pnpm api:build            # rebuild the image without restarting anything
 
+pnpm backup:up            # daily pg_dump at 21:00 UTC - docs/BACKUP.md
+pnpm backup:now           # take one immediately
+pnpm backup:list / backup:logs / backup:down
+pnpm restore <dump>       # restore into a scratch database (--into to override)
+
 pnpm migrate:latest       # apply all pending migrations
 pnpm migrate:up           # apply the next one
 pnpm migrate:down         # roll back the most recent
