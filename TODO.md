@@ -74,7 +74,9 @@ needs them.
 - [x] Joi env validation at boot, pino logging with redaction
 - [x] helmet, CORS, global `ValidationPipe`, Swagger `/docs` + Scalar `/reference`
 - [x] `GET /health` verified from the Flutter client on an emulator
-- [ ] Add `docs/` deliverables scaffold: deployment, backup/restore notes (§13.2)
+- [x] Add `docs/` deliverables scaffold: deployment, backup/restore notes (§13.2) -
+      delivered in M11 as DEPLOYMENT, BACKUP, SUPPORT, PERFORMANCE, RETENTION,
+      SECURITY_REVIEW and TEST_EVIDENCE
 - [x] **Dockerfile** - multi-stage, runtime carries `dist` plus production
       dependencies only, non-root, tini for signals, healthcheck on `/health`.
       `docker-compose.api.yml` runs it as `headhunter-api` and the tunnel origin is
@@ -490,8 +492,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 - [x] `isOpenForApplications(status, deadline, today)` - one definition, exported,
       so M6's feed filter and its in-transaction apply check cannot disagree. A feed
       that advertised a vacancy the apply route refuses is the failure this prevents
-- [ ] Apply it in M6: the deadline check inside the insert transaction with the
-      vacancy read `FOR SHARE` (ARCHITECTURE.md §6)
+- [x] Apply it in M6: the deadline check inside the insert transaction with the
+      vacancy read `FOR SHARE` (ARCHITECTURE.md §6) - done with `applications.apply`,
+      and UAT-15 walks the expiry end to end
 
 ### Tests *(done - 22 unit, 25 integration)*
 - [x] The transition table pinned exactly, `closed` terminal (BR-11), no self
@@ -637,7 +640,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
 - [x] Test: unverified employer cannot search candidates (§7) - M4's outstanding test,
       written with the route it guards
 - [x] Test: hiding a profile removes it from a saved list it was already on
-- [ ] Measure p95 against the 3s budget before optimizing anything
+- [x] Measure p95 against the 3s budget before optimizing anything - done in M11 at
+      200k profiles: 231ms worst case, nothing optimized
+      ([docs/PERFORMANCE.md](docs/PERFORMANCE.md))
 
 ## M8 - Chat + interviews *(done)*
 
@@ -720,9 +725,10 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4i.
 - [x] A phone without them (a post-2019 Huawei) loses the banner and nothing else, because
       the in-app row is the record. Huawei Push Kit would be a second `PushSender`, not a
       rewrite
-- [ ] **Owed by the client: the Firebase service-account JSON** for
-      `FCM_SERVICE_ACCOUNT_BASE64`. Until it arrives the no-op sender reports `failed`
-      rather than pretending, and warns at boot and per dispatch
+- [x] ~~**Owed by the client: the Firebase service-account JSON**~~ - **received
+      2026-08-07** and configured in `.env` (project `headhunter-app-b463f`). Verified
+      end to end: a token is obtained and FCM rejects only the fake device token, which
+      proves auth, the v1 API and the `invalid` classification at once
 - [ ] Owed later: an APNs `.p8` in that Firebase project, when iOS becomes real
 
 ### Tests *(done - 42 unit, 18 integration)*
