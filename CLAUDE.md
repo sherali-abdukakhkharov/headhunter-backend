@@ -21,6 +21,8 @@ Code session rooted there can edit this repo too (see that repo's
 | [docs/BACKUP.md](docs/BACKUP.md) | The daily dump, and the **rehearsed** restore with its real output. |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | §12.4 measured at 200k profiles, and the volume that would break it. |
 | [docs/RETENTION.md](docs/RETENTION.md) | BR-14 as data: what is purged, when, and what the client still owes. |
+| [docs/SUPPORT.md](docs/SUPPORT.md) | The runbook: symptoms, causes, and what needs a decision instead. |
+| [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md) | §13.2's test results, and the UAT-to-test mapping. |
 | [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the two gaps. |
 | [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 

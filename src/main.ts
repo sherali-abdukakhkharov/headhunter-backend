@@ -2,7 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
@@ -13,6 +13,7 @@ import {
   toViolations,
 } from './infra/api/exceptions/validation-failed.exception';
 import { ApiExceptionFilter } from './infra/api/filters/api-exception.filter';
+import { buildOpenApiDocument } from './infra/api/openapi';
 import type { AppEnv } from './infra/env-schema';
 
 async function bootstrap(): Promise<void> {
@@ -68,15 +69,9 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new ApiExceptionFilter());
 
   if (docsEnabled) {
-    const swaggerDoc = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder()
-        .setTitle('Headhunter API')
-        .setDescription('Job search and recruitment backend')
-        .setVersion('0.0.1')
-        .addBearerAuth()
-        .build(),
-    );
+    // Built by the same function `pnpm docs:openapi` exports, so the served
+    // description and the delivered file cannot drift (§13.2).
+    const swaggerDoc = buildOpenApiDocument(app);
 
     SwaggerModule.setup('docs', app, swaggerDoc);
     app.use('/reference', apiReference({ content: swaggerDoc }));

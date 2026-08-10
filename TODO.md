@@ -83,7 +83,10 @@ needs them.
       moment there are two
 - [ ] CI workflow (lint, typecheck, test, build). The image build is the natural
       place to hang it: `nest build` inside the Dockerfile already type-checks, so CI
-      is `docker build` plus the two test suites
+      is `docker build` plus the two test suites. Two things belong in it that only
+      exist as commands today: `pnpm docs:openapi` with a check that
+      `docs/openapi.json` came back unchanged (a stale committed contract is worse than
+      none), and `pnpm perf` against §12.4's budgets
 
 ## M1 - Auth, users, roles
 
@@ -832,8 +835,20 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
         Needs a decision on where Uzbek personal data may be stored first
   - [ ] Point-in-time recovery: a daily dump means up to 24h of loss. Raise once
         there is traffic worth losing
-- [ ] §13.2 deliverables: OpenAPI, migrations, `.env.example`, deployment
-      package, technical docs, test evidence
+- [x] §13.2 deliverables, the backend's share:
+  - [x] **API description** - `docs/openapi.json`, 115 paths, committed. `pnpm
+        docs:openapi` regenerates it from the same builder `/docs` serves, so the
+        delivered file and the running service cannot disagree - and a renamed field
+        shows up in that diff rather than in a Flutter deserialization error
+  - [x] Migrations (18), `.env.example`, deployment package (Dockerfile + four compose
+        files + [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))
+  - [x] **Technical documentation**: environment setup (README), deployment, backup and
+        **rehearsed** restore, configuration, and now support notes -
+        [docs/SUPPORT.md](docs/SUPPORT.md)
+  - [x] **Testing evidence** - [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md): 847 tests,
+        the UAT-01..15 mapping, and the gaps in the evidence stated rather than left out
+  - [ ] Initial dictionaries are delivered and seeded, but four types and the occupation
+        set still want client review (tracked at the top of this file)
 - [x] Walk all 15 UAT scenarios - `src/uat/uat.int.spec.ts`, one `describe` per
       row of §13's table, run with both moderation flags **on** because that is
       the product the scenarios describe. 16 tests. They found no defect: every
