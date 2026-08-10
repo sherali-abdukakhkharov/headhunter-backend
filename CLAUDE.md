@@ -20,6 +20,7 @@ Code session rooted there can edit this repo too (see that repo's
 | [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: what OTP delivery will need, and what to ask on purchase. |
 | [docs/BACKUP.md](docs/BACKUP.md) | The daily dump, and the **rehearsed** restore with its real output. |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | §12.4 measured at 200k profiles, and the volume that would break it. |
+| [docs/RETENTION.md](docs/RETENTION.md) | BR-14 as data: what is purged, when, and what the client still owes. |
 | [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the two gaps. |
 | [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 
@@ -94,6 +95,12 @@ re-derivable from the text.
   than the side effect.
 - **Never hard-delete a dictionary item** — deactivate, and use `merged_into_id`
   for merges, so historical references still resolve.
+- **Retention periods are declared, never inlined.** `infra/retention/retention-policy.ts`
+  is the one table, each rule tagged with where its number came from. Never hard-code a
+  cut-off at a call site — and never delete a user with a plain `DELETE`: three tables
+  hold `RESTRICT` references to `stored_files` and the cascade reaches the files first,
+  which is why `RetentionService` clears them in order. An account that has acted as an
+  administrator is **anonymized, never deleted** (§10.4 owns that constraint).
 
 Read `README.md` for stack, commands, structure and the list of environment
 gotchas. The rest of this file covers how to work in the codebase.
