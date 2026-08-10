@@ -55,6 +55,37 @@ needs them.
       justified by a minimum-age rule is refused. **Wants legal review** - nothing
       on that list has been seen by a lawyer, which is why every entry is tagged
       `default`.
+- [?] **Does a candidate's own application still reveal their contact details?**
+      *(new, 2026-08-10 revision - blocks M12's retrofit and nothing else)*
+      §11.1 now says contact and CV become available "only after a successful Candidate
+      Unlock **or another explicitly approved entitlement**", and §9.1 says an
+      application is *not* one. Taken literally, M6's delivered BR-09 behaviour is
+      superseded: an employer holding an application would see structured data but no
+      phone number until they pay 2 Coins.
+      **Why it is worth asking rather than assuming:** a candidate who applies has
+      volunteered their interest in that employer, which is the reading every other
+      recruitment product takes, and it is the one the client's own §11.1 escape hatch
+      allows. Answering "an application is an approved entitlement" leaves M6, M8's chat
+      and their tests intact and reduces M12 to new code only. Answering "no" is also
+      fine - it just costs the retrofit in [PLAN.md](PLAN.md) M12.
+- [?] **Payme and CLICK merchant accounts** *(new, blocks M13's completion)* - sandbox
+      credentials are enough to build and test the whole flow; production activation
+      needs the real merchant accounts, and §12.6 requires provider-test-environment
+      testing first. Same shape as the Eskiz account: the code can be finished and
+      verified without them, and cannot be *switched on* without them.
+      Ask on setup: merchant ids and secret keys for both providers, the callback URL to
+      register (a public HTTPS endpoint - we have `hh.qitmir.uz`, but it is a dev
+      tunnel), and whether one merchant account covers both Coin packages and future
+      products.
+- [?] **Fiscal receipt attributes** *(new)* - §6.7 leaves the service/product code, VAT
+      and related merchant configuration to "the Client/accounting function". We cannot
+      guess these; they go in configuration once supplied.
+- [?] **§12.7: which payment channel ships per storefront** *(new)* - Coins unlock
+      in-app digital functionality, so Apple and Google may require their own billing
+      rather than Payme/CLICK. The specification requires the ledger to stay
+      provider-agnostic so the answer is a configuration choice rather than a rebuild,
+      and M13 is designed that way - but somebody has to **verify the store rules
+      immediately before release**, which §12.7 says explicitly.
 - [?] **Approved dictionary value lists** from the client (§13.2). **No longer
       blocking anything.** All 16 types are seeded and working - 575 items, 2 300
       labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.

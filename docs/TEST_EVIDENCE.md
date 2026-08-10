@@ -10,7 +10,7 @@ is a screenshot.
 |---|---|---|---|---|
 | Unit / functional | `pnpm test` | 24 | 439 | no |
 | Integration | `pnpm test:int` | 19 | 408 | yes |
-| **Acceptance (UAT-01..15)** | `pnpm test:int -- --testPathPattern uat` | 1 | 16 | yes |
+| **Acceptance (UAT-01..15 of 24)** | `pnpm test:int -- --testPathPattern uat` | 1 | 16 | yes |
 
 The acceptance suite is a subset of the integration one; 847 is the sum of the first two
 rows, counted once.
@@ -34,7 +34,15 @@ exception rather than the side effect the exception rolled back.
 Integration fixtures go in through the production write path - the seeder, the service -
 so a test cannot set up a state the application could not produce.
 
-## Acceptance: the fifteen agreed scenarios
+## Acceptance: fifteen of the twenty-four agreed scenarios
+
+> **The 2026-08-10 specification revision raised §13.1 from 15 scenarios to 24.**
+> UAT-16..UAT-23 are the wallet, Candidate Unlock and Payme/CLICK scenarios and are
+> **not covered** - they belong to M12 and M13, which are not built. UAT-24 is a
+> restatement of UAT-13 and is covered by it. The fifteen below are the original set and
+> all pass; three of them (UAT-03's CV access through an application, UAT-07's invitation,
+> UAT-09's interview) assert the **pre-revision** BR-09 contract and will change with
+> M12's retrofit - see [SPEC_CHANGELOG.md](SPEC_CHANGELOG.md).
 
 `src/uat/uat.int.spec.ts` is one `describe` per row of §13.1's table, titled with the
 scenario and asserting that row's own stated expected result. Both moderation flags are
@@ -70,7 +78,7 @@ specification rather than from the source.
 
 ## What else the suites hold
 
-Beyond the fifteen scenarios, the parts worth naming to a reviewer:
+Beyond those fifteen scenarios, the parts worth naming to a reviewer:
 
 - **The authorization surface as a whole** (`infra/api/api-surface.spec.ts`): the set of
   public routes is frozen at eleven, each with a written reason; every `/admin/*` route is

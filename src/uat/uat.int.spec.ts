@@ -38,7 +38,13 @@ import { UsersService } from '@modules/users/users.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
 
 /**
- * The client's fifteen acceptance scenarios, walked end to end (§13.2, UAT-01..UAT-15).
+ * The client's acceptance scenarios, walked end to end (§13.2, UAT-01..UAT-15).
+ *
+ * **§13.1 has twenty-four scenarios since the 2026-08-10 revision.** UAT-16..UAT-23 cover
+ * the wallet, Candidate Unlock and Payme/CLICK and arrive with M12 and M13; UAT-24 is a
+ * restatement of UAT-13. The fifteen here are the original set - and several of them
+ * assert the *pre-revision* BR-09 contract, where a hiring interaction reveals contact
+ * details. That is what M12's retrofit changes, deliberately, rather than by deletion.
  *
  * Every other suite in this repository tests a module. This one tests the *product*: each
  * `describe` is one row of §13's table, and its title is that row's scenario. The test

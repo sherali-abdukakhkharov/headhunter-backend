@@ -1,10 +1,11 @@
-﻿# Universal HeadHunter - Functional and Technical Specification
+# Universal HeadHunter - Functional and Technical Specification
 
 > **This is a generated, readable conversion of the client specification.**
 >
-> Canonical source: `Universal_HeadHunter_Mobile_Platform_Technical_Specification_EN.docx`
-> (client approval version, Tashkent 2026). If the client issues a revised
-> .docx, regenerate this file and the copy in the sibling repo together - both
+> Canonical source: `Universal_HeadHunter_Mobile_Platform_TZ_EN_Wallet_Payme_Click.docx`
+> (client approval version, Tashkent 2026 — the wallet / Payme / CLICK revision
+> received 2026-08-10). If the client issues a revised .docx, regenerate this
+> file and the copy in the sibling repo together - both
 > `headhunter-app/docs/SPEC.md` and `headhunter-backend/docs/SPEC.md` must stay
 > in sync with the same source document.
 >
@@ -15,12 +16,10 @@
 UNIVERSAL HEADHUNTER
 Mobile platform for finding workers and specialists
 CLIENT FUNCTIONAL AND TECHNICAL SPECIFICATION
-
 | Platforms | Android and iOS mobile applications |
 | Technology | Flutter |
-| Interface options | O‘zbekcha (Latin), Ўзбекча (Cyrillic), Русский, English |
+| Interface options | Three languages: Uzbek (Latin and Cyrillic scripts), Russian, and English |
 | Document date | Tashkent, 2026 |
-
 Client approval version
 
 # Document passport
@@ -30,8 +29,8 @@ Client approval version
 | Product format | One Flutter mobile application distributed for Android and iOS. |
 | User groups | Candidates/workers, employers/recruiters, and platform administrators. |
 | Primary use cases | Professional hiring, service and operations roles, physical work, temporary work, seasonal work, and agricultural work. |
-| Out of scope | Public website, desktop application, web administration panel, payroll, accounting, in-app salary payments, and built-in video calling. |
-
+| Out of scope | Public website, desktop application, web administration panel, payroll, accounting, salary payouts through the app, peer-to-peer coin transfers, and built-in video calling. |
+| Monetization | Employer Coin wallet: 10 free Coins on first employer registration; one candidate unlock costs 2 Coins; initial reference price is 1 Coin = UZS 10,000; top-up via Payme/CLICK subject to mobile-store billing compliance. |
 
 # Contents
 
@@ -50,8 +49,8 @@ Client approval version
 | 12 | Technical and non-functional requirements |
 | 13 | Acceptance scenarios and deliverables |
 
-
 # 1. Product purpose and principles
+
 The product shall help employers find candidates that match clearly defined requirements and help candidates discover suitable work opportunities from a single mobile application. The platform shall support both professional occupations and work that is temporary, physical, seasonal, service-based, or agricultural.
 Candidate discovery shall not depend only on uploaded CV files. During onboarding and profile editing, the candidate shall provide structured information that can be reliably filtered: occupation, skills, experience, languages, location, availability, desired employment type, expected pay, and job-specific attributes. A CV remains an optional supporting document.
 
@@ -65,7 +64,6 @@ Important employer and vacancy actions are moderated and auditable.
 
 | Example — An employer needing 20 call-centre operators selects the occupation, number of openings, Russian language level C1, location, employment type, and experience requirements. The system returns candidates whose structured profiles satisfy those filters. |
 
-
 # 2. Scope and users
 
 ## 2.1. Supported work categories
@@ -77,14 +75,12 @@ Important employer and vacancy actions are moderated and auditable.
 | Seasonal and agricultural work | Planting, harvesting, garden work, livestock assistant, field crew. |
 | Temporary and shift work | Daily work, weekly work, fixed-date assignment, replacement worker, shift-based role. |
 
-
 ## 2.2. User roles
 
 | Role | Main capabilities |
 | Candidate / worker | Create a searchable profile, upload a CV, browse vacancies, apply, respond to invitations, communicate with employers, and manage privacy. |
-| Employer / recruiter | Create a company or individual employer profile, publish vacancies, search candidates, shortlist candidates, manage applications, send invitations, and arrange interviews. |
-| Administrator | Verify employers, moderate vacancies, manage dictionaries, review complaints, restrict users, and monitor key product indicators. |
-
+| Employer / recruiter | Create an employer profile, publish vacancies, search and shortlist candidates, manage the Coin wallet, unlock candidate contact/CV access, send invitations, schedule interviews, communicate, and manage hiring stages. |
+| Administrator | Verify employers, moderate vacancies, manage dictionaries, review complaints, manage users, review wallet/payment records, perform authorized audited adjustments, and monitor platform metrics. |
 
 ## 2.3. Multi-role account
 One account may contain both candidate and employer roles. The user shall switch roles from the profile area without creating a second account. Role-specific data and menus shall remain separated.
@@ -107,19 +103,19 @@ No automatic translation of user-entered profile or vacancy descriptions.
 | Русский | Russian interface. |
 | English | English interface. |
 
-Although the product supports three languages, Uzbek is delivered in two writing systems. Therefore, the application shall contain four selectable interface variants.
+The product supports three languages: Uzbek, Russian, and English. Uzbek is available in both Latin and Cyrillic scripts; therefore the language selector contains four interface variants while the language count remains three.
 
 ## 3.2. Localization rules
 The language may be selected before registration and changed later in Settings.
 The selected language shall be saved to the user profile and restored on other signed-in devices.
 All system labels, buttons, validation messages, statuses, notifications, legal texts, and administrator labels shall be localized.
-Occupations, skills, industries, regions, employment types, language names, and other controlled dictionaries shall have values in all four interface variants.
+Occupations, skills, industries, regions, employment types, language names, and other controlled dictionaries shall have values in the three languages, including both Uzbek script variants.
 User-generated content shall be displayed as entered. The platform shall not promise automatic translation.
 Dates, numbers, currency, plural forms, and text direction shall follow the selected locale. All supported interfaces are left-to-right.
 Missing translations must never display technical keys; a configured fallback shall be used and the issue logged.
 
 ## 3.3. Search behavior across languages
-Search filters shall use dictionary identifiers rather than translated labels. For example, the occupation “Call-centre operator” has one internal identifier and four localized labels. Selecting the occupation in any interface language shall produce the same candidate results.
+Search filters shall use dictionary identifiers rather than translated labels. For example, the occupation “Call-centre operator” has one internal identifier and localized labels for Uzbek Latin, Uzbek Cyrillic, Russian, and English. Selecting the occupation in any interface language shall produce the same candidate results.
 
 # 4. Authentication and account management
 
@@ -153,7 +149,6 @@ Blocked accounts cannot create vacancies, applications, invitations, or messages
 | Job preferences | Employment type, work format, shift preferences, expected pay, availability date. |
 | Work-specific attributes | Driving licence, vehicle, tools/equipment, readiness for field/physical work, individual or crew work. |
 | Privacy | Visible in employer search, hidden from global search, or visible only after applying. |
-
 
 ## 5.2. Dynamic profile fields
 The profile form shall adapt to the selected occupation category. Professional roles may request specialization, level, education, and portfolio links. Physical or seasonal work may request availability dates, transport, tools, field-work readiness, and crew information. Irrelevant fields shall not be mandatory.
@@ -205,7 +200,7 @@ The employer shall see a verification status: Not submitted, Under review, Verif
 | Interviews | Upcoming interview appointments. |
 | Invitations | Sent invitations and response counts. |
 | Quick actions | Create vacancy and Search candidates. |
-
+| Wallet | Current Coin balance, approximate UZS purchase value, recent wallet activity, and Top up action. |
 
 ## 6.3. Vacancy creation
 
@@ -223,7 +218,6 @@ The employer shall see a verification status: Not submitted, Under review, Verif
 | Dates | Start date or immediately; application deadline. |
 | Additional structured requirements | Driving licence, vehicle, tools, field travel, physical readiness, or crew requirement. |
 
-
 ## 6.4. Vacancy statuses
 
 | Status | Meaning |
@@ -234,7 +228,6 @@ The employer shall see a verification status: Not submitted, Under review, Verif
 | Closed | Hiring completed or vacancy cancelled. |
 | Rejected | Does not meet moderation requirements; reason shown to employer. |
 
-
 ## 6.5. Application management
 View applications grouped by vacancy.
 Filter by status, location, experience, language level, and application date.
@@ -244,7 +237,33 @@ Add an internal employer note that is not visible to the candidate.
 Invite to interview, send an offer, reject with an optional template, or mark as hired.
 Show the number of hired/selected candidates against the required worker count.
 
+## 6.6. Employer Wallet, Coins, and Candidate Unlock
+Every employer account shall have a wallet containing platform Coins. Coins are an internal service unit used to unlock direct candidate contact capabilities; they are not transferable between users, withdrawable, or redeemable for cash.
+On the first successful registration as an employer, the backend grants a one-time bonus of 10 Coins. The bonus must not be granted again after logout, reinstall, device change, or role switching.
+Initial configurable values: 1 Coin = UZS 10,000; Candidate Unlock = 2 Coins. At the initial price, direct access to one new candidate costs UZS 20,000. These values are server-side business configuration, not hard-coded in Flutter.
+Candidate search, filters, result cards, and structured profile preview are free. Before unlock, phone number, e-mail, and CV file remain masked/locked and must not be included in unauthorized API responses.
+The employer taps “Unlock contact — 2 Coins” only after deciding that the candidate is relevant. A confirmation sheet shows the cost, current balance, and remaining balance.
+The debit and entitlement creation must be one atomic server operation. If the operation succeeds, the employer receives access to permitted phone/e-mail, CV viewing/download, starting chat, and interview/contact actions.
+One employer-candidate pair is charged only once. Revisiting the same candidate uses the existing Candidate Unlock and never deducts another 2 Coins.
+If the wallet contains fewer than 2 Coins, the unlock action is blocked and the user is routed to wallet top-up.
+Coins do not expire. Refunds/reversals, if applicable, are recorded as separate immutable wallet transactions rather than by silently rewriting history.
+
+## 6.7. Wallet Top-up with Payme and CLICK
+The employer chooses the number of Coins to purchase. The backend calculates the payable amount from the current Coin price and creates a unique Payment Order before opening a payment provider. Example: 10 Coins at the initial price equals UZS 100,000.
+Supported local providers: Payme and CLICK. The provider selection and checkout are presented from the Wallet top-up flow.
+The mobile application shall not collect or store card PAN, CVV, or provider authentication credentials. Payment occurs through a provider-approved checkout, payment link, deep link, or supported SDK flow.
+A client-side success redirect is not sufficient to credit Coins. Coins are credited only after the backend verifies the provider-confirmed successful payment state.
+Payment Order statuses shall include at least CREATED, PENDING, PAID, FAILED, CANCELLED, and REVERSED/REFUNDED.
+Wallet crediting must be idempotent. Duplicate callbacks, status polling, retries, or repeated provider requests must never credit the same Payment Order twice.
+Payme integration shall follow Merchant API methods CheckPerformTransaction, CreateTransaction, PerformTransaction, CancelTransaction, CheckTransaction, and GetStatement. Payme amounts are handled in tiyin, and sandbox testing must cover repeated transaction requests and invalid amount/account cases.
+CLICK integration shall implement the required server-side Shop API billing flow, including Prepare and Complete request handling/verification, and use the current official mobile/payment-link method for customer checkout.
+Provider merchant IDs, secret keys, signing credentials, and similar secrets are stored only in backend secret configuration and are never embedded in the Flutter application.
+The system stores internal order ID, provider transaction ID, requested Coins, UZS amount, status history, timestamps, and verification metadata for support and reconciliation.
+Fiscal receipt attributes such as applicable service/product code, VAT, and related merchant configuration are supplied by the Client/accounting function and configured according to current provider and legal requirements.
+Mobile store compliance: because Coins unlock digital functionality inside the mobile app, the production payment channel must comply with the current Apple App Store and Google Play billing rules for the target storefront. The wallet/ledger backend shall therefore remain payment-provider agnostic. Payme/CLICK are the required local integrations where permitted; if a store build requires Apple In-App Purchase or Google Play Billing for Coin purchases, the same wallet business logic shall accept verified store purchases without changing Candidate Unlock behavior.
+
 # 7. Structured candidate search
+
 Verified employers shall be able to search the candidate database without creating a vacancy. When search is opened from a vacancy, the vacancy requirements shall prefill the corresponding filters and remain editable.
 
 ## 7.1. Search filters
@@ -262,7 +281,6 @@ Verified employers shall be able to search the candidate database without creati
 | Profile status | Search-visible, minimum completeness, recently updated. |
 | Conditional filters | Age range and gender only for objectively justified and legally permitted requirements; moderation applies. |
 
-
 ## 7.2. Search interaction
 Filters are selected through searchable lists, chips, switches, date pickers, and numeric ranges.
 The system shows the current number of matching candidates before the user opens the result list where technically reasonable.
@@ -272,7 +290,7 @@ The most recently used search configuration may be retained locally for convenie
 
 ## 7.3. Result ranking and candidate card
 Sort by overall requirement match, recently updated profile, experience, location proximity where permission exists, or expected pay.
-Candidate card shows permitted name, photo if allowed, primary occupation, experience, location, key skills, languages, expected pay, and availability.
+Candidate card shows the permitted name, photo if allowed, primary occupation, experience, location, key skills, languages, expected pay, and availability. Phone, e-mail, and CV access are locked until Candidate Unlock is purchased for that employer.
 Actions: View profile, Save, and Send invitation.
 Saved candidates can be attached to a vacancy-specific shortlist and receive a private employer note.
 
@@ -306,9 +324,8 @@ Saved candidates can be attached to a vacancy-specific shortlist and receive a p
 | Rejected | Employer | Candidate receives status and optional standard message. |
 | Withdrawn | Candidate | Employer sees the withdrawal. |
 
-
 ## 8.2. Direct employer invitation
-An employer may invite a search-visible candidate to an active vacancy or send a general work invitation containing occupation, location, schedule, payment, and contact context. The candidate may Accept, Decline, or Request details. Acceptance enables the corresponding communication flow.
+An employer may review a search-visible candidate for free. To initiate direct contact, reveal protected contact details/CV, start chat, or schedule an interview, the employer must have a Candidate Unlock entitlement for that candidate. An invitation may then be attached to an active vacancy or sent as a general work invitation.
 
 ## 8.3. Interview scheduling
 
@@ -319,11 +336,10 @@ An employer may invite a search-visible candidate to an active vacancy or send a
 | Instruction | Documents or preparation notes. |
 | Candidate response | Confirm or request another time. |
 
-
 # 9. Communication and notifications
 
 ## 9.1. Chat
-Chat becomes available after an application, invitation, or other permitted hiring interaction.
+Employer-initiated chat is enabled only after that employer has a Candidate Unlock entitlement for the candidate. A candidate application may allow the employer to review structured application/profile data, but protected phone/e-mail, CV, direct chat, and interview/contact actions remain locked until Candidate Unlock is completed.
 Support text messages and approved attachments; voice/video calling is not included.
 Show sent, delivered, and read states where supported by the backend.
 Allow reporting and blocking according to moderation rules.
@@ -345,6 +361,7 @@ Closed or blocked interactions remain in history but may become read-only.
 The application shall use in-app notifications and push notifications. Notification settings may allow the user to disable non-critical categories, while security and account notices remain enabled.
 
 # 10. Mobile administration
+
 Administrator functionality shall be provided inside the same mobile application behind an authorized role and protected menu. The scope shall be optimized for mobile use and shall not require a separate web panel.
 
 ## 10.1. Administrator dashboard
@@ -371,12 +388,18 @@ Review reported users, vacancies, messages, and profiles.
 | Regions | Manage region and district/city hierarchy and localized names. |
 | Employment and work attributes | Manage employment types, work formats, shift values, tool/transport attributes. |
 
-
 ## 10.4. User management and audit
 Find users by phone, name, role, status, or registration date.
 View account status and relevant moderation history.
 Warn, temporarily restrict, block, or unblock a user with a reason.
 Record important administrator actions in an immutable audit log available to authorized administrators.
+
+## 10.5. Wallet and payment administration
+View employer wallet balance and immutable transaction history.
+Search Payment Orders by employer, provider, status, date, internal order ID, and provider transaction ID.
+Open payment detail with Coin quantity, UZS amount, provider, status history, timestamps, and failure/reversal reason.
+Authorized administrators may create a manual wallet adjustment only with a mandatory reason; every adjustment is audited.
+Registration bonus, Coin price, and Candidate Unlock price are server configuration values. Changing a value affects future transactions only and does not rewrite historical ledger records.
 
 # 11. Business rules, privacy, and safety
 
@@ -395,10 +418,19 @@ Record important administrator actions in an immutable audit log available to au
 | BR-12 | Age or gender restrictions require an objective reason, administrator review, and an audit record. |
 | BR-13 | System dictionaries use one stable identifier and localized labels for all interface variants. |
 | BR-14 | Deletion and retention of user data follow the approved privacy policy and applicable legal requirements. |
-
+| BR-15 | A new employer receives the 10-Coin registration bonus exactly once. |
+| BR-16 | Candidate Unlock initially costs 2 Coins and is charged once per employer-candidate pair. |
+| BR-17 | Protected contact/CV data is enforced server-side; hiding it only in the UI is not sufficient. |
+| BR-18 | Wallet debit and Candidate Unlock entitlement creation occur atomically to prevent charging without access or access without charging. |
+| BR-19 | A successful Payment Order credits Coins exactly once regardless of duplicate callbacks or retries. |
+| BR-20 | FAILED, CANCELLED, or unverified payments never increase the Coin balance. |
+| BR-21 | Coins are non-transferable, non-withdrawable, non-cashable, and are used only for employer functionality within this platform. |
+| BR-22 | Payment-provider credentials and card data are never stored in the mobile application. |
+| BR-23 | The production Coin purchase channel must comply with the current billing policy of the distribution storefront. |
+| BR-24 | The wallet ledger is append-only for financial history; reversals and administrator adjustments are separate audited transaction entries. |
 
 ## 11.1. Privacy defaults
-Phone number and full contact details are not shown in general candidate search cards.
+Phone number, e-mail, and CV file are not returned in general candidate search or preview APIs. They become available to that employer only after a successful Candidate Unlock or another explicitly approved entitlement.
 Candidate visibility is controlled by explicit profile settings.
 The application requests location permission only when a feature requires it and explains the purpose.
 Files are delivered through authorized access and shall not use permanently public links.
@@ -426,7 +458,9 @@ Crash reporting and structured application logging without exposing sensitive us
 | Files | Authorized upload, retrieval, replacement, and deletion. |
 | Notifications | List, unread count, mark read, preferences. |
 | Administration | Verification, moderation, complaints, users, dictionaries, dashboard, audit. |
-
+| Wallet | Read balance and pricing, list wallet transactions, check candidate access, perform idempotent Candidate Unlock. |
+| Payments | Create top-up Payment Order, initiate Payme/CLICK payment, read payment status, receive/verify provider callbacks, reconciliation. |
+| Admin wallet/payments | Search wallet/payment records, view transaction detail, and authorized audited adjustment. |
 
 ## 12.3. High-level data objects
 
@@ -442,7 +476,17 @@ Crash reporting and structured application logging without exposing sensitive us
 | notifications | In-app and push notification records. |
 | dictionaries and translations | Stable identifiers and labels for all interface variants. |
 | complaints / moderation / audit logs | Safety, decisions, and accountability. |
+| employer_wallets | Employer wallet and current cached Coin balance; one-time registration bonus timestamp. |
+| wallet_transactions | Immutable Coin ledger: REGISTRATION_BONUS, TOP_UP, CANDIDATE_UNLOCK, ADMIN_ADJUSTMENT, REVERSAL; amount, balance before/after, reference, timestamp. |
+| candidate_unlocks | Unique employer-candidate access entitlement, Coin cost, unlock timestamp. |
+| payment_orders | Employer, provider, Coin quantity, UZS amount, status, internal order ID, external transaction ID, timestamps and provider metadata. |
+| payment_events | Provider callback/status events, verification result, idempotency key, audit metadata. |
 
+## 12.3.1. Wallet transaction guarantees
+Candidate Unlock uses a unique employer_id + candidate_id constraint and an atomic database transaction for debit + entitlement.
+Payment credit uses a unique Payment Order/provider transaction reference and an idempotent state transition to PAID.
+The server calculates Coin purchase amount; client-provided totals are never trusted as the source of truth.
+Contact/CV endpoints check entitlement on every protected request and do not leak hidden fields in response payloads.
 
 ## 12.4. Performance and reliability
 
@@ -454,7 +498,6 @@ Crash reporting and structured application logging without exposing sensitive us
 | Offline behavior | Clear offline state; safe retry without duplicate application, invitation, or message creation. |
 | Availability and backups | Production monitoring, scheduled database backups, and documented restore procedure. |
 
-
 ## 12.5. Security
 TLS for all network communication.
 Server-side role and permission enforcement for every protected API.
@@ -463,6 +506,16 @@ Secure storage of secrets and tokens; no secrets embedded in the mobile applicat
 File-type and size validation, malware scanning where infrastructure permits, and protected download URLs.
 Input validation and protection against common API and database attacks.
 
+## 12.6. Payme and CLICK integration requirements
+Payme: support the current Merchant API transaction lifecycle and reconciliation methods; validate order/account and amount; store transactions persistently; test repeated Create/Perform/Cancel requests for idempotent behavior.
+CLICK: support the current Shop API billing callbacks including Prepare and Complete; verify merchant parameters and provider security requirements before changing the internal Payment Order state.
+Use HTTPS for all provider endpoints; provider credentials remain server-side; log only non-sensitive identifiers required for support and audit.
+Top-up success is confirmed by backend/provider state, not by a mobile redirect alone. Failed and cancelled flows return the user to Wallet with a clear status and retry option.
+Payment provider integration shall be tested in the provider test environment before production credentials are activated.
+
+## 12.7. App Store and Google Play payment-channel compliance
+The team shall verify store billing rules immediately before release. The Coin wallet is a virtual-currency mechanism that unlocks in-app functionality; therefore payment presentation must be configurable by platform/storefront. The backend wallet ledger and Candidate Unlock rules remain identical regardless of whether the verified purchase source is Payme, CLICK, Apple In-App Purchase, or Google Play Billing.
+
 # 13. Acceptance scenarios and deliverables
 
 ## 13.1. User acceptance scenarios
@@ -470,7 +523,7 @@ Input validation and protection against common API and database attacks.
 | ID | Scenario | Expected result |
 | UAT-01 | A new candidate selects any of the four interface variants, registers by phone and OTP, and enters candidate onboarding. | Account is created; selected locale is retained. |
 | UAT-02 | Candidate enters occupation, experience, Russian C1, location, and work preferences. | Profile is saved and becomes searchable when required fields and visibility are complete. |
-| UAT-03 | Candidate uploads a PDF CV. | Upload progress is shown; authorized employer can access the file. |
+| UAT-03 | Candidate uploads a PDF CV. | Upload succeeds; the CV remains protected until the employer has Candidate Unlock access for that candidate. |
 | UAT-04 | Employer creates and submits a company profile. | Verification status and administrator decision are visible. |
 | UAT-05 | Verified employer creates a 20-position call-centre vacancy with Russian C1. | Vacancy is stored and becomes active after moderation. |
 | UAT-06 | Employer opens candidate search from the vacancy. | Occupation, language, level, location, and other requirements prefill the filters. |
@@ -483,7 +536,15 @@ Input validation and protection against common API and database attacks.
 | UAT-13 | User changes interface from Uzbek Latin to Uzbek Cyrillic, Russian, and English. | All system UI and dictionary labels change; user-entered content remains unchanged. |
 | UAT-14 | Administrator temporarily blocks a user. | Restricted operations fail with a clear reason and the action is audited. |
 | UAT-15 | A vacancy deadline expires. | New applications are blocked and the vacancy is removed from active discovery. |
-
+| UAT-16 | A user completes first employer registration. | Employer wallet is created and exactly 10 free Coins are credited once. |
+| UAT-17 | Employer with 10 Coins unlocks a new candidate. | 2 Coins are debited; balance becomes 8; protected phone/e-mail, CV, chat, and interview/contact actions become available. |
+| UAT-18 | Employer revisits the same already-unlocked candidate. | No additional Coins are charged and the existing entitlement remains active. |
+| UAT-19 | Employer with fewer than 2 Coins attempts Candidate Unlock. | Unlock is blocked and the Wallet top-up action is shown. |
+| UAT-20 | Employer buys 10 Coins through Payme at the initial price. | A UZS 100,000 Payment Order is created and, after verified successful payment, exactly 10 Coins are credited once. |
+| UAT-21 | Employer buys Coins through CLICK. | Verified provider completion changes the Payment Order to PAID and credits the requested Coins once. |
+| UAT-22 | The same successful provider callback is delivered twice. | The second callback is idempotent and does not duplicate wallet credit. |
+| UAT-23 | A Payme/CLICK payment fails or is cancelled. | No Coins are credited and the final/retry status is visible in Wallet. |
+| UAT-24 | User switches among Uzbek Latin, Uzbek Cyrillic, Russian, and English interface variants. | System UI reflects the selected option while the product is documented as three languages: Uzbek, Russian, and English. |
 
 ## 13.2. Delivery package
 
@@ -491,21 +552,22 @@ Input validation and protection against common API and database attacks.
 | Flutter mobile application | Source code, Android and iOS release configurations, test builds, and release builds. |
 | Backend | API source code, database migrations, environment configuration example, and deployment package. |
 | API documentation | Swagger/OpenAPI or equivalent current API description. |
-| Initial dictionaries | Occupations, skills, work categories, regions, languages, levels, and other approved values with four localized labels. |
+| Initial dictionaries | Occupations, skills, work categories, regions, languages, levels, and other approved values localized for Uzbek Latin, Uzbek Cyrillic, Russian, and English. |
 | Design files | Final Figma source, components, prototypes, icons/assets, and developer handoff specifications. |
 | Technical documentation | Environment setup, deployment, backup, restore, configuration, and support notes. |
 | Testing evidence | Functional, integration, and acceptance-test results for agreed scenarios. |
-
+| Payment integrations | Payme and CLICK integration, test/production configuration guidance, callback endpoints, payment reconciliation behavior, and secure credential setup notes. |
 
 ## 13.3. Final acceptance
-The product is accepted when the agreed UAT scenarios pass in the test environment, critical and high-severity defects are resolved, the four interface variants are complete, source code and documentation are delivered, and Android/iOS builds can be produced from the delivered project.
+The product is accepted when the agreed UAT scenarios pass in the test environment, critical and high-severity defects are resolved, the three languages are complete, including both Uzbek Latin and Cyrillic interface variants, source code and documentation are delivered, and Android/iOS builds can be produced from the delivered project.
+Payment integration details in this specification are based on the official Payme Merchant API and CLICK Shop API documentation reviewed in August 2026. Provider-specific parameters must be revalidated against the current official documentation during implementation and before production activation.
 
 # Document approval
+
 The parties confirm that the scope, business rules, mobile-only delivery model, and acceptance criteria described in this document represent the agreed product requirements.
 
 | Party / role | Name | Signature | Date |
 | Client representative |  |  |  |
 | Contractor representative |  |  |  |
 | Product owner |  |  |  |
-
 

@@ -5,6 +5,14 @@ acceptance scenarios (UAT-nn) of [docs/SPEC.md](docs/SPEC.md). Design rationale
 lives in [ARCHITECTURE.md](ARCHITECTURE.md); the current working checklist is
 [TODO.md](TODO.md).
 
+> **Revised 2026-08-10.** The client issued a new specification adding an employer
+> Coin wallet, Candidate Unlock, and Payme/CLICK top-up: M12 and M13 below. It also
+> **edited four sections that M6, M7 and M8 already implement** - contact details and
+> CV access are now bought rather than earned through a hiring interaction. That is
+> not additive, and M12 carries the retrofit. See
+> [docs/SPEC_CHANGELOG.md](docs/SPEC_CHANGELOG.md), and read the open question at the
+> top of it before starting M12: one answer from the client removes half the retrofit.
+
 The app repo has a matching `PLAN.md` with the same milestone numbering. **M2, M3
 and M5 must land on the backend before the app's corresponding milestone can be
 finished** - the client cannot build pickers without dictionaries or forms without
@@ -28,11 +36,17 @@ a profile contract.
 | M10 | Admin module + audit | - | **done**; both MVP flags now on |
 | M9 | Notifications + push | - | **done**; FCM configured and verified end to end |
 | M11 | Hardening: performance, security, offline, acceptance | release | **done** — §12.4 measured, §12.5 reviewed, restore rehearsed, UAT-01..15 executable, BR-14 answered |
+| M12 | Employer wallet, Coins, Candidate Unlock | M13 | **next** — new in the 2026-08-10 revision, and it changes BR-09's gate |
+| M13 | Payme and CLICK top-up | release | after M12 — a wallet with no way to fill it is a demo |
 
-**Every milestone is built.** What stands between this and a release is not code:
-the SMS provider (M1), a first administrator account on the deployed instance, and
-the client sign-offs listed at the top of [TODO.md](TODO.md). The open engineering
-items are a CI workflow and the limitations each doc states for itself.
+**Every milestone up to M11 is built.** What stood between that and a release was not
+code: the SMS provider (M1), a first administrator account on the deployed instance,
+the client sign-offs listed at the top of [TODO.md](TODO.md), and a CI workflow.
+
+The 2026-08-10 revision adds M12 and M13, and they are not small: money, an
+append-only ledger, two payment providers and a change to a privacy rule that is
+already live. Nothing in M0-M11 is invalidated - but M6's BR-09 behaviour is
+**superseded**, and that work belongs to M12 rather than being left to be discovered.
 
 ---
 
@@ -461,6 +475,154 @@ one is one `INSERT INTO user_roles` — until then that instance has to keep bot
   holding out for rather than being relaxed.
 - **Two gaps are stated rather than closed**: malware scanning cannot be done where the
   bytes live, and `API_DOCS_ENABLED` on a public hostname is an operator decision.
+
+---
+
+## M12 - Employer wallet, Coins, Candidate Unlock
+
+**Covers** §6.6, §10.5, §11.1, §12.3.1 · **BR-15, BR-16, BR-17, BR-18, BR-21, BR-24** ·
+**UAT-16, UAT-17, UAT-18, UAT-19**
+
+New in the 2026-08-10 revision. Money enters the product, and with it the first data in
+this system somebody can be *wrong about* in a way they will notice on a bank statement.
+Two properties drive every decision below: **the ledger is append-only** (BR-24) and **the
+debit and the entitlement are one transaction** (BR-18).
+
+### Schema
+
+- `employer_wallets` - one row per employer, holding the **cached** balance and the
+  registration-bonus timestamp. Cached, not authoritative: the ledger is the truth, and the
+  column exists so a balance read is not a sum over history. A test proves the two agree
+  after every kind of transaction.
+- `wallet_transactions` - the immutable Coin ledger. `REGISTRATION_BONUS`, `TOP_UP`,
+  `CANDIDATE_UNLOCK`, `ADMIN_ADJUSTMENT`, `REVERSAL`; amount, balance before and after,
+  reference, timestamp. **Append-only in the database** - the same three statement-level
+  triggers the audit log uses. BR-24 is not a promise the service makes; it is a property
+  of the table.
+- `candidate_unlocks` - the entitlement. **A unique index on (employer_user_id,
+  candidate_user_id)** is what makes BR-16 true under a double tap, not a check in the
+  service; §12.3.1 asks for exactly that.
+- The 10-Coin bonus needs a **partial unique index** on
+  `wallet_transactions (employer_user_id) WHERE kind = 'REGISTRATION_BONUS'`. BR-15's
+  "exactly once, and not again after logout, reinstall, device change or role switch" is a
+  uniqueness problem - every one of those four is a retry of the same insert.
+
+### Pricing is configuration, and the price is stored on the row
+
+§6.6 makes the Coin price and unlock cost "server-side business configuration, not
+hard-coded in Flutter", and §10.5 adds that a change "affects future transactions only and
+does not rewrite historical ledger records". So the price is read at transaction time and
+**written onto the transaction**: a ledger that recomputed value from today's price would
+restate last month's history every time the client repriced.
+
+### Endpoints
+
+- `GET /wallet` - balance, current pricing, recent activity (§6.2's Wallet tile).
+- `GET /wallet/transactions` - the ledger, paged.
+- `GET /wallet/unlocks/{candidateUserId}` - already unlocked or not, so the client can
+  render the unlocked state without guessing.
+- `POST /wallet/unlocks` - the atomic debit plus entitlement, **idempotent** by
+  `Idempotency-Key`; the existing `IdempotencyService` already covers this shape, and a
+  duplicate must return the first outcome rather than debit twice.
+- `GET /admin/wallets`, `GET /admin/wallets/{userId}`,
+  `POST /admin/wallets/{userId}/adjust` (§10.5) - the adjustment carries a mandatory
+  reason and writes a ledger row **and** an audit row, exactly as §10.4's actions do.
+
+### The retrofit, and why it belongs to this milestone
+
+§11.1 and §9.1 now gate contact details, CV, chat, interviews and invitations on the
+entitlement. M6/M7/M8 gate them on a live hiring interaction
+(`HiringInteractionService`). The unlock is a **third condition**, not a replacement for
+the privacy settings - so the BR-09 helper gains a parameter and every caller is
+re-checked:
+
+- `infra/privacy/contact-exposure.ts` - the one place the rule lives, so this is one edit
+  plus a table of cases.
+- `CandidateViewService.forApplication` / `forCandidate` - structured data stays free;
+  contact and files need the entitlement.
+- The four entitlement-bearing file routes.
+- `ChatService` - employer-initiated conversations (§9.1).
+- `InvitationsService.invite` (§8.2).
+
+**Every existing BR-09 test asserts the old contract and has to change deliberately** -
+including M6's regression test for a withdrawn application revoking exposure, which is
+still a rule, now one of three.
+
+*Blocking question for the client, and it halves this work:* §11.1 says contact becomes
+available "after a successful Candidate Unlock **or another explicitly approved
+entitlement**". Does a candidate's own application count as one? A candidate who applies
+has volunteered their interest, and reading it that way leaves M6 intact. §9.1 as written
+says no. **Ask before building.**
+
+### Tests that carry their weight
+
+- Two concurrent unlocks of the same pair: one debit, one entitlement.
+- Two concurrent first-registrations of the same employer: one bonus.
+- A wallet holding 1 Coin refuses the unlock and writes no ledger row.
+- The cached balance equals the ledger sum after a mixed sequence.
+- `UPDATE` and `DELETE` on `wallet_transactions` are refused by the database.
+- A reversal is a new row and the balance moves; nothing is rewritten.
+
+---
+
+## M13 - Payme and CLICK top-up
+
+**Covers** §6.7, §12.6, §12.7 · **BR-19, BR-20, BR-22, BR-23** ·
+**UAT-20, UAT-21, UAT-22, UAT-23**
+
+A wallet with no way to fill it is a demo, so this follows M12 immediately. The whole
+milestone turns on one sentence in §6.7: *"A client-side success redirect is not sufficient
+to credit Coins."*
+
+### Schema
+
+- `payment_orders` - internal order id, employer, provider, requested Coins, UZS amount,
+  status, provider transaction id, timestamps, provider metadata. Statuses at least
+  `CREATED`, `PENDING`, `PAID`, `FAILED`, `CANCELLED`, `REVERSED`.
+- `payment_events` - every callback and status poll with its verification result and
+  idempotency key (§12.3). The reconciliation trail, append-only for the same reason the
+  ledger is.
+- **A unique constraint on (provider, provider_transaction_id)**, and a state machine that
+  can only reach `PAID` once. BR-19 - "credits Coins exactly once regardless of duplicate
+  callbacks or retries" - is that constraint plus a conditional
+  `UPDATE ... WHERE status <> 'PAID'`, not an `if` in a handler. UAT-22 delivers the same
+  callback twice and is the most important test in the milestone.
+
+### The provider seam, for the third time
+
+Two providers with genuinely different protocols - Payme's Merchant API
+(`CheckPerformTransaction`, `CreateTransaction`, `PerformTransaction`,
+`CancelTransaction`, `CheckTransaction`, `GetStatement`, amounts **in tiyin**) and
+CLICK's Shop API (`Prepare` / `Complete` with signature verification). Both go behind one
+`PaymentProvider` abstraction - the same seam shape as `SmsSender` and `PushSender`:
+
+- The wallet knows `PaymentOrder`, never a provider's field names.
+- A no-op provider for a deployment with no merchant account, reporting failure rather
+  than a credit, per the house rule.
+- §12.7 requires the ledger to stay provider-agnostic so a store build can substitute
+  Apple IAP or Google Play Billing **without changing unlock behaviour**. Designing to
+  that now is far cheaper than retrofitting a fourth implementation.
+
+### Callbacks are a new public route surface
+
+Provider callbacks arrive unauthenticated by our own scheme, making them the first public
+**mutating** routes in the product. To design for rather than discover:
+
+- Each provider's signature check runs **before** the order is touched, and a failed check
+  is a logged event, not a state change.
+- They must be added to `api-surface.spec.ts`'s frozen public list with a written reason.
+  That test exists to make exactly this decision visible.
+- Their own rate-limit bucket, and no localization: a provider is not a person.
+- The amount is recalculated server-side from the Coin price - §12.3.1, "client-provided
+  totals are never trusted as the source of truth".
+
+### What the client owes before this can finish
+
+Merchant accounts and credentials for both providers, the fiscal receipt attributes (§6.7
+leaves VAT and service codes to their accounting function), and a §12.7 decision per
+storefront. Sandbox credentials are enough to build and test everything short of
+production activation - and §12.6 requires provider-test-environment testing before
+production credentials are activated, so that order is their constraint as much as ours.
 
 ---
 
