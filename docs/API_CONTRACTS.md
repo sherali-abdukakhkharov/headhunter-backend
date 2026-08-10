@@ -1330,9 +1330,8 @@ is therefore a property of the table, not of the module having no write path —
 against a migration, a `psql` session and the next service.
 
 The actor reference is `ON DELETE RESTRICT`: an audit row that forgot who acted is not an
-audit row, so **a user who has acted as an administrator cannot be deleted** until BR-14's
-purge decides what to do about it. That conversation is forced deliberately rather than
-resolved by a cascade that would take the trail with it.
+audit row, so **a user who has acted as an administrator cannot be deleted**. M11 resolved
+that against BR-14 by erasing the person and keeping the actor — see §4j.
 
 What the log is *for*, given that six tables already record status changes with their actor
 (BR-08): it is the cross-cutting record. For a decision that also writes a BR-08 row, that
@@ -1469,6 +1468,57 @@ without waiting for it, so:
   too. Setting `FCM_SERVICE_ACCOUNT_BASE64` is the whole difference.
 
 ---
+
+## 4j. Retention and deletion (BR-14)
+
+Three administrator routes, and one thing the client still owes an answer on.
+
+| Route | Answers |
+|---|---|
+| `GET /admin/retention/policy` | Every retention rule, with a `provenance` tag |
+| `GET /admin/retention/due` | What a purge would remove right now, without removing it |
+| `POST /admin/retention/purge` | Runs it. Irreversible |
+
+### The periods are data, and they say who chose them
+
+BR-14 defers to "the approved privacy policy", and there is not one. Rather than leave the
+periods undefined, they are declared in one table in the source and returned verbatim by
+`policy`. Every rule carries `provenance`: **`provisional` means an engineer chose the
+number and no lawyer has seen it**, `required` means another rule in this specification
+fixes it, `client_approved` means it has been confirmed. Nothing is `client_approved`
+today, and the API says so rather than presenting a guess as policy — `due` repeats the
+provisional codes in its own response so a caller cannot miss them.
+
+The client's answer is an edit to that one table. See [RETENTION.md](RETENTION.md) for the
+current numbers and the reasoning behind each.
+
+### Nothing runs on a timer
+
+There is no scheduler behind the purge. While the periods are provisional, an administrator
+looks at `due`, sees what would go, and triggers it; every account removed writes a
+`user.purged` audit row. A wrong number cannot quietly destroy a year of work histories
+overnight — it needs a person to act on it.
+
+`purge` works one account per transaction and reports rather than throws: an account that
+cannot be purged appears in `failed` while the rest succeed.
+
+### An administrator is anonymized, not deleted
+
+`due` reports `action: 'anonymize'` for an account that is the actor on an audit row, with
+the count of rows depending on it. Those accounts keep their id and lose their identity —
+phone, Telegram identity and login history are cleared, the profile, employer record,
+sessions, roles and devices go, and `purged_at` records when. Every past decision still
+resolves to a distinct administrator without naming one.
+
+This is the only rule tagged `required`: §10.4's immutable log and BR-14's erasure duty
+are both satisfied, and neither can be traded for the other.
+
+### What a purge does not reach
+
+The file **bytes** stay in the Telegram channel; the purge deletes the metadata that points
+at them, after which nothing in this API can find or serve one. Unreachable is not erased,
+and a privacy policy that promises erasure has to say so. Backups taken before a purge also
+still contain what it removed, for the 14 days [BACKUP.md](BACKUP.md) keeps them.
 
 ## 5. Deferred
 

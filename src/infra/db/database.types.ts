@@ -570,6 +570,7 @@ export interface Users {
   last_login_at: Timestamp | null;
   locale: Generated<LocaleCode>;
   phone: string | null;
+  purged_at: Timestamp | null;
   restricted_until: Timestamp | null;
   status: Generated<AccountStatus>;
   telegram_user_id: Int8 | null;

@@ -650,6 +650,109 @@ export class AuditLogDto {
   items!: AuditEntryDto[];
 }
 
+// --- BR-14 retention (§4.2) -------------------------------------------------
+
+export class RetentionRuleDto {
+  @ApiProperty({ description: 'Stable code, also used by the purge.' })
+  code!: string;
+
+  @ApiProperty() subject!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Days after the trigger. `null` means the data is kept indefinitely.',
+  })
+  days!: number | null;
+
+  @ApiProperty() trigger!: string;
+
+  @ApiProperty({ enum: ['purge', 'anonymize', 'keep'] })
+  action!: string;
+
+  @ApiProperty({
+    enum: ['provisional', 'client_approved', 'required'],
+    description:
+      '**`provisional` means no lawyer has seen this number.** BR-14 defers to an ' +
+      'approved privacy policy that does not exist yet, so the platform states its ' +
+      'assumption here rather than hiding it in a document.',
+  })
+  provenance!: string;
+
+  @ApiProperty({
+    description: 'Why the period cannot be zero, or must be finite.',
+  })
+  legalBasis!: string;
+}
+
+export class RetentionPolicyDto {
+  @ApiProperty({ type: [RetentionRuleDto] })
+  rules!: RetentionRuleDto[];
+
+  @ApiProperty({
+    description:
+      'Codes whose period is still an engineering default, not a client answer.',
+  })
+  provisional!: string[];
+}
+
+export class DueAccountDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() requestedAt!: string;
+
+  @ApiProperty({
+    enum: ['purge', 'anonymize'],
+    description:
+      '`anonymize` when the account is the actor on an audit row: §10.4 will not let ' +
+      'that row lose who acted, so the person is erased and the actor id survives.',
+  })
+  action!: string;
+
+  @ApiProperty({ description: 'Audit rows depending on this id surviving.' })
+  auditRows!: number;
+}
+
+export class TransientCountDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() rows!: number;
+}
+
+export class RetentionDueDto {
+  @ApiProperty({ type: [DueAccountDto] })
+  accounts!: DueAccountDto[];
+
+  @ApiProperty({ type: [TransientCountDto] })
+  transient!: TransientCountDto[];
+
+  @ApiProperty() provisional!: string[];
+}
+
+export class PurgeFailureDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() error!: string;
+}
+
+export class RetentionOutcomeDto {
+  @ApiProperty({ description: 'Accounts deleted outright.' })
+  purged!: string[];
+
+  @ApiProperty({
+    description: 'Accounts whose identity was erased, id retained.',
+  })
+  anonymized!: string[];
+
+  @ApiProperty({
+    type: [PurgeFailureDto],
+    description:
+      'Reported rather than thrown: one account that cannot be purged must not roll ' +
+      'back the others.',
+  })
+  failed!: PurgeFailureDto[];
+
+  @ApiProperty({ type: [TransientCountDto] })
+  transient!: TransientCountDto[];
+}
+
 export class CreatedIdDto {
   @ApiProperty()
   id!: string;

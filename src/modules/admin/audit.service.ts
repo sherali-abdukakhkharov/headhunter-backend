@@ -20,6 +20,11 @@ export const AUDIT_ACTIONS = {
   userBlocked: 'user.blocked',
   userUnblocked: 'user.unblocked',
   restrictionExpired: 'user.restriction_expired',
+  /**
+   * BR-14's purge. The one action whose target may no longer exist when the row is read -
+   * `target_id` is a bare uuid, not a foreign key, which is what makes that possible.
+   */
+  accountPurged: 'user.purged',
   dictionaryItemCreated: 'dictionary.item_created',
   dictionaryItemUpdated: 'dictionary.item_updated',
   dictionaryItemDeactivated: 'dictionary.item_deactivated',

@@ -694,6 +694,12 @@ and Telegram performs none on a bot upload.
   row that forgot who acted is not an audit row, so a user who has acted as an
   administrator cannot be deleted until the retention policy says what to do about it. A
   cascade would resolve the collision by quietly destroying the trail.
+
+  *Resolved in M11, and the constraint got the answer it was holding out for:* the person
+  is erased and the actor is kept. Phone, Telegram identity and login history are cleared,
+  the row and its id stay, and a database check makes "purged but still holding a phone
+  number" unrepresentable. Both duties hold; neither was traded away. `RESTRICT` forced
+  that conversation instead of pre-empting it, which was the whole point of choosing it.
 - **What the log adds, given six BR-08 history tables.** It is the cross-cutting record.
   Where an action also writes a history row, that row is authoritative (same transaction as
   the change) and the audit row is the index over it; where an action has **no** history
@@ -746,8 +752,20 @@ occupation/location/preferences), and any government-registry integration (§2.4
 
 Answers change the schema, so raise them before the affected milestone:
 
-1. **Retention periods** for account deletion and audit logs - BR-14 defers to
-   "the approved privacy policy", which we do not have yet.
+1. ~~**Retention periods** for account deletion and audit logs~~ - **no longer
+   blocking, and it is the last one to come off the list.** BR-14 still defers to an
+   approved privacy policy we do not have, so every period is declared in
+   `infra/retention/retention-policy.ts` with a `provenance` tag and returned by
+   `GET /admin/retention/policy`; `provisional` means an engineer chose the number and
+   no lawyer has seen it, which is every period except one. The purge runs on an
+   administrator's request rather than a timer, precisely because the numbers are
+   provisional. See [docs/RETENTION.md](docs/RETENTION.md) for what the client has to
+   confirm.
+
+   The one period that is **not** open to an answer is what happens to an
+   administrator's own account: §10.4's audit log will not let its actor reference go,
+   so the person is erased and the actor id is kept. That is tagged `required`, not
+   `provisional`.
 2. ~~**Verification evidence** required for individual (non-company) employers~~ -
    **no longer blocking.** Declared as data in `employer-requirements.ts` (§5a.1);
    the current default is that an individual need not upload an identity document and

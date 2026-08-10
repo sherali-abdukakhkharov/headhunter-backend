@@ -10,6 +10,7 @@ import { AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import { AdminModerationService } from './moderation.service';
+import { RetentionService } from './retention.service';
 import { AdminUsersService } from './users-admin.service';
 
 /**
@@ -34,6 +35,7 @@ import { AdminUsersService } from './users-admin.service';
     AdminModerationService,
     AdminUsersService,
     DictionaryAdminService,
+    RetentionService,
   ],
 })
 export class AdminModule {}

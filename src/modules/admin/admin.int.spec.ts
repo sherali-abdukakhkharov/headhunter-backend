@@ -361,6 +361,7 @@ describe('the audit log is append-only (§10.4)', () => {
         sql: 'TRUNCATE admin_audit_log',
         parameters: [],
         query: { kind: 'RawNode' } as never,
+        queryId: { queryId: 'truncate-audit-log' },
       }),
     ).rejects.toThrow(/append-only/);
   });

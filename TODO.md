@@ -26,9 +26,17 @@ needs them.
       2026-08-04 and agreed with the client. `timestamptz` storage, responses carry
       offset + explicit `timeZone`. Per-user later is additive (`users.time_zone`)
       and changes no wire format. See [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §2.
-- [?] **Retention periods** for deleted accounts and audit logs (BR-14 defers to
-      an approved privacy policy we do not have). *Blocks M1 deletion flow and
-      M10 audit.*
+- [x] ~~**Retention periods** for deleted accounts and audit logs~~ (BR-14 defers
+      to an approved privacy policy we do not have) - **no longer blocking, and
+      the last blocking question to come off this list.** Resolved as *data*, the
+      third time that pattern has worked: every period is declared in
+      [retention-policy.ts](src/infra/retention/retention-policy.ts) with a
+      `provenance` tag and a stated legal basis, and returned by
+      `GET /admin/retention/policy`. `provisional` means an engineer chose the
+      number and no lawyer has seen it, which is every period but one. The purge
+      is triggered by an administrator rather than a timer, precisely because they
+      are provisional. See [docs/RETENTION.md](docs/RETENTION.md) for what the
+      client still has to confirm
 - [x] ~~**Individual-employer verification evidence**~~ (§6.1 "if required by
       policy") - **no longer blocking.** Resolved as *data*: the requirement is
       declared per employer type in
@@ -407,11 +415,15 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
       invitations
 
 ### Noticed while building, worth knowing before BR-14
-- [ ] `verification_submission_files.file_id` is `RESTRICT` on purpose: evidence must
+- [x] `verification_submission_files.file_id` is `RESTRICT` on purpose: evidence must
       not vanish from under a submission an administrator is reading. That means a
       **purge** must delete the employer row (which cascades submissions) *before*
       the files, or it fails. Nothing does today - `purge_after` is still nullable
-      pending BR-14 - but the purge implementation has to know this ordering
+      pending BR-14 - but the purge implementation has to know this ordering.
+      **This note was right, and it was not the only one:** M11's purge hit exactly
+      this, plus `companies.logo_file_id` and `messages.file_id`, all three
+      `RESTRICT` against `stored_files`. `RetentionService` clears them in an
+      explicit order and `retention.int.spec.ts` builds the entangled shape
 
 ## M5 - Vacancies + moderation *(done)*
 
@@ -727,7 +739,9 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       one-line way around the other two
 - [x] The actor is `ON DELETE RESTRICT`, so a user who has acted as an administrator cannot
       be deleted - which collides with BR-14 on purpose rather than letting a cascade take
-      the trail with it. Even the test cannot clean up after itself
+      the trail with it. Even the test cannot clean up after itself. **M11 resolved it:**
+      the person is erased and the actor kept, and the constraint got the answer it was
+      holding out for rather than being relaxed
 - [x] `users.restricted_until`, which is what makes §10.4's restriction *temporary*
 
 ### Endpoints *(done)*
@@ -747,7 +761,7 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       only, no status change), restrict/block/unblock with a mandatory reason, a BR-08 row
       and an audit row in one transaction (UAT-14)
 - [x] An administrator cannot target their own account, and an account awaiting deletion is
-      left to BR-14
+      left to BR-14 - which M11 answered, so those accounts now have somewhere to go
 - [x] Dictionary management (§10.3): create, edit labels and metadata, activate/deactivate,
       merge. The four-locale rule, the revision bump and the merge's double bump stay the
       database's; there is **no delete route** at all
@@ -796,6 +810,17 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
         Telegram, which does not scan a bot upload. Stated as a gap, not fixed.
   - [ ] `API_DOCS_ENABLED` is on and the hostname is public: decide between
         turning it off and a Cloudflare Access policy on `/docs` + `/reference`
+- [x] **BR-14 as data, and the audit-log purge collision resolved** -
+      [docs/RETENTION.md](docs/RETENTION.md). Every period declared with a provenance
+      tag; the purge runs on request, not a timer; an administrator who has acted is
+      anonymized rather than deleted, so §10.4 and BR-14 both hold. Migration 18 adds
+      `users.purged_at` and the two checks that make a half-done purge unrepresentable.
+      Two things it left explicitly open, both stated in the doc:
+  - [ ] The file **bytes** stay in the Telegram channel - the purge removes the metadata
+        that points at them, so nothing here can serve one, but unreachable is not erased.
+        Emptying that channel is an operational step somebody has to own
+  - [ ] Backups taken before a purge still contain what it removed, for 14 days. Normal,
+        but it belongs in the privacy policy rather than being discovered
 - [x] Scheduled backups + **rehearsed** restore, documented -
       [docs/BACKUP.md](docs/BACKUP.md). Daily `pg_dump` at 21:00 UTC (02:00
       Tashkent), 14 days, every dump verified with `pg_restore --list`. The drill

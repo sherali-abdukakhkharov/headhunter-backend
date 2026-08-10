@@ -55,6 +55,9 @@ import {
   MergeDictionaryItemsDto,
   ModerationDecisionDto,
   ModerationQueueDto,
+  RetentionDueDto,
+  RetentionOutcomeDto,
+  RetentionPolicyDto,
   SetActiveDto,
   UpdateDictionaryItemDto,
   UserSearchQueryDto,
@@ -66,6 +69,7 @@ import {
   WarnUserDto,
 } from './dto/admin.dto';
 import { AdminModerationService } from './moderation.service';
+import { RetentionService } from './retention.service';
 import { type AdminUserRow, AdminUsersService } from './users-admin.service';
 
 /**
@@ -92,6 +96,7 @@ export class AdminController {
     private readonly users: AdminUsersService,
     private readonly dictionaries: DictionaryAdminService,
     private readonly audit: AuditService,
+    private readonly retention: RetentionService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -616,6 +621,71 @@ export class AdminController {
         createdAt: formatWithOffset(item.createdAt, this.timeZone),
       })),
     };
+  }
+
+  // --- BR-14 retention -----------------------------------------------------
+
+  @Get('retention/policy')
+  @ApiOperation({
+    summary: 'The declared retention policy (BR-14)',
+    description:
+      'BR-14 defers to "the approved privacy policy", and there is not one yet. Rather ' +
+      'than leave the periods undefined, the platform declares them here with a ' +
+      '**provenance** tag on each: `provisional` means an engineer chose the number and ' +
+      'no lawyer has seen it, `required` means another rule fixes it. The answer from ' +
+      'the client is an edit to one table in the source, not a milestone.',
+  })
+  @ApiOkResponse({ type: RetentionPolicyDto })
+  retentionPolicy(): RetentionPolicyDto {
+    const rules = this.retention.policy();
+
+    return {
+      rules: rules.map((rule) => ({ ...rule })),
+      provisional: rules
+        .filter((rule) => rule.provenance === 'provisional')
+        .map((rule) => rule.code),
+    };
+  }
+
+  @Get('retention/due')
+  @ApiOperation({
+    summary: 'What a purge would remove (BR-14)',
+    description:
+      'A preview, and the reason there is no scheduler behind any of this: while the ' +
+      'periods are provisional, an administrator looks at what is due before anything ' +
+      'is erased. `action` is `anonymize` for an account that is the actor on an audit ' +
+      'row - §10.4 will not let that row lose who acted, so the person is erased and the ' +
+      'id survives.',
+  })
+  @ApiOkResponse({ type: RetentionDueDto })
+  async retentionDue(): Promise<RetentionDueDto> {
+    const due = await this.retention.due();
+
+    return {
+      accounts: due.accounts.map((account) => ({
+        ...account,
+        requestedAt: formatWithOffset(account.requestedAt, this.timeZone),
+      })),
+      transient: due.transient,
+      provisional: due.provisional,
+    };
+  }
+
+  @Post('retention/purge')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Run the purge (BR-14)',
+    description:
+      'Erases everything `due` listed, one account per transaction, and writes a ' +
+      '`user.purged` audit row for each. An account that cannot be purged is reported ' +
+      'in `failed` rather than rolling back the rest. **Irreversible** - the only ' +
+      'recovery is a restore from docs/BACKUP.md.',
+  })
+  @ApiOkResponse({ type: RetentionOutcomeDto })
+  async retentionPurge(
+    @ActiveUser() user: CurrentUser,
+  ): Promise<RetentionOutcomeDto> {
+    return this.retention.purge(user.id);
   }
 
   private userDto(row: AdminUserRow): AdminUserDto {

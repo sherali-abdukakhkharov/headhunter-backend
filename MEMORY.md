@@ -30,6 +30,38 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-08 (M11) - BR-14: erase the person, keep the actor
+
+The last blocking client question came off the list without the client answering it, using
+the pattern that already worked twice: **declare the policy as data with a provenance tag**.
+`infra/retention/retention-policy.ts` holds every period, each tagged `provisional`
+(an engineer chose it, no lawyer has seen it), `required` (another rule fixes it) or
+`client_approved` (nothing, yet). The answer is an edit to one table.
+
+Three things make shipping a purge ahead of the policy defensible, and all three are
+deliberate: **nothing runs on a timer** (an administrator previews `due` and triggers it),
+every erasure writes an audit row, and the periods are floors rather than deadlines - data
+is purged *after* its period, never before.
+
+**The collision M10 left open is resolved.** `admin_audit_log.actor_user_id` is `RESTRICT`,
+so an administrator who has acted cannot be deleted. The answer is not to relax the
+constraint but to erase the *person* and keep the *actor*: phone, Telegram identity and
+login history cleared, row and id retained, so every past decision still resolves to a
+distinct administrator without naming one. `users_purged_has_no_credential` makes the
+half-done version of that unrepresentable rather than merely unwritten.
+
+Two things cost real time and are worth remembering:
+
+- **A plain `DELETE FROM users` fails.** Sixteen cascades hang off `users`, but three
+  tables hold `RESTRICT` references to `stored_files` - a company logo, verification
+  evidence, a message attachment - and the cascade reaches the files before those rows
+  release them. The purge clears them in an explicit order first. Found by trying it.
+- **A new enum value cannot be used in the transaction that added it**, and Kysely runs
+  every pending migration in one transaction, so no ordering of two migration files
+  escapes it. The `deleted` account status was abandoned for `purged_at`, a timestamp -
+  which needs no enum, survives `migrate:latest` on a fresh database, and answers *when*
+  rather than merely *whether*.
+
 ### 2026-08-07 (M11) - The load test's value was the scaling curve, not the pass
 
 §12.4's budgets pass with more than an order of magnitude spare: at 200 000 searchable
@@ -958,18 +990,20 @@ ones most likely to bite again:
 
 ## Open questions with the client
 
-Tracked as `[?]` items at the top of [TODO.md](TODO.md). Still open and still
-blocking: **data-retention periods** (BR-14, blocks the deletion purge and audit
-retention). That is now the only one.
+Tracked as `[?]` items at the top of [TODO.md](TODO.md). **Nothing is blocking any
+more.** The last one - data-retention periods (BR-14) - came off on 2026-08-08 the
+same way the other two did.
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
 
-No longer blocking, though still wanting sign-off - both declared as data with stated
-defaults and provenance tags, so an answer is one file edit rather than a milestone
-dependency: **individual-employer verification evidence** (§6.1) and the **permitted
-age/gender justifications** (BR-12). The second wants **legal** review specifically;
-nothing on that list has been seen by a lawyer.
+No longer blocking, though still wanting sign-off - all three declared as data with
+stated defaults and provenance tags, so an answer is one file edit rather than a
+milestone dependency: **individual-employer verification evidence** (§6.1), the
+**permitted age/gender justifications** (BR-12), and the **retention periods**
+(BR-14, [docs/RETENTION.md](docs/RETENTION.md)). The last two want **legal** review
+specifically; nothing on either list has been seen by a lawyer, and every period is
+tagged `provisional` in the API's own response so nobody can mistake it for policy.
 
 The dictionary value lists are no longer a blocker - all 16 types are seeded and
 working - but four of them and the occupation set are compiled starting points
