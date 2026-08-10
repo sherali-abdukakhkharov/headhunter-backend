@@ -26,8 +26,13 @@ a profile contract.
 | M7 | Candidate search + invitations + shortlists | M8 | **done**; UAT-06 walkable end to end |
 | M8 | Chat + interviews | - | **done** |
 | M10 | Admin module + audit | - | **done**; both MVP flags now on |
-| M9 | Notifications + push | - | **done**; FCM behind a seam, credential owed |
-| M11 | Hardening: performance, security, offline, acceptance | release | **next**, and last |
+| M9 | Notifications + push | - | **done**; FCM configured and verified end to end |
+| M11 | Hardening: performance, security, offline, acceptance | release | **done** — §12.4 measured, §12.5 reviewed, restore rehearsed, UAT-01..15 executable, BR-14 answered |
+
+**Every milestone is built.** What stands between this and a release is not code:
+the SMS provider (M1), a first administrator account on the deployed instance, and
+the client sign-offs listed at the top of [TODO.md](TODO.md). The open engineering
+items are a CI workflow and the limitations each doc states for itself.
 
 ---
 
@@ -61,7 +66,7 @@ Running NestJS service with Kysely over Postgres 18, migration runner, Joi env
 validation, pino logging, helmet, CORS, global validation pipe, Swagger + Scalar,
 and `GET /health` verified end-to-end from the Flutter client.
 
-## M1 - Auth, users, roles
+## M1 - Auth, users, roles *(done - SMS delivery still owed)*
 
 **Covers** §4, §2.3 · **BR-01, BR-10** · **UAT-01, UAT-14 (block enforcement)**
 
@@ -89,7 +94,7 @@ and `GET /health` verified end-to-end from the Flutter client.
 candidate/employer/both, switch roles, and a blocked user is refused every
 mutation with a clear reason.
 
-## M2 - Dictionaries
+## M2 - Dictionaries *(done)*
 
 **Covers** §3.2, §3.3, §10.3 · **BR-13** · **UAT-13**
 
@@ -120,7 +125,7 @@ default that still needs sign-off.
 > Seeding is the largest single content task in the project and needs client
 > input on the approved value lists. Start it early; it is not a day of work.
 
-## M3 - Candidate profile + files
+## M3 - Candidate profile + files *(done)*
 
 **Covers** §5 · **BR-02, BR-09** · **UAT-02, UAT-03, UAT-12**
 
@@ -170,7 +175,7 @@ Two decisions worth knowing before building on this:
   fields common to all five categories exist until then. The client's first profile
   screen is therefore choosing the target work.
 
-## M4 - Employer profile + verification
+## M4 - Employer profile + verification *(done)*
 
 **Covers** §6.1 · **BR-03** · **UAT-04**
 
@@ -203,7 +208,7 @@ Two decisions worth knowing before building on this:
   one that drifts, and the failure mode is an unverified employer reaching candidate
   contact details.
 
-## M5 - Vacancies + moderation
+## M5 - Vacancies + moderation *(done)*
 
 **Covers** §6.3, §6.4 · **BR-04, BR-05, BR-06, BR-11, BR-12** · **UAT-05, UAT-10, UAT-15**
 
@@ -251,7 +256,7 @@ Two decisions worth knowing before building on this:
   a feed advertising a vacancy the apply route refuses is the failure that guards
   against.
 
-## M6 - Discovery + applications
+## M6 - Discovery + applications *(done)*
 
 **Covers** §5.5, §5.6, §8.1 · **BR-06, BR-07, BR-08** · **UAT-08, UAT-15**
 
@@ -290,7 +295,7 @@ Four things worth carrying into M7:
   in it, and a feed that advertised a vacancy the apply route refuses would look like a
   bug in Apply. M7's candidate search wants the same discipline with BR-02's gate.
 
-## M7 - Candidate search + invitations
+## M7 - Candidate search + invitations *(done)*
 
 **Covers** §7, §8.2 · **BR-09** · **UAT-06, UAT-07**
 
@@ -332,7 +337,7 @@ and accepted counts against the target. Five things to carry into M8:
   The pattern is worth keeping - where the specification's wording and BR-13 disagree, the
   id-shaped form is the one that works in four languages.
 
-## M8 - Chat + interviews
+## M8 - Chat + interviews *(done)*
 
 **Covers** §9.1, §8.3 · **UAT-09**
 
@@ -355,7 +360,7 @@ and accepted counts against the target. Five things to carry into M8:
   queue already covers them - the generic table M6 built is now carrying its third target
   kind without a schema change.
 
-## M9 - Notifications
+## M9 - Notifications *(done)*
 
 **Covers** §9.2
 
@@ -382,7 +387,7 @@ and four things are worth carrying into M11:
 - **Every integration suite now constructs the real notifications service**, so a miswired
   event fails in the suite that owns the flow rather than in M9's.
 
-## M10 - Admin module + audit
+## M10 - Admin module + audit *(done)*
 
 **Covers** §10, §11 · **BR-12, BR-14** · **UAT-11, UAT-14**
 
@@ -419,9 +424,9 @@ Still open here, and it is an ops step rather than code: **the deployed instance
 administrator account.** There is deliberately no route that grants the role, so the first
 one is one `INSERT INTO user_roles` — until then that instance has to keep both flags off.
 
-## M11 - Hardening and acceptance
+## M11 - Hardening and acceptance *(done)*
 
-**Covers** §12.4, §12.5, §13
+**Covers** §12.4, §12.5, §13 · **BR-14**
 
 - Load-test the two budgets (p95 < 2s standard, < 3s search first page) and fix
   what misses. Only then consider the denormalized projection escape hatch.
@@ -433,6 +438,29 @@ one is one `INSERT INTO user_roles` — until then that instance has to keep bot
 - Deliverables of §13.2: OpenAPI description, migrations, `.env.example`,
   deployment package, technical documentation, test evidence.
 - Walk all 15 UAT scenarios in the test environment.
+
+*Built, and six things are worth carrying forward.*
+
+- **The two budgets pass with an order of magnitude to spare**, so the projection stays
+  deferred. The useful result was the *curve*, not the pass: measuring at 50k and again at
+  200k showed the unfiltered search is linear in the searchable population, and
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md) names the volume that reopens the question
+  (500k) and the cheaper fix to try before a projection.
+- **The public route surface is frozen by a test**, not by review. "Permission enforcement
+  for every protected API" is a property of the *set* of routes, and the realistic failure
+  is an unintended `@Public()`, not a missing guard.
+- **The fifteen acceptance scenarios are a test file** (`src/uat/uat.int.spec.ts`), one
+  `describe` per row of §13.1, run with both moderation flags on because that is the
+  product the scenarios describe. They found no defect.
+- **The restore is rehearsed**, and the drill provokes a rule rather than counting objects:
+  so many of this product's guarantees *are* database objects that a dump which restored
+  the tables and dropped a predicate would look healthy.
+- **BR-14 came off the blocking list without the client answering it**, using the pattern
+  that already worked twice: the policy is data with a provenance tag. The M10 collision is
+  resolved by erasing the person and keeping the actor - `RESTRICT` got the answer it was
+  holding out for rather than being relaxed.
+- **Two gaps are stated rather than closed**: malware scanning cannot be done where the
+  bytes live, and `API_DOCS_ENABLED` on a public hostname is an operator decision.
 
 ---
 
