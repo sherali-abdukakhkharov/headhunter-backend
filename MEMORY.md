@@ -30,6 +30,31 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-10 (M1, late) - SMS delivery is built; two rules in it are easy to undo
+
+The Eskiz integration exists behind the same seam as push - `SmsSender`, a real
+implementation and a logging one, chosen at boot - so buying the account is two
+environment variables. **Nothing has been run against a real account**, and the doc says
+so; the field spellings came from Eskiz's generated client, not from the vendor page.
+
+Two decisions in `OtpService` would look like tidying and are not:
+
+- **Issuing and delivering are separate methods.** An HTTP call inside the issuing
+  transaction holds the row lock for the provider's latency, and a provider timeout rolls
+  back the code it has already sent. Issue, commit, then deliver.
+- **A failed send deletes the code it was for.** The obvious reason is that a code nobody
+  received should not occupy the one-live-code slot. The real one is that the resend delay
+  is measured in SQL from the most recent row *whatever its state* - so leaving it behind
+  locks the user out of retrying for a minute over a message that never arrived. That is
+  the kind of thing found in production, and it has an integration test.
+
+And one that reads backwards until you see it: `sms_not_configured` is the **only**
+failure `deliver` treats as success. Deleting the code on the no-op path would break every
+development and test login, because `OTP_STATIC_CODE` is how anybody signs in here.
+
+`OTP_STATIC_CODE` still is not a bypass, and this did not make it one: it fixes which code
+is issued, and the delivery path around it is the production one.
+
 ### 2026-08-08 (M11) - BR-14: erase the person, keep the actor
 
 The last blocking client question came off the list without the client answering it, using

@@ -119,6 +119,15 @@ export const MESSAGES = {
     ru: 'Код уже отправлен. Подождите, прежде чем запросить новый.',
     en: 'A code was already sent. Wait before requesting another.',
   },
+  // Delivery failed at the provider. Distinct from every other OTP message because the
+  // user did nothing wrong and retrying is the correct advice - "invalid code" here
+  // would send them looking for a message that was never sent.
+  'auth.otp_send_failed': {
+    'uz-Latn': 'Kodni yuborib boʻlmadi. Birozdan soʻng qayta urinib koʻring.',
+    'uz-Cyrl': 'Кодни юбориб бўлмади. Бироздан сўнг қайта уриниб кўринг.',
+    ru: 'Не удалось отправить код. Повторите попытку через некоторое время.',
+    en: 'Could not send the code. Please try again shortly.',
+  },
   // Telegram login. One message for every verification failure - bad signature,
   // wrong audience, expired, stale - for the same reason as the OTP message above:
   // the distinctions describe our validation to whoever is probing it, and none of
@@ -584,6 +593,18 @@ export const MESSAGES = {
     ru: 'Статус вашего отклика на «{vacancy}» изменился.',
     en: 'The status of your application for “{vacancy}” has changed.',
   },
+  // --- SMS bodies (§4.1) ---------------------------------------------------
+  // The one message this product sends over SMS. It lives here with everything else
+  // a user reads, but it is **not** free text: Eskiz approves templates, so changing
+  // this wording means re-submitting it for approval in all four variants. Keep it
+  // short - an SMS is billed per 160 characters, and Cyrillic halves that to 70.
+  'sms.otp_code': {
+    'uz-Latn': 'Universal HeadHunter: kirish kodi {code}. Hech kimga bermang.',
+    'uz-Cyrl': 'Universal HeadHunter: кириш коди {code}. Ҳеч кимга берманг.',
+    ru: 'Universal HeadHunter: код входа {code}. Никому его не сообщайте.',
+    en: 'Universal HeadHunter: your login code is {code}. Do not share it.',
+  },
+
   'notification.invitation_received': {
     'uz-Latn': '{employer} sizni ishga taklif qildi.',
     'uz-Cyrl': '{employer} сизни ишга таклиф қилди.',

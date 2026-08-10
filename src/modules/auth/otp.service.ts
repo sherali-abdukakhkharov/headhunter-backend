@@ -5,12 +5,16 @@ import { sql } from 'kysely';
 import {
   TooManyRequestsError,
   UnauthorizedError,
+  UpstreamError,
 } from '@infra/api/exceptions/localized.exception';
 import { generateOtpCode, hashSecret, verifySecret } from '@infra/crypto/hash';
 import { type Database, KYSELY } from '@infra/db/database.module';
-import type { OtpPurpose } from '@infra/db/database.types';
+import type { LocaleCode, OtpPurpose } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
+import { translate } from '@infra/i18n/translate';
 import { maskPhone } from '@infra/phone/phone';
+
+import { SmsSender } from './sms/sms-sender';
 
 export interface OtpSendResult {
   expiresAt: Date;
@@ -33,6 +37,7 @@ export class OtpService {
 
   constructor(
     @Inject(KYSELY) private readonly db: Database,
+    private readonly sms: SmsSender,
     config: ConfigService<AppEnv, true>,
   ) {
     this.pepper = config.get('TOKEN_HASH_PEPPER', { infer: true });
@@ -78,7 +83,28 @@ export class OtpService {
     phone: string,
     purpose: OtpPurpose,
     requestedIp: string | null,
+    locale: LocaleCode = 'uz-Latn',
   ): Promise<OtpSendResult> {
+    const issued = await this.issue(phone, purpose, requestedIp);
+
+    await this.deliver(phone, purpose, locale, issued.code);
+
+    return issued.result;
+  }
+
+  /**
+   * Issues and stores the code, inside one transaction.
+   *
+   * Split from delivery on purpose. An HTTP call to the SMS provider inside this
+   * transaction would hold the row lock for the provider's latency, and a provider
+   * timeout would roll back the code it had already sent - the same trap MEMORY.md
+   * records for OTP attempt counters, in the other direction.
+   */
+  private async issue(
+    phone: string,
+    purpose: OtpPurpose,
+    requestedIp: string | null,
+  ): Promise<{ result: OtpSendResult; code: string; id: string }> {
     return this.db.transaction().execute(async (trx) => {
       // The delay is evaluated entirely in the database. Comparing a Postgres
       // `created_at` against the app's `Date.now()` mixes two clocks: a few
@@ -135,20 +161,71 @@ export class OtpService {
           expires_at: sql<Date>`now() + make_interval(secs => ${this.ttlSeconds})`,
           requested_ip: requestedIp,
         })
-        .returning(['created_at', 'expires_at'])
+        .returning(['id', 'created_at', 'expires_at'])
         .executeTakeFirstOrThrow();
 
       // The code is never logged (§12.1, §4.2) and the phone is truncated.
       this.logger.log(`OTP issued for ${maskPhone(phone)} (${purpose})`);
 
       return {
-        expiresAt: inserted.expires_at,
-        resendAvailableAt: new Date(
-          inserted.created_at.getTime() + this.resendDelaySeconds * 1000,
-        ),
-        ...(this.echoInResponse ? { devCode: code } : {}),
+        result: {
+          expiresAt: inserted.expires_at,
+          resendAvailableAt: new Date(
+            inserted.created_at.getTime() + this.resendDelaySeconds * 1000,
+          ),
+          ...(this.echoInResponse ? { devCode: code } : {}),
+        },
+        code,
+        id: inserted.id,
       };
     });
+  }
+
+  /**
+   * Hands the code to the SMS provider, after the commit.
+   *
+   * **A failed send removes the row it was for.** Two reasons, and the second is the one
+   * that would have been found in production: a code nobody received should not be
+   * consuming the one-live-code slot, and - because the resend delay is measured from
+   * the most recent row whatever its state - leaving it would lock the user out of
+   * retrying for a minute for a message that never arrived.
+   *
+   * Then it throws. "Sent" when nothing was sent is the worst available outcome for
+   * somebody staring at a code-entry screen.
+   *
+   * The one exception is a deployment with no provider configured, where the logging
+   * sender reports `failed` by design. There the code is still wanted: `OTP_STATIC_CODE`
+   * and `OTP_ECHO_IN_RESPONSE` are how anybody logs in, and deleting the row would break
+   * every development and test login.
+   */
+  private async deliver(
+    phone: string,
+    purpose: OtpPurpose,
+    locale: LocaleCode,
+    code: string,
+  ): Promise<void> {
+    const result = await this.sms.send({
+      phone,
+      text: translate('sms.otp_code', locale, { code }),
+      locale,
+    });
+
+    if (result.status === 'sent' || result.error === 'sms_not_configured') {
+      return;
+    }
+
+    await this.db
+      .deleteFrom('otp_codes')
+      .where('phone', '=', phone)
+      .where('purpose', '=', purpose)
+      .where('consumed_at', 'is', null)
+      .execute();
+
+    this.logger.error(
+      `OTP delivery failed for ${maskPhone(phone)} (${purpose}): ${result.error ?? 'unknown'}`,
+    );
+
+    throw new UpstreamError('auth.otp_send_failed');
   }
 
   /**

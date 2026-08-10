@@ -13,6 +13,7 @@ import { HiringInteractionService } from '@infra/privacy/hiring-interaction.serv
 import { AuthService } from '@modules/auth/auth.service';
 import { OtpService } from '@modules/auth/otp.service';
 import { SessionService } from '@modules/auth/session.service';
+import { LoggingSmsSender } from '@modules/auth/sms/logging-sms.sender';
 import { TokenService } from '@modules/auth/token.service';
 import { AuditService } from '@modules/admin/audit.service';
 import { AdminModerationService } from '@modules/admin/moderation.service';
@@ -147,7 +148,10 @@ beforeAll(() => {
   const idempotency = new IdempotencyService(db);
   const audit = new AuditService(db);
 
-  otp = new OtpService(db, config);
+  // No SMS provider on this instance, which is the state UAT-01 actually runs in: the
+  // logging sender reports failure and `OtpService` leaves the code in place, so
+  // `OTP_ECHO_IN_RESPONSE` returns it exactly as a developer would see.
+  otp = new OtpService(db, new LoggingSmsSender(), config);
   auth = new AuthService(
     db,
     new SessionService(db, config),

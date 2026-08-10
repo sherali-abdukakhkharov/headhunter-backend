@@ -1,9 +1,16 @@
 # SMS delivery — Eskiz.uz
 
-**Status: not bought, not integrated.** Login codes are issued and stored but
-delivered nowhere; `OTP_STATIC_CODE` stands in (README "Login"). This file exists so
-that connecting the provider is a morning's work rather than a research task, and so
-the two questions that can *change the OTP text* are asked before money changes hands.
+**Status: built, not bought.** The integration is written and tested; there is no
+account. Set `ESKIZ_EMAIL` and `ESKIZ_PASSWORD` and codes go out - that is the whole
+connection, and nothing in the codebase changes.
+
+Until then the login path is unchanged: codes are issued and stored, `OTP_STATIC_CODE`
+fixes them and `OTP_ECHO_IN_RESPONSE` returns them, and the logging sender reports
+`failed` rather than pretending anything was delivered.
+
+**Nothing here has been run against a real Eskiz account**, because there is not one.
+The field spellings below are the part to re-check on purchase; everything else is
+exercised by `src/modules/auth/sms/sms.spec.ts` against a stubbed `fetch`.
 
 Client direction 2026-08-05: the provider is **Eskiz.uz**, vendor reference
 <https://documenter.getpostman.com/view/663428/RzfmES4z?version=latest>.
@@ -50,24 +57,53 @@ boot-validated env vars, the token is held in memory, and a 401 means re-login r
 than fail — a token that expired mid-flight must not turn into a user-visible login
 failure.
 
-## How it plugs in
+## How it is plugged in
 
-`OtpService.send` already issues, hashes, stores and supersedes the code inside one
-transaction. Delivery is the one thing it does not do, and it is additive:
+`src/modules/auth/sms/`, the same seam shape as push:
 
-- **A sender interface with two implementations** — `EskizSmsSender` and a
-  `LoggingSmsSender` that records "would have sent" and nothing else. The no-op is what
-  keeps `pnpm test` and `pnpm test:int` database-only and offline; it is also the
-  correct behaviour for a dev machine.
-- **Send after the transaction commits, never inside it.** This is the trap MEMORY.md
-  already records in another form: an HTTP call inside a transaction holds a row lock
-  for the provider's latency, and a provider timeout would roll back the code that was
-  already sent. Issue, commit, then hand the code to the sender.
-- **A send failure is a 502-class error, not a silent success.** The user is staring at
-  a code entry screen; "sent" when nothing was sent is the worst available outcome. It
-  needs its own `messages.ts` key in four variants.
-- **Never log the code or the full number.** `maskPhone` already exists and the OTP
-  logging rule is in CLAUDE.md; a provider client is the easiest place to leak both.
+| File | What it is |
+|---|---|
+| `sms-sender.ts` | The abstraction. Knows nothing about OTPs - it takes rendered text |
+| `eskiz-sms.sender.ts` | The provider client: token login, one retry on 401, error classification |
+| `logging-sms.sender.ts` | What runs with no account. Reports `failed`, never `sent` |
+
+`AuthModule` picks between them at boot from `ESKIZ_EMAIL`, and warns when it picks the
+logging one - so a deployment that was *supposed* to send announces the omission.
+
+Five decisions are worth knowing before changing any of it.
+
+- **Issue and deliver are separate methods.** An HTTP call inside the issuing
+  transaction would hold the row lock for the provider's latency, and a provider
+  timeout would roll back the code it had already sent. `issue` commits; `deliver`
+  runs after.
+- **A failed send deletes the code it was for.** Not only because a code nobody
+  received should not occupy the one-live-code slot: the resend delay is measured from
+  the most recent row *whatever its state*, so leaving it would lock the user out of
+  retrying for a minute over a message that never arrived. That one is easy to miss and
+  has its own integration test.
+- **A send failure is a 502**, never a silent success - `auth.otp_send_failed`, in four
+  variants. The user is staring at a code-entry screen.
+- **"No provider configured" is not a failure.** The logging sender's
+  `sms_not_configured` is the one result `deliver` treats as success, because deleting
+  the code there would break every development and test login.
+- **The message text lives in `messages.ts`** with everything else a user reads, in four
+  variants, and is asserted to fit one Cyrillic SMS segment (70 characters) - two
+  segments is twice the price for every login on the platform.
+
+Neither the code nor the full number is ever logged; `maskPhone` is used throughout.
+
+## Connecting it, on the day the account exists
+
+1. Set `ESKIZ_EMAIL` and `ESKIZ_PASSWORD` in `.env`, then `pnpm api:up`.
+2. Check the boot log: the warning about `ESKIZ_EMAIL` should be gone.
+3. Send yourself a code. In test mode Eskiz accepts only its three fixed strings, so
+   expect `sms_template_not_approved` until a template is approved - the client
+   classifies that refusal specifically, because the fix is not in this codebase.
+4. Submit the four `sms.otp_code` variants for approval (or one, if the client decides
+   a single Russian/Uzbek text serves everyone).
+5. Once codes arrive: clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE`. Production
+   boot already refuses both, so this is staging hygiene.
+6. Confirm `ESKIZ_FROM` matches the originator on the account.
 - **`OTP_STATIC_CODE` is removed by clearing it**, not by editing code. It substitutes
   at code generation only, so a real sender inherits every behaviour the fixed code was
   tested with.

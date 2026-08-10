@@ -207,6 +207,26 @@ export interface AppEnv {
   FCM_TIMEOUT_MS: number;
 
   /**
+   * OTP delivery through Eskiz.uz (§4.1, docs/SMS_PROVIDER.md).
+   *
+   * **Empty is a supported state**, exactly as for FCM: the login flow is complete and
+   * tested without a provider, because `OTP_STATIC_CODE` fixes the code and
+   * `OTP_ECHO_IN_RESPONSE` returns it. With these empty the logging sender runs, which
+   * reports `failed` rather than pretending.
+   *
+   * The credential is an account **login**, not an issued key - Eskiz has no API key, so
+   * the token is obtained with these and refreshed when it expires. That is why there
+   * are two variables here and not one.
+   */
+  ESKIZ_EMAIL: string;
+  ESKIZ_PASSWORD: string;
+  /** The originator on the account: the shared short code, or a branded sender. */
+  ESKIZ_FROM: string;
+  ESKIZ_BASE_URL: string;
+  /** A login screen is waiting on this, so it is shorter than the file timeouts. */
+  ESKIZ_TIMEOUT_MS: number;
+
+  /**
    * How far §7.2's count-before-open counts before answering "n+".
    *
    * Configuration rather than a constant for the reason every other limit here is: the
@@ -374,6 +394,26 @@ export const envSchema = Joi.object<AppEnv, true>({
   // degraded instance, not an unsafe one, and the in-app list still carries every notice.
   FCM_SERVICE_ACCOUNT_BASE64: Joi.string().allow('').default(''),
   FCM_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
+
+  // SMS (§4.1). Empty by default, and empty is fine for the same reason as push: the
+  // login path works on OTP_STATIC_CODE and the logging sender never claims a delivery.
+  // Both are required together - an email with no password is a misconfiguration that
+  // would otherwise surface as a failed login at the worst moment - and neither is
+  // refused in production, because an instance whose SMS is down is degraded rather
+  // than unsafe.
+  ESKIZ_EMAIL: Joi.string().allow('').default(''),
+  ESKIZ_PASSWORD: Joi.string()
+    .allow('')
+    .default('')
+    .when('ESKIZ_EMAIL', {
+      is: Joi.string().min(1),
+      then: Joi.string().min(1).messages({
+        'string.empty': 'ESKIZ_PASSWORD is required when ESKIZ_EMAIL is set',
+      }),
+    }),
+  ESKIZ_FROM: Joi.string().default('4546'),
+  ESKIZ_BASE_URL: Joi.string().uri().default('https://notify.eskiz.uz'),
+  ESKIZ_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

@@ -56,7 +56,13 @@ re-derivable from the text.
   generated, so everything downstream is the production path — never add a second
   acceptance path in `verify`, and never relax the TTL, the attempt limit or
   single-use consumption because "it's only the dev code". Boot refuses the variable
-  in production. Delivery is still owed: [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md).
+  in production. **Delivery is built but not bought** — `SmsSender` has an Eskiz
+  implementation and a logging one, chosen at boot, so connecting it is two environment
+  variables ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)). Two rules there are easy to
+  undo: issuing and delivering are separate methods, because an HTTP call inside the
+  issuing transaction holds a row lock for the provider's latency; and a *failed* send
+  deletes its code, or the resend delay locks the user out over a message that never
+  arrived.
 - **Telegram login is deprecated but still works** (`POST /auth/telegram`). If you
   touch it: an `id_token` is trusted only after signature, issuer, `aud` = our bot id
   and `iat` age all pass, and an account is never matched on a phone Telegram did not

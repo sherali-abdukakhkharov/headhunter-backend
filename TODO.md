@@ -118,9 +118,16 @@ needs them.
       disagrees with `OTP_LENGTH` fails at boot
 - [x] Tests: the fixed code verifies, is consumed on first use, does not make wrong
       codes pass, and a wrong-length value refuses to boot
-- [ ] **Connect Eskiz.uz** - the one thing standing between this and real users.
-      Shape, constraints and the questions to ask on purchase:
-      [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md). *Blocked: not bought yet.*
+- [x] **Build the Eskiz.uz integration** - done, behind the same seam as push:
+      `SmsSender` with `EskizSmsSender` and `LoggingSmsSender`, chosen at boot from
+      `ESKIZ_EMAIL`. Issuing and delivering are separate methods (an HTTP call inside
+      the issuing transaction would hold a row lock), a failed send deletes its code (or
+      the resend delay locks the user out over a message that never arrived), and a
+      failure is a 502 rather than a silent success. 11 unit tests over a stubbed
+      `fetch`, 4 integration tests over the real table
+- [ ] **Buy the account and connect it** - two environment variables and a redeploy;
+      the runbook is at the end of [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md).
+      *Blocked: not bought yet.* **Nothing has been run against a real account**
 - [ ] Submit the OTP message for template approval (four interface variants, or a
       client decision to use one). Approval turnaround is the long pole, not the code
 - [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` once a provider sends -

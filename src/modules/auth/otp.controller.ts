@@ -5,6 +5,9 @@ import type { Request } from 'express';
 
 import { Public } from '@infra/api/decorators/public.decorator';
 import { RateLimit } from '@infra/api/decorators/rate-limit.decorator';
+import { XLang } from '@infra/api/decorators/x-lang.decorator';
+import { resolveClientIp } from '@infra/api/client-ip';
+import type { LocaleCode } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
 import { normalizePhone } from '@infra/phone/phone';
 import { formatWithOffset } from '@infra/time/format';
@@ -40,6 +43,7 @@ import type { DeviceInfo } from './session.service';
 @UseGuards(OtpEnabledGuard)
 export class OtpController {
   private readonly timeZone: string;
+  private readonly clientIpHeader: string | null;
 
   constructor(
     private readonly auth: AuthService,
@@ -47,6 +51,10 @@ export class OtpController {
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
+    // Lower-cased once, as the rate-limit guard does: Node exposes headers lower-cased,
+    // and a mismatch would silently store the tunnel's address as the caller's.
+    this.clientIpHeader =
+      config.get('CLIENT_IP_HEADER', { infer: true }).toLowerCase() || null;
   }
 
   @Public()
@@ -66,11 +74,15 @@ export class OtpController {
   async sendOtp(
     @Body() dto: SendOtpDto,
     @Req() request: Request,
+    @XLang() locale: LocaleCode,
   ): Promise<OtpSentResponseDto> {
+    // The code is sent in the language the client is asking in - the one screen where
+    // the recipient has not yet got an account whose locale we could read.
     const result = await this.otp.send(
       normalizePhone(dto.phone),
       dto.purpose ?? 'login',
-      request.ip ?? null,
+      resolveClientIp(request, this.clientIpHeader),
+      locale,
     );
 
     return {
@@ -96,8 +108,9 @@ export class OtpController {
   resendOtp(
     @Body() dto: SendOtpDto,
     @Req() request: Request,
+    @XLang() locale: LocaleCode,
   ): Promise<OtpSentResponseDto> {
-    return this.sendOtp(dto, request);
+    return this.sendOtp(dto, request, locale);
   }
 
   @Public()

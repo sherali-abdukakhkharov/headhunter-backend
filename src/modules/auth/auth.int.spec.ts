@@ -15,6 +15,8 @@ import { UsersService } from '@modules/users/users.service';
 
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
+import { LoggingSmsSender } from './sms/logging-sms.sender';
+import type { SmsResult, SmsSender } from './sms/sms-sender';
 import { SessionService } from './session.service';
 import { TokenService } from './token.service';
 
@@ -77,9 +79,12 @@ afterAll(async () => {
   await db.destroy();
 });
 
-function services(overrides: Partial<AppEnv> = {}) {
+function services(overrides: Partial<AppEnv> = {}, sender?: SmsSender) {
   const config = configService(overrides);
-  const otp = new OtpService(db, config);
+  // The logging sender by default: it reports `failed` with `sms_not_configured`,
+  // which `OtpService` treats as "no provider configured" and leaves the code in place
+  // - the state every one of these tests has always run in.
+  const otp = new OtpService(db, sender ?? new LoggingSmsSender(), config);
   const sessions = new SessionService(db, config);
   // JwtService needs no Nest container: TokenService passes the secret per call.
   const tokens = new TokenService(new JwtService({}), config);
@@ -691,5 +696,110 @@ describe('TokenService', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+});
+
+/**
+ * OTP delivery (§4.1, docs/SMS_PROVIDER.md).
+ *
+ * These need a real database because the thing being asserted is what is *left in the
+ * table* after a send that failed - and the resend delay is evaluated in SQL against the
+ * rows that remain.
+ */
+describe('OTP delivery', () => {
+  /** A sender that reports whatever it is told to, without touching a network. */
+  function sender(result: SmsResult): SmsSender {
+    return { send: () => Promise.resolve(result) };
+  }
+
+  it('sends the code, in the language the client asked in', async () => {
+    const sent: { text: string; locale: string }[] = [];
+    const recording: SmsSender = {
+      send: (message) => {
+        sent.push({ text: message.text, locale: message.locale });
+
+        return Promise.resolve({ status: 'sent' as const });
+      },
+    };
+
+    const { otp } = services({ OTP_STATIC_CODE: '424242' }, recording);
+    await otp.send(testPhone(), 'login', null, 'ru');
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.locale).toBe('ru');
+    // The code is in the message and the message is Russian - the one screen where the
+    // recipient has no account whose locale could be read instead.
+    expect(sent[0]?.text).toContain('424242');
+    expect(sent[0]?.text).toMatch(/[А-Яа-я]/);
+  });
+
+  it('removes the code when delivery fails, so the user can retry at once', async () => {
+    const phone = testPhone();
+    const { otp } = services(
+      { OTP_RESEND_DELAY_SECONDS: 60 },
+      sender({ status: 'failed', error: 'sms_rejected_500' }),
+    );
+
+    await expect(otp.send(phone, 'login', null)).rejects.toMatchObject({
+      messageKey: 'auth.otp_send_failed',
+    });
+
+    // Nothing was delivered, so nothing should be live: a code the user never received
+    // must not occupy the one-live-code slot.
+    const rows = await db
+      .selectFrom('otp_codes')
+      .select('id')
+      .where('phone', '=', phone)
+      .where('consumed_at', 'is', null)
+      .execute();
+    expect(rows).toEqual([]);
+
+    // And - the part that would have been found in production - the resend delay is
+    // measured from the most recent row whatever its state, so leaving it behind would
+    // lock the user out for a minute over a message that never arrived.
+    const retried = await services(
+      { OTP_RESEND_DELAY_SECONDS: 60, OTP_ECHO_IN_RESPONSE: true },
+      sender({ status: 'sent' }),
+    ).otp.send(phone, 'login', null);
+
+    expect(retried.devCode).toMatch(/^\d{6}$/);
+  });
+
+  it('keeps the code when no provider is configured at all', async () => {
+    const phone = testPhone();
+    const { otp } = services(
+      { OTP_STATIC_CODE: '666666' },
+      new LoggingSmsSender(),
+    );
+
+    // The development and test path: the logging sender reports `failed`, and it must
+    // not be mistaken for a provider that failed - deleting the row here would break
+    // every login on an instance with no Eskiz account.
+    await expect(otp.send(phone, 'login', null)).resolves.toMatchObject({
+      devCode: '666666',
+    });
+    await expect(otp.verify(phone, 'login', '666666')).resolves.toBeUndefined();
+  });
+
+  it('does not send at all when the send itself was refused', async () => {
+    const phone = testPhone();
+    let calls = 0;
+    const counting: SmsSender = {
+      send: () => {
+        calls += 1;
+
+        return Promise.resolve({ status: 'sent' as const });
+      },
+    };
+
+    const { otp } = services({ OTP_RESEND_DELAY_SECONDS: 3600 }, counting);
+    await otp.send(phone, 'login', null);
+
+    // The resend delay refuses this inside the transaction, before a code exists. An
+    // SMS sent here would be a message with no code behind it.
+    await expect(otp.send(phone, 'login', null)).rejects.toMatchObject({
+      messageKey: 'auth.otp_resend_too_soon',
+    });
+    expect(calls).toBe(1);
   });
 });
