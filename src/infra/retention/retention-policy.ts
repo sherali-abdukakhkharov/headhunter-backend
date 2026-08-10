@@ -96,7 +96,8 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
   },
   {
     code: 'admin_actor_identity',
-    subject: 'The account of a user who has acted as an administrator',
+    subject:
+      'The account of a user who has acted as an administrator, or holds a wallet',
     days: 30,
     trigger: 'the deletion request',
     action: 'anonymize',
@@ -107,6 +108,23 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
       'keeping the actor: the phone number, name and Telegram identity go, the row and ' +
       'its id stay, so every decision still resolves to a distinct administrator ' +
       'without naming one. This is the only rule here that is not a preference.',
+  },
+  {
+    code: 'wallet_ledger',
+    subject:
+      'The Coin ledger, Candidate Unlocks, and payment records of an employer',
+    days: null,
+    trigger: 'never',
+    action: 'keep',
+    provenance: 'required',
+    legalBasis:
+      'BR-24 makes the ledger append-only, and §6.7 requires payment records to be kept ' +
+      '"for support and reconciliation" with fiscal attributes supplied by the client’s ' +
+      'accounting function. A financial history that vanished when somebody closed their ' +
+      'account would satisfy neither, and would leave payments received against no ' +
+      'record. So the rows stay and the person does not: an employer with a wallet is ' +
+      'anonymized rather than deleted, exactly as an administrator who has acted is. ' +
+      'What remains is a balance against an id nobody can resolve to a person.',
   },
   {
     code: 'admin_audit_log',

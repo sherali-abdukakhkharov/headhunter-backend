@@ -4,6 +4,7 @@ import { FilesModule } from '@infra/files/files.module';
 import { EmployersModule } from '@modules/employers/employers.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { VacanciesModule } from '@modules/vacancies/vacancies.module';
+import { WalletModule } from '@modules/wallet/wallet.module';
 
 import { AdminController } from './admin.controller';
 import { AuditService } from './audit.service';
@@ -11,6 +12,7 @@ import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import { AdminModerationService } from './moderation.service';
 import { RetentionService } from './retention.service';
+import { AdminWalletsService } from './wallets-admin.service';
 import { AdminUsersService } from './users-admin.service';
 
 /**
@@ -27,7 +29,16 @@ import { AdminUsersService } from './users-admin.service';
  * Nothing here re-implements a rule that lives in the module that owns the aggregate.
  */
 @Module({
-  imports: [EmployersModule, VacanciesModule, FilesModule, NotificationsModule],
+  imports: [
+    EmployersModule,
+    VacanciesModule,
+    FilesModule,
+    NotificationsModule,
+    // §10.5's wallet views and the audited manual adjustment. The balance arithmetic and
+    // the row lock stay in WalletService; this module adds the queue, the actor and the
+    // audit row, exactly as it did for M4's and M5's decision machines.
+    WalletModule,
+  ],
   controllers: [AdminController],
   providers: [
     AuditService,
@@ -36,6 +47,7 @@ import { AdminUsersService } from './users-admin.service';
     AdminUsersService,
     DictionaryAdminService,
     RetentionService,
+    AdminWalletsService,
   ],
 })
 export class AdminModule {}

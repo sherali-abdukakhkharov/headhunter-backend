@@ -227,6 +227,22 @@ export interface AppEnv {
   ESKIZ_TIMEOUT_MS: number;
 
   /**
+   * The Coin economy (§6.6, §10.5).
+   *
+   * §6.6 requires these to be "server-side business configuration, not hard-coded in
+   * Flutter", and §10.5 adds that changing one "affects future transactions only and does
+   * not rewrite historical ledger records" - which is why every wallet transaction stores
+   * the price it was priced at instead of deriving it at read time.
+   *
+   * Environment variables rather than an administrator-editable table, because §10.5
+   * calls them "server configuration values": a price change is a deployment decision
+   * with an audit trail in git, not a button somebody can press twice.
+   */
+  COIN_PRICE_UZS: number;
+  CANDIDATE_UNLOCK_COINS: number;
+  EMPLOYER_REGISTRATION_BONUS_COINS: number;
+
+  /**
    * How far §7.2's count-before-open counts before answering "n+".
    *
    * Configuration rather than a constant for the reason every other limit here is: the
@@ -414,6 +430,18 @@ export const envSchema = Joi.object<AppEnv, true>({
   ESKIZ_FROM: Joi.string().default('4546'),
   ESKIZ_BASE_URL: Joi.string().uri().default('https://notify.eskiz.uz'),
   ESKIZ_TIMEOUT_MS: Joi.number().integer().min(1000).default(10_000),
+
+  // The Coin economy (§6.6). The defaults are the specification's stated initial values:
+  // 1 Coin = UZS 10 000, an unlock costs 2 Coins, a new employer gets 10 free.
+  //
+  // `min(1)` on the unlock cost is deliberate: a free unlock would make BR-16's
+  // "charged once per pair" vacuous and would leave contact details behind a gate that
+  // opens for everybody, which is the opposite of what §11.1 asks for. Zero is a
+  // configuration mistake, not a business decision, so boot refuses it.
+  COIN_PRICE_UZS: Joi.number().integer().min(1).default(10_000),
+  CANDIDATE_UNLOCK_COINS: Joi.number().integer().min(1).default(2),
+  // Zero *is* allowed here: an instance that gives no free Coins is a pricing decision.
+  EMPLOYER_REGISTRATION_BONUS_COINS: Joi.number().integer().min(0).default(10),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

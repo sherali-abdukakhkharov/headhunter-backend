@@ -14,6 +14,7 @@ import type {
 
 import type { DeviceInfo } from './session.service';
 import { SessionService } from './session.service';
+import { WalletService } from '@modules/wallet/wallet.service';
 import { TokenService } from './token.service';
 
 export interface AuthTokens {
@@ -33,6 +34,7 @@ export class AuthService {
     @Inject(KYSELY) private readonly db: Database,
     private readonly sessions: SessionService,
     private readonly tokens: TokenService,
+    private readonly wallet: WalletService,
   ) {}
 
   /**
@@ -309,12 +311,23 @@ export class AuthService {
 
     const unique = [...new Set(roles)];
 
-    await this.db
-      .insertInto('user_roles')
-      .values(unique.map((role) => ({ user_id: userId, role })))
-      // Re-running onboarding must not fail on a role the user already holds.
-      .onConflict((oc) => oc.columns(['user_id', 'role']).doNothing())
-      .execute();
+    // One transaction, because BR-15's bonus belongs to the employer role itself: an
+    // employer with no wallet, or a wallet with no bonus, is a state somebody would have
+    // to repair by hand. The grant is safe to attempt every time - a partial unique index
+    // makes it one-time, which is what covers §6.6's "not again after logout, reinstall,
+    // device change, or role switching" without any of those four being checked here.
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto('user_roles')
+        .values(unique.map((role) => ({ user_id: userId, role })))
+        // Re-running onboarding must not fail on a role the user already holds.
+        .onConflict((oc) => oc.columns(['user_id', 'role']).doNothing())
+        .execute();
+
+      if (unique.includes('employer')) {
+        await this.wallet.grantRegistrationBonus(trx, userId);
+      }
+    });
 
     return this.sessions.rolesFor(userId);
   }

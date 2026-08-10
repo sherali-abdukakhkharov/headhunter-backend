@@ -449,3 +449,66 @@ describe('the transient sweeps', () => {
       .execute();
   });
 });
+
+/**
+ * BR-14 versus the wallet ledger (M12).
+ *
+ * The second collision of the same shape as the audit log, and it was found by an M12 test
+ * rather than by design: `employer_wallets` cascades to an append-only ledger, so deleting
+ * an employer who had ever held a Coin failed *inside* the cascade with
+ * "wallet_transactions is append-only". Financial history has to outlive the account
+ * (BR-24, §6.7), so the answer is the one already established for administrators - erase
+ * the person, keep the record.
+ */
+describe('an account with financial history', () => {
+  it('is anonymized rather than deleted, and the ledger survives', async () => {
+    const adminUserId = await newUser('admin');
+    const employerUserId = await newUser('employer');
+
+    // A wallet with a single transaction is enough: one Coin of history is history.
+    await db
+      .insertInto('employer_wallets')
+      .values({ user_id: employerUserId, balance_coins: 10 })
+      .execute();
+    await db
+      .insertInto('wallet_transactions')
+      .values({
+        employer_user_id: employerUserId,
+        kind: 'registration_bonus',
+        amount_coins: 10,
+        balance_before: 0,
+        balance_after: 10,
+      })
+      .execute();
+
+    await requestDeletion(employerUserId);
+
+    const planned = (await retention.due()).accounts.find(
+      (account) => account.userId === employerUserId,
+    );
+    expect(planned).toMatchObject({ action: 'anonymize', walletRows: 1 });
+
+    const outcome = await retention.purge(adminUserId);
+    expect(outcome.anonymized).toContain(employerUserId);
+    expect(outcome.failed).toEqual([]);
+
+    // The person is gone.
+    const after = await db
+      .selectFrom('users')
+      .select(['phone', 'purged_at'])
+      .where('id', '=', employerUserId)
+      .executeTakeFirstOrThrow();
+    expect(after.phone).toBeNull();
+    expect(after.purged_at).toBeInstanceOf(Date);
+
+    // The money is not. A balance against an id nobody can resolve to a person is
+    // exactly what §6.7's reconciliation needs and what BR-14 permits.
+    expect(
+      await db
+        .selectFrom('wallet_transactions')
+        .select('amount_coins')
+        .where('employer_user_id', '=', employerUserId)
+        .execute(),
+    ).toEqual([expect.objectContaining({ amount_coins: 10 })]);
+  });
+});

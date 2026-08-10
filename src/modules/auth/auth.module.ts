@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 
 import type { AppEnv } from '@infra/env-schema';
+import { WalletModule } from '@modules/wallet/wallet.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -34,7 +35,9 @@ import { TokenService } from './token.service';
 @Module({
   // Secret and expiry are passed per call in TokenService, so the module itself
   // needs no async configuration.
-  imports: [JwtModule.register({})],
+  // WalletModule for BR-15's registration bonus, granted in the same transaction as
+  // the employer role.
+  imports: [JwtModule.register({}), WalletModule],
   // `OtpController` is registered even for the MVP, where every one of its routes
   // answers 404 via `OtpEnabledGuard`. Registering it conditionally would mean
   // reading process.env before the Joi schema has validated it, and would let the

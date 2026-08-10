@@ -15,10 +15,12 @@ import { AUDIT_ACTIONS, AuditService } from './audit.service';
 export interface DueAccount {
   userId: string;
   requestedAt: Date;
-  /** `anonymize` when the account is the actor on an audit row - see below. */
+  /** `anonymize` when a record has to outlive the person - see below. */
   action: 'purge' | 'anonymize';
   /** How many audit rows depend on this account's id surviving. */
   auditRows: number;
+  /** How many wallet transactions do. Financial history outlives the account (BR-24). */
+  walletRows: number;
 }
 
 export interface RetentionDue {
@@ -158,6 +160,15 @@ export class RetentionService {
             .select((inner) => inner.fn.countAll<string>().as('count'))
             .whereRef('a.actor_user_id', '=', 'd.user_id')
             .as('auditRows'),
+        // A wallet is the second reason a row cannot be deleted, and it was found by a
+        // test rather than by reading the schema: `employer_wallets` cascades to an
+        // append-only ledger, so the delete failed inside the cascade.
+        (eb) =>
+          eb
+            .selectFrom('wallet_transactions as w')
+            .select((inner) => inner.fn.countAll<string>().as('count'))
+            .whereRef('w.employer_user_id', '=', 'd.user_id')
+            .as('walletRows'),
       ])
       .where('d.cancelled_at', 'is', null)
       .where('d.requested_at', '<', cutoff)
@@ -168,12 +179,20 @@ export class RetentionService {
 
     return rows.map((row) => {
       const auditRows = Number(row.auditRows ?? 0);
+      const walletRows = Number(row.walletRows ?? 0);
 
       return {
         userId: row.userId,
         requestedAt: row.requestedAt,
-        action: auditRows > 0 ? ('anonymize' as const) : ('purge' as const),
+        // Either kind of record keeps the row alive. Both are append-only by design, and
+        // neither can be rewritten to forget who it belonged to - so the person is erased
+        // and the id survives.
+        action:
+          auditRows > 0 || walletRows > 0
+            ? ('anonymize' as const)
+            : ('purge' as const),
         auditRows,
+        walletRows,
       };
     });
   }
@@ -277,9 +296,14 @@ export class RetentionService {
         targetId: account.userId,
         reason:
           account.action === 'anonymize'
-            ? `BR-14: identity erased, actor retained for ${account.auditRows} audit rows`
+            ? `BR-14: identity erased, id retained for ${account.auditRows} audit ` +
+              `row(s) and ${account.walletRows} wallet transaction(s)`
             : 'BR-14: account and personal data deleted',
-        details: { action: account.action, auditRows: account.auditRows },
+        details: {
+          action: account.action,
+          auditRows: account.auditRows,
+          walletRows: account.walletRows,
+        },
       });
     });
   }

@@ -15,6 +15,8 @@ import { UsersService } from '@modules/users/users.service';
 
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
+import { WalletService } from '@modules/wallet/wallet.service';
+
 import { LoggingSmsSender } from './sms/logging-sms.sender';
 import type { SmsResult, SmsSender } from './sms/sms-sender';
 import { SessionService } from './session.service';
@@ -45,6 +47,12 @@ const CONFIG: Partial<AppEnv> = {
   OTP_RESEND_DELAY_SECONDS: 0,
   OTP_MAX_ATTEMPTS: 3,
   OTP_ECHO_IN_RESPONSE: true,
+  // The Coin economy, because `selectRoles` now grants BR-15's bonus inside its own
+  // transaction. The specification's initial values, so a balance assertion here reads
+  // the same as one in the wallet suite.
+  COIN_PRICE_UZS: 10_000,
+  CANDIDATE_UNLOCK_COINS: 2,
+  EMPLOYER_REGISTRATION_BONUS_COINS: 10,
 };
 
 function configService(overrides: Partial<AppEnv> = {}) {
@@ -88,7 +96,14 @@ function services(overrides: Partial<AppEnv> = {}, sender?: SmsSender) {
   const sessions = new SessionService(db, config);
   // JwtService needs no Nest container: TokenService passes the secret per call.
   const tokens = new TokenService(new JwtService({}), config);
-  const auth = new AuthService(db, sessions, tokens);
+  // The real wallet service: BR-15's bonus is granted in the same transaction as the
+  // employer role, so `selectRoles` genuinely writes a ledger row here.
+  const auth = new AuthService(
+    db,
+    sessions,
+    tokens,
+    new WalletService(db, config),
+  );
   const users = new UsersService(db);
 
   return { otp, sessions, tokens, auth, users };
@@ -801,5 +816,90 @@ describe('OTP delivery', () => {
       messageKey: 'auth.otp_resend_too_soon',
     });
     expect(calls).toBe(1);
+  });
+});
+
+/**
+ * BR-15's bonus, at the point it is actually granted.
+ *
+ * The wallet suite tests `grantRegistrationBonus` directly; this tests the integration
+ * that matters - that choosing the employer role during onboarding credits the Coins, in
+ * the same transaction, so an employer without a wallet cannot exist.
+ */
+describe('the employer registration bonus (BR-15, UAT-16)', () => {
+  it('creates the wallet and credits ten Coins on first employer registration', async () => {
+    const { auth, otp } = services();
+    const phone = testPhone();
+    const sent = await otp.send(phone, 'registration', null);
+    await otp.verify(phone, 'registration', sent.devCode as string);
+    const tokens = await auth.completePhoneVerification(phone, 'uz-Latn', {});
+
+    const user = await db
+      .selectFrom('users')
+      .select('id')
+      .where('phone', '=', phone)
+      .executeTakeFirstOrThrow();
+
+    expect(tokens.roles).toEqual([]);
+
+    await auth.selectRoles(user.id, ['employer']);
+
+    const wallet = await db
+      .selectFrom('employer_wallets')
+      .select(['balance_coins', 'registration_bonus_at'])
+      .where('user_id', '=', user.id)
+      .executeTakeFirstOrThrow();
+
+    expect(wallet.balance_coins).toBe(10);
+    expect(wallet.registration_bonus_at).toBeInstanceOf(Date);
+
+    // **This user is deliberately left behind.** The wallet ledger is append-only
+    // (BR-24) and `employer_wallets` now references `users` with RESTRICT, so an
+    // employer who has ever held a Coin cannot be deleted at all - not by a purge, and
+    // not by this test. BR-14's answer is to anonymize them, which
+    // `retention.int.spec.ts` covers. Finding that here rather than in production is
+    // the constraint working.
+  });
+
+  it('does not credit a candidate, and credits once when the role is added later', async () => {
+    const { auth, otp } = services();
+    const phone = testPhone();
+    const sent = await otp.send(phone, 'registration', null);
+    await otp.verify(phone, 'registration', sent.devCode as string);
+    await auth.completePhoneVerification(phone, 'uz-Latn', {});
+
+    const user = await db
+      .selectFrom('users')
+      .select('id')
+      .where('phone', '=', phone)
+      .executeTakeFirstOrThrow();
+
+    await auth.selectRoles(user.id, ['candidate']);
+
+    // A candidate has no wallet at all: Coins are employer functionality (BR-21).
+    expect(
+      await db
+        .selectFrom('employer_wallets')
+        .select('user_id')
+        .where('user_id', '=', user.id)
+        .executeTakeFirst(),
+    ).toBeUndefined();
+
+    // §2.3's multi-role account adding the employer side later still gets the bonus, and
+    // re-sending the roles - which onboarding does on a retry - must not grant a second.
+    await auth.selectRoles(user.id, ['candidate', 'employer']);
+    await auth.selectRoles(user.id, ['candidate', 'employer']);
+
+    expect(
+      (
+        await db
+          .selectFrom('employer_wallets')
+          .select('balance_coins')
+          .where('user_id', '=', user.id)
+          .executeTakeFirstOrThrow()
+      ).balance_coins,
+    ).toBe(10);
+
+    // Left behind for the same reason as above: this account now has financial history.
   });
 });

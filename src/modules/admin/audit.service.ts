@@ -25,6 +25,11 @@ export const AUDIT_ACTIONS = {
    * `target_id` is a bare uuid, not a foreign key, which is what makes that possible.
    */
   accountPurged: 'user.purged',
+  /**
+   * §10.5's manual wallet adjustment - the one route in the product that can create Coins
+   * from nothing, so the trail has to outlive the person who used it.
+   */
+  walletAdjusted: 'wallet.adjusted',
   dictionaryItemCreated: 'dictionary.item_created',
   dictionaryItemUpdated: 'dictionary.item_updated',
   dictionaryItemDeactivated: 'dictionary.item_deactivated',

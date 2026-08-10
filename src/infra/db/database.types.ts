@@ -123,6 +123,13 @@ export type VerificationStatus =
   | 'under_review'
   | 'verified';
 
+export type WalletTransactionKind =
+  | 'admin_adjustment'
+  | 'candidate_unlock'
+  | 'registration_bonus'
+  | 'reversal'
+  | 'top_up';
+
 export interface AccountStatusHistory {
   actor_role: UserRole | null;
   actor_user_id: string | null;
@@ -268,6 +275,14 @@ export interface CandidateSkills {
   user_id: string;
 }
 
+export interface CandidateUnlocks {
+  candidate_user_id: string;
+  cost_coins: number;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  transaction_id: string;
+}
+
 export interface Companies {
   contact_person_name: string | null;
   created_at: Generated<Timestamp>;
@@ -388,6 +403,14 @@ export interface EmployerVerificationHistory {
   id: Generated<string>;
   reason: string | null;
   to_status: VerificationStatus;
+}
+
+export interface EmployerWallets {
+  balance_coins: Generated<number>;
+  created_at: Generated<Timestamp>;
+  registration_bonus_at: Timestamp | null;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
 }
 
 export interface IdempotencyKeys {
@@ -658,6 +681,21 @@ export interface VerificationSubmissions {
   submitted_at: Generated<Timestamp>;
 }
 
+export interface WalletTransactions {
+  actor_user_id: string | null;
+  amount_coins: number;
+  amount_uzs: Numeric | null;
+  balance_after: number;
+  balance_before: number;
+  coin_price_uzs: Numeric | null;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  id: Generated<string>;
+  kind: WalletTransactionKind;
+  reason: string | null;
+  reference_id: string | null;
+}
+
 export interface DB {
   account_status_history: AccountStatusHistory;
   admin_audit_log: AdminAuditLog;
@@ -672,6 +710,7 @@ export interface DB {
   candidate_occupations: CandidateOccupations;
   candidate_profiles: CandidateProfiles;
   candidate_skills: CandidateSkills;
+  candidate_unlocks: CandidateUnlocks;
   companies: Companies;
   complaints: Complaints;
   conversation_blocks: ConversationBlocks;
@@ -682,6 +721,7 @@ export interface DB {
   dictionary_items: DictionaryItems;
   dictionary_types: DictionaryTypes;
   employer_verification_history: EmployerVerificationHistory;
+  employer_wallets: EmployerWallets;
   employers: Employers;
   idempotency_keys: IdempotencyKeys;
   interview_status_history: InterviewStatusHistory;
@@ -706,4 +746,5 @@ export interface DB {
   vacancy_status_history: VacancyStatusHistory;
   verification_submission_files: VerificationSubmissionFiles;
   verification_submissions: VerificationSubmissions;
+  wallet_transactions: WalletTransactions;
 }

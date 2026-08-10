@@ -68,8 +68,16 @@ import {
   VerificationQueueDto,
   WarnUserDto,
 } from './dto/admin.dto';
+import {
+  AdminWalletDetailDto,
+  AdminWalletListDto,
+  WalletAdjustmentDto,
+  WalletTransactionDto,
+} from '@modules/wallet/dto/wallet.dto';
+
 import { AdminModerationService } from './moderation.service';
 import { RetentionService } from './retention.service';
+import { AdminWalletsService } from './wallets-admin.service';
 import { type AdminUserRow, AdminUsersService } from './users-admin.service';
 
 /**
@@ -97,6 +105,7 @@ export class AdminController {
     private readonly dictionaries: DictionaryAdminService,
     private readonly audit: AuditService,
     private readonly retention: RetentionService,
+    private readonly wallets: AdminWalletsService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -686,6 +695,119 @@ export class AdminController {
     @ActiveUser() user: CurrentUser,
   ): Promise<RetentionOutcomeDto> {
     return this.retention.purge(user.id);
+  }
+
+  // --- §10.5 wallet and payment administration -----------------------------
+
+  @Get('wallets')
+  @ApiOperation({
+    summary: 'Employer wallets (§10.5)',
+    description:
+      'Largest balance first, which is where both the money and the risk are. Every ' +
+      'read is logged (§11.1): a balance and a payment history are financial records ' +
+      'about an identifiable business.',
+  })
+  @ApiOkResponse({ type: AdminWalletListDto })
+  async walletList(
+    @ActiveUser() user: CurrentUser,
+    @Query() query: AdminPageDto,
+  ): Promise<AdminWalletListDto> {
+    const items = await this.wallets.list(
+      user.id,
+      query.limit ?? 20,
+      query.offset ?? 0,
+    );
+
+    return {
+      items: items.map((item) => ({
+        userId: item.userId,
+        phone: item.phone,
+        name: item.name,
+        balanceCoins: item.balanceCoins,
+        registrationBonusAt: item.registrationBonusAt
+          ? formatWithOffset(item.registrationBonusAt, this.timeZone)
+          : null,
+        unlockCount: item.unlockCount,
+      })),
+    };
+  }
+
+  @Get('wallets/:userId')
+  @ApiOperation({
+    summary: 'One wallet with its immutable history (§10.5)',
+    description:
+      'The balance, how many candidates this employer has unlocked, and the ledger. ' +
+      '**Immutable**: three database triggers refuse `UPDATE`, `DELETE` and `TRUNCATE` ' +
+      'on the ledger, so a correction is a further entry rather than an edit (BR-24).',
+  })
+  @ApiOkResponse({ type: AdminWalletDetailDto })
+  @ApiNotFoundResponse({ description: 'No employer wallet with that id.' })
+  async walletDetail(
+    @ActiveUser() user: CurrentUser,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<AdminWalletDetailDto> {
+    const detail = await this.wallets.detail(user.id, userId);
+
+    return {
+      userId: detail.userId,
+      phone: detail.phone,
+      name: detail.name,
+      balanceCoins: detail.balanceCoins,
+      registrationBonusAt: detail.registrationBonusAt
+        ? formatWithOffset(detail.registrationBonusAt, this.timeZone)
+        : null,
+      unlockCount: detail.unlockCount,
+      transactions: detail.transactions.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        amountCoins: item.amountCoins,
+        balanceAfter: item.balanceAfter,
+        amountUzs: item.amountUzs,
+        referenceId: item.referenceId,
+        reason: item.reason,
+        createdAt: formatWithOffset(item.createdAt, this.timeZone),
+      })),
+    };
+  }
+
+  @Post('wallets/:userId/adjust')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Adjust a wallet balance, with a mandatory reason (§10.5)',
+    description:
+      'The **only** route in this product that can create Coins from nothing, so it is ' +
+      'the most tightly recorded: a mandatory reason (checked by the database as well as ' +
+      'the DTO), a new ledger entry, and an audit row naming the administrator.\n\n' +
+      'It cannot rewrite anything (BR-24) - correcting a mistaken adjustment means making ' +
+      'another one. A debit larger than the balance is refused rather than taking the ' +
+      'wallet negative.',
+  })
+  @ApiOkResponse({ type: WalletTransactionDto })
+  @ApiConflictResponse({
+    description: 'The adjustment would take the balance below zero.',
+  })
+  async adjustWallet(
+    @ActiveUser() user: CurrentUser,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: WalletAdjustmentDto,
+  ): Promise<WalletTransactionDto> {
+    const item = await this.wallets.adjust(
+      user.id,
+      userId,
+      dto.amountCoins,
+      dto.reason,
+    );
+
+    return {
+      id: item.id,
+      kind: item.kind,
+      amountCoins: item.amountCoins,
+      balanceAfter: item.balanceAfter,
+      amountUzs: item.amountUzs,
+      referenceId: item.referenceId,
+      reason: item.reason,
+      createdAt: formatWithOffset(item.createdAt, this.timeZone),
+    };
   }
 
   private userDto(row: AdminUserRow): AdminUserDto {

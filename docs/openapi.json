@@ -358,6 +358,163 @@
         ]
       }
     },
+    "/wallet": {
+      "get": {
+        "description": "The Coin balance, its UZS value at today’s price, and the prices themselves. **The client must read the prices from here rather than hard-coding them** - §6.6 makes them server-side configuration, and §10.5 allows changing them.\n\nA wallet is created on first read, so an employer who registered before the wallet existed sees a zero balance rather than an error. That read never grants the registration bonus: the bonus belongs to the role being granted (BR-15).",
+        "operationId": "WalletController_read",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Balance and current pricing (§6.6)",
+        "tags": [
+          "wallet"
+        ]
+      }
+    },
+    "/wallet/transactions": {
+      "get": {
+        "description": "Newest first. **Append-only**: three database triggers refuse `UPDATE`, `DELETE` and `TRUNCATE` on this table, so a correction appears as a further `reversal` or `admin_adjustment` entry rather than by changing what is here (BR-24).",
+        "operationId": "WalletController_transactions",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletTransactionListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The Coin ledger (§6.6, BR-24)",
+        "tags": [
+          "wallet"
+        ]
+      }
+    },
+    "/wallet/unlocks/{candidateUserId}": {
+      "get": {
+        "description": "What the client needs to render either “Unlock contact — 2 Coins” or the unlocked state, without guessing and without attempting a purchase to find out. Returns the current pricing alongside, so the confirmation sheet §6.6 describes can be built from one request.",
+        "operationId": "WalletController_unlockState",
+        "parameters": [
+          {
+            "name": "candidateUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Whether this candidate is already unlocked (§6.6)",
+        "tags": [
+          "wallet"
+        ]
+      }
+    },
+    "/wallet/unlocks": {
+      "post": {
+        "description": "Debits the Coins and creates the entitlement **atomically** (BR-18): charging without access, or access without charging, are both worse than failing.\n\n**Calling twice is free.** One employer-candidate pair is charged once (BR-16), enforced by that pair being a primary key rather than by a check - so a double tap, a retry, or a revisit next month all return the original entitlement with `charged: false`. No `Idempotency-Key` is needed, because the pair *is* the key.\n\nAnswers **402** when the balance is too low, which is the status the client routes to top-up on (§6.6).",
+        "operationId": "WalletController_unlock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The entitlement, whether this call created it or found it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockDto"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Fewer Coins than an unlock costs. The body carries `required` and `balance`."
+          },
+          "409": {
+            "description": "A multi-role account tried to unlock its own candidate profile."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Buy a Candidate Unlock (§6.6, BR-16, BR-18)",
+        "tags": [
+          "wallet"
+        ]
+      }
+    },
     "/users/me": {
       "get": {
         "description": "Identity, locale, account status and granted roles. Roles come from the database rather than the token, so a role granted since the token was issued is visible here before the next refresh.",
@@ -5587,6 +5744,144 @@
         ]
       }
     },
+    "/admin/wallets": {
+      "get": {
+        "description": "Largest balance first, which is where both the money and the risk are. Every read is logged (§11.1): a balance and a payment history are financial records about an identifiable business.",
+        "operationId": "AdminController_walletList",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWalletListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Employer wallets (§10.5)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/wallets/{userId}": {
+      "get": {
+        "description": "The balance, how many candidates this employer has unlocked, and the ledger. **Immutable**: three database triggers refuse `UPDATE`, `DELETE` and `TRUNCATE` on the ledger, so a correction is a further entry rather than an edit (BR-24).",
+        "operationId": "AdminController_walletDetail",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWalletDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No employer wallet with that id."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One wallet with its immutable history (§10.5)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/wallets/{userId}/adjust": {
+      "post": {
+        "description": "The **only** route in this product that can create Coins from nothing, so it is the most tightly recorded: a mandatory reason (checked by the database as well as the DTO), a new ledger entry, and an audit row naming the administrator.\n\nIt cannot rewrite anything (BR-24) - correcting a mistaken adjustment means making another one. A debit larger than the balance is refused rather than taking the wallet negative.",
+        "operationId": "AdminController_adjustWallet",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletAdjustmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletTransactionDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The adjustment would take the balance below zero."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Adjust a wallet balance, with a mandatory reason (§10.5)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/files": {
       "post": {
         "description": "Type and size are validated against the file’s actual content, not its name. The response carries a path on this API, never a storage URL.",
@@ -6107,6 +6402,186 @@
         "required": [
           "phone",
           "code"
+        ]
+      },
+      "WalletPricingDto": {
+        "type": "object",
+        "properties": {
+          "coinPriceUzs": {
+            "type": "number",
+            "example": 10000,
+            "description": "UZS per Coin. Server configuration (§6.6); never assume this value."
+          },
+          "candidateUnlockCoins": {
+            "type": "number",
+            "example": 2,
+            "description": "Coins one Candidate Unlock costs."
+          },
+          "candidateUnlockUzs": {
+            "type": "number",
+            "example": 20000,
+            "description": "What one unlock costs in UZS at the current price, so the confirmation sheet in §6.6 does not have to multiply."
+          }
+        },
+        "required": [
+          "coinPriceUzs",
+          "candidateUnlockCoins",
+          "candidateUnlockUzs"
+        ]
+      },
+      "WalletDto": {
+        "type": "object",
+        "properties": {
+          "balanceCoins": {
+            "type": "number",
+            "example": 8
+          },
+          "balanceValueUzs": {
+            "type": "number",
+            "example": 80000,
+            "description": "The balance in UZS **at today’s price**, for display only. It is not stored: repricing must not restate history (§10.5)."
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/WalletPricingDto"
+          },
+          "registrationBonusAt": {
+            "type": "object",
+            "nullable": true,
+            "description": "When the one-time registration bonus was granted (BR-15), or null."
+          }
+        },
+        "required": [
+          "balanceCoins",
+          "balanceValueUzs",
+          "pricing"
+        ]
+      },
+      "WalletTransactionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "registration_bonus",
+              "top_up",
+              "candidate_unlock",
+              "admin_adjustment",
+              "reversal"
+            ]
+          },
+          "amountCoins": {
+            "type": "number",
+            "example": -2,
+            "description": "Signed: a debit is negative, so the ledger sums to the balance."
+          },
+          "balanceAfter": {
+            "type": "number",
+            "example": 8
+          },
+          "amountUzs": {
+            "type": "object",
+            "nullable": true,
+            "description": "The UZS value **at the time of the transaction**, never recomputed."
+          },
+          "referenceId": {
+            "type": "object",
+            "nullable": true,
+            "description": "What it was for: the candidate for an unlock, the payment order for a top-up."
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true,
+            "description": "Mandatory on an administrator adjustment (§10.5)."
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "amountCoins",
+          "balanceAfter",
+          "createdAt"
+        ]
+      },
+      "WalletTransactionListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletTransactionDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "UnlockDto": {
+        "type": "object",
+        "properties": {
+          "candidateUserId": {
+            "type": "string"
+          },
+          "costCoins": {
+            "type": "number",
+            "example": 2
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "charged": {
+            "type": "boolean",
+            "description": "True when this request created the entitlement and Coins were debited. **False when it already existed** - BR-16 charges one employer-candidate pair once, so a repeated call is free and returns the original."
+          }
+        },
+        "required": [
+          "candidateUserId",
+          "costCoins",
+          "createdAt",
+          "charged"
+        ]
+      },
+      "UnlockStateDto": {
+        "type": "object",
+        "properties": {
+          "unlocked": {
+            "type": "boolean",
+            "description": "Whether this employer already holds the entitlement."
+          },
+          "unlock": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnlockDto"
+              }
+            ]
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/WalletPricingDto"
+          }
+        },
+        "required": [
+          "unlocked",
+          "pricing"
+        ]
+      },
+      "UnlockRequestDto": {
+        "type": "object",
+        "properties": {
+          "candidateUserId": {
+            "type": "string",
+            "description": "The candidate to unlock contact access for."
+          }
+        },
+        "required": [
+          "candidateUserId"
         ]
       },
       "UserProfileResponseDto": {
@@ -9737,6 +10212,107 @@
           "anonymized",
           "failed",
           "transient"
+        ]
+      },
+      "AdminWalletDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "balanceCoins": {
+            "type": "number"
+          },
+          "registrationBonusAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "unlockCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "balanceCoins",
+          "unlockCount"
+        ]
+      },
+      "AdminWalletListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminWalletDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AdminWalletDetailDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "balanceCoins": {
+            "type": "number"
+          },
+          "registrationBonusAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "unlockCount": {
+            "type": "number"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletTransactionDto"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "balanceCoins",
+          "unlockCount",
+          "transactions"
+        ]
+      },
+      "WalletAdjustmentDto": {
+        "type": "object",
+        "properties": {
+          "amountCoins": {
+            "type": "number",
+            "example": 5,
+            "description": "Signed Coins to apply. Negative debits. Zero is refused - an adjustment that changes nothing is a ledger row with no meaning."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Mandatory (§10.5), and enforced by a database check as well as here: an adjustment nobody explained is indistinguishable from a mistake."
+          }
+        },
+        "required": [
+          "amountCoins",
+          "reason"
         ]
       },
       "UploadFileDto": {

@@ -593,6 +593,46 @@ export const MESSAGES = {
     ru: 'Статус вашего отклика на «{vacancy}» изменился.',
     en: 'The status of your application for “{vacancy}” has changed.',
   },
+  // --- wallet and Coins (§6.6) ---------------------------------------------
+  // The one message a user meets often: too few Coins to unlock a candidate. It names
+  // both numbers, because "not enough" without "how many" makes the user open the wallet
+  // to find out. §6.6 routes them to top-up, and the 402 status is what the client
+  // branches on - this is the sentence shown while it does.
+  'wallet.insufficient_coins': {
+    'uz-Latn':
+      'Yetarli tanga yoʻq: {required} kerak, {balance} bor. Hisobni toʻldiring.',
+    'uz-Cyrl':
+      'Етарли танга йўқ: {required} керак, {balance} бор. Ҳисобни тўлдиринг.',
+    ru: 'Недостаточно монет: нужно {required}, есть {balance}. Пополните счёт.',
+    en: 'Not enough Coins: {required} needed, {balance} available. Top up your wallet.',
+  },
+  // A multi-role account holds both roles (§2.3), so this is reachable by an ordinary
+  // user rather than only by a malformed request.
+  'wallet.cannot_unlock_self': {
+    'uz-Latn': 'Oʻz profilingizni ochish mumkin emas.',
+    'uz-Cyrl': 'Ўз профилингизни очиш мумкин эмас.',
+    ru: 'Нельзя открыть доступ к своему собственному профилю.',
+    en: 'You cannot unlock your own profile.',
+  },
+  // §10.5's manual adjustment, refused because it would take the balance below zero.
+  // Administrator-facing, but localized like everything else: §10 is a mobile role.
+  'wallet.adjustment_would_go_negative': {
+    'uz-Latn': 'Tuzatish balansni manfiy qiladi.',
+    'uz-Cyrl': 'Тузатиш балансни манфий қилади.',
+    ru: 'Корректировка сделала бы баланс отрицательным.',
+    en: 'That adjustment would take the balance below zero.',
+  },
+  // BR-17: the employer has not bought access to this candidate's contact details. A
+  // separate key from a plain 403 because the remedy is specific and purchasable.
+  'wallet.unlock_required': {
+    'uz-Latn':
+      'Bu nomzodning aloqa maʼlumotlari yopiq. {coins} tanga bilan ochishingiz mumkin.',
+    'uz-Cyrl':
+      'Бу номзоднинг алоқа маълумотлари ёпиқ. {coins} танга билан очишингиз мумкин.',
+    ru: 'Контакты этого кандидата закрыты. Их можно открыть за {coins} монет.',
+    en: 'This candidate’s contact details are locked. Unlock them for {coins} Coins.',
+  },
+
   // --- SMS bodies (§4.1) ---------------------------------------------------
   // The one message this product sends over SMS. It lives here with everything else
   // a user reads, but it is **not** free text: Eskiz approves templates, so changing

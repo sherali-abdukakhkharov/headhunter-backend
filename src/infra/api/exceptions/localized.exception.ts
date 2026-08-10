@@ -93,6 +93,20 @@ export class TooManyRequestsError extends LocalizedException {
   }
 }
 
+/**
+ * 402 - the employer has too few Coins for what they asked for (§6.6).
+ *
+ * A status of its own rather than a 409, because the client's response to it is specific:
+ * §6.6 says the user "is routed to wallet top-up", and routing on a status code is more
+ * robust than matching a message key. The params carry what is needed and what is held,
+ * so the screen can say "2 needed, 1 left" without a second request.
+ */
+export class PaymentRequiredError extends LocalizedException {
+  constructor(key: MessageKey, params?: MessageParams) {
+    super(HttpStatus.PAYMENT_REQUIRED, key, params);
+  }
+}
+
 /** 502 - an upstream dependency (the Telegram Bot API) failed. */
 export class UpstreamError extends LocalizedException {
   constructor(key: MessageKey, params?: MessageParams) {

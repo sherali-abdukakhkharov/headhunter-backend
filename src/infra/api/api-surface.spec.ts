@@ -23,6 +23,7 @@ import { NotificationsController } from '@modules/notifications/notifications.co
 import { SchemasController } from '@modules/schemas/schemas.controller';
 import { UsersController } from '@modules/users/users.controller';
 import { VacanciesController } from '@modules/vacancies/vacancies.controller';
+import { WalletController } from '@modules/wallet/wallet.controller';
 
 /**
  * The API's authorization surface, asserted as a whole (§12.5).
@@ -61,6 +62,7 @@ const CONTROLLERS = [
   SchemasController,
   UsersController,
   VacanciesController,
+  WalletController,
 ];
 
 /**
@@ -226,6 +228,14 @@ describe('role enforcement (§12.5, §2.3)', () => {
     ]);
     expect(bySignature.get('GET /discovery/recommended')?.roles).toEqual([
       'candidate',
+    ]);
+
+    // M12: the wallet is money, and it belongs to the employer side only. A multi-role
+    // account acting as a candidate must not be able to read its own balance or spend
+    // from it, and nothing on the candidate side should ever quote a Coin price.
+    expect(bySignature.get('GET /wallet')?.roles).toEqual(['employer']);
+    expect(bySignature.get('POST /wallet/unlocks')?.roles).toEqual([
+      'employer',
     ]);
   });
 });
