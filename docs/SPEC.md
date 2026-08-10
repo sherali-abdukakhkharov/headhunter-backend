@@ -7,7 +7,16 @@
 > received 2026-08-10). If the client issues a revised .docx, regenerate this
 > file and the copy in the sibling repo together - both
 > `headhunter-app/docs/SPEC.md` and `headhunter-backend/docs/SPEC.md` must stay
-> in sync with the same source document.
+> in sync with the same source document:
+>
+> ```powershell
+> node tool/spec_from_docx.js <source.docx>
+> node tool/spec_from_docx.js <source.docx> ..\headhunter-backend\docs\SPEC.md
+> ```
+>
+> This block is preserved across regenerations - update the provenance line
+> above by hand when a new revision arrives, and record what changed in
+> [SPEC_CHANGELOG.md](SPEC_CHANGELOG.md).
 >
 > Tables were flattened from Word tables; wording is otherwise verbatim so that
 > business rules (BR-nn) and acceptance scenarios (UAT-nn) can be cited exactly.
