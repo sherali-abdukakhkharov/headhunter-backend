@@ -20,6 +20,8 @@ import { HealthController } from '@modules/health/health.controller';
 import { InterviewsController } from '@modules/interviews/interviews.controller';
 import { InvitationsController } from '@modules/invitations/invitations.controller';
 import { NotificationsController } from '@modules/notifications/notifications.controller';
+import { PaymentsController } from '@modules/payments/payments.controller';
+import { PaymentsCallbackController } from '@modules/payments/payments-callback.controller';
 import { SchemasController } from '@modules/schemas/schemas.controller';
 import { UsersController } from '@modules/users/users.controller';
 import { VacanciesController } from '@modules/vacancies/vacancies.controller';
@@ -59,6 +61,8 @@ const CONTROLLERS = [
   InterviewsController,
   InvitationsController,
   NotificationsController,
+  PaymentsController,
+  PaymentsCallbackController,
   SchemasController,
   UsersController,
   VacanciesController,
@@ -96,6 +100,24 @@ const PUBLIC_ROUTES = [
   'GET /dictionaries/manifest',
   'GET /dictionaries/items',
   'GET /dictionaries/:type',
+
+  // §6.7 and §12.6: Payme's and CLICK's callbacks, and **the first public mutating routes in
+  // the product**. Every other line above is either a way to obtain a token or a response
+  // with no user data in it; these two change money, so the reasoning is written out here
+  // rather than left to the controller.
+  //
+  // They cannot carry our bearer token - the caller is a payment provider, not a person - so
+  // they authenticate with the provider's own scheme instead: Payme with an HTTP Basic
+  // credential holding the merchant key, CLICK with an MD5 signature over its fields. Both
+  // are checked inside the adapter before the database is touched, and a deployment with no
+  // merchant credentials has nothing to verify against and can only refuse.
+  //
+  // What bounds the damage is that they cannot invent value. A callback names an order some
+  // authenticated employer already created, at an amount that order already fixed, and the
+  // most a forged signature achieves is a rejected row in an append-only trail. They also
+  // have their own rate-limit bucket, so provider retries never share a budget with people.
+  'POST /payments/callbacks/payme',
+  'POST /payments/callbacks/click',
 ].sort();
 
 interface Route {

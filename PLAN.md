@@ -36,17 +36,22 @@ a profile contract.
 | M10 | Admin module + audit | - | **done**; both MVP flags now on |
 | M9 | Notifications + push | - | **done**; FCM configured and verified end to end |
 | M11 | Hardening: performance, security, offline, acceptance | release | **done** — §12.4 measured, §12.5 reviewed, restore rehearsed, UAT-01..15 executable, BR-14 answered |
-| M12 | Employer wallet, Coins, Candidate Unlock | M13 | **next** — new in the 2026-08-10 revision, and it changes BR-09's gate |
-| M13 | Payme and CLICK top-up | release | after M12 — a wallet with no way to fill it is a demo |
+| M12 | Employer wallet, Coins, Candidate Unlock | M13 | **built, one part open** — the wallet, the ledger and the unlock are done; the BR-09 retrofit waits on one client answer |
+| M13 | Payme and CLICK top-up | release | **done** — both providers, callbacks verified, crediting exactly once; needs merchant accounts to be switched on |
 
-**Every milestone up to M11 is built.** What stood between that and a release was not
-code: the SMS provider (M1), a first administrator account on the deployed instance,
-the client sign-offs listed at the top of [TODO.md](TODO.md), and a CI workflow.
+**Every milestone is now built**, M12's BR-09 retrofit excepted — and that one is waiting on
+an answer, not on time. What stands between this and a release is still not code: the SMS
+provider (M1), the two payment merchant accounts (M13), a first administrator account on the
+deployed instance, the client sign-offs listed at the top of [TODO.md](TODO.md), and a CI
+workflow.
 
-The 2026-08-10 revision adds M12 and M13, and they are not small: money, an
-append-only ledger, two payment providers and a change to a privacy rule that is
-already live. Nothing in M0-M11 is invalidated - but M6's BR-09 behaviour is
-**superseded**, and that work belongs to M12 rather than being left to be discovered.
+The 2026-08-10 revision added M12 and M13, and they were not small: money, an append-only
+ledger, two payment providers and a change to a privacy rule that is already live. Nothing in
+M0-M11 was invalidated — but M6's BR-09 behaviour is **superseded**, and that work belongs to
+M12 rather than being left to be discovered. **It is the one piece deliberately not built**:
+§11.1 and §9.1 can be read two ways, one of which leaves M6, M8 and their tests intact, and
+guessing would mean either rewriting delivered behaviour for nothing or shipping a gate the
+client did not ask for. The question is the first item in [TODO.md](TODO.md).
 
 ---
 

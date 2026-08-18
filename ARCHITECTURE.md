@@ -51,8 +51,16 @@ src/
     interviews/              scheduling and candidate responses
     chat/                    conversations, messages, read state
     notifications/           in-app records, push dispatch, preferences
+    wallet/                  employer Coin wallet, the append-only ledger, Candidate Unlock
+    payments/                Payment Orders and the Payme/CLICK provider seam
     admin/                   dashboard, verification, moderation, users, dictionaries, audit
 ```
+
+`wallet` and `payments` are separate for the reason §12.7 requires: the ledger must stay
+payment-provider agnostic, so the dependency points one way only. `payments` imports
+`wallet`; `wallet` knows nothing about providers, and `wallet_transactions` has no provider
+column. A store build that has to substitute Apple IAP adds an adapter in `payments` and
+changes nothing in `wallet`.
 
 `discovery` and `candidate-search` are deliberately separate modules despite both
 being "search": they have different authorization rules, different filter sets,
@@ -719,6 +727,137 @@ scheduler to own it.
 
 ---
 
+## 10b. Money: the Coin wallet, Candidate Unlock, and top-up
+
+The 2026-08-10 revision put money in the product (§6.6, §6.7, §10.5, §12.3.1). Two
+properties drive every decision below, and both are stated by the specification rather than
+chosen here: **the ledger is append-only** (BR-24) and **the debit and the entitlement are one
+transaction** (BR-18).
+
+The governing design principle is narrower than either: **every guarantee about money is a
+database constraint, not service code.** A rule about money that lives only in application
+code is a rule that holds until the second caller.
+
+### The ledger is the truth; the balance is a cache
+
+`wallet_transactions` is append-only, and every row carries `balance_before` and
+`balance_after`, so the whole history replays. `employer_wallets.balance_coins` exists only so
+reading a balance is not a sum over history — and an integration test asserts the two agree
+after every kind of transaction, which is the only thing that keeps a denormalized balance
+honest.
+
+Append-only is three *statement-level* triggers, the shape §10a explains: a row-level trigger
+never fires for an `UPDATE` matching no rows, so `UPDATE … WHERE false` would report a success
+it did not perform. BR-24 is therefore a property of the table, and a correction is a **new**
+row — `reversal` or `admin_adjustment` — rather than an edit.
+
+### Four uniqueness rules doing the work four checks would get wrong
+
+| Rule | Constraint | Why not a check in the service |
+|---|---|---|
+| BR-16: charged once per employer–candidate pair | `candidate_unlocks` primary key | Two taps race; the database picks a winner |
+| BR-15: the bonus exactly once | partial unique index on `kind = 'registration_bonus'` | "Not again after logout, reinstall, device change or role switch" reads like four rules and is one — each is a retry of the same insert |
+| BR-19: one credit per payment order | partial unique index on `(kind, reference_id) WHERE kind = 'top_up'` | A duplicate callback is not a bug to detect, it is expected traffic |
+| BR-19: one order per provider transaction | partial unique index on `(provider, provider_transaction_id)` | Stops a callback being replayed against a different order |
+
+The registration bonus is granted on **any first wallet touch**, relying solely on the index
+rather than on "has this employer registered before". That settles a case the specification
+does not mention — employers who registered before M12 shipped — without writing money into a
+data migration, and it cannot double-credit whatever path is taken.
+
+### Pricing is configuration, and the price is stored on the row
+
+§6.6 makes the Coin price and unlock cost server-side configuration; §10.5 adds that a change
+"affects future transactions only and does not rewrite historical ledger records". So the price
+is read at transaction time and **written onto the transaction** — and onto the payment order,
+so an employer owes what they were quoted rather than what the price became while their
+checkout was open. A ledger that recomputed value from today's price would restate last month's
+history every time the client repriced.
+
+Environment variables rather than an administrator-editable table, because §10.5 calls them
+"server configuration values": a price change is a deployment decision with a trail in git,
+not a button somebody can press twice.
+
+### Top-up: the provider seam, and where crediting can happen
+
+§6.7's governing sentence is *"A client-side success redirect is not sufficient to credit
+Coins."* So Coins move in exactly one method, `PaymentOrdersService.perform`, reached only from
+a callback whose signature the provider's adapter has already verified. No route an employer's
+own client can reach is on the credit path at all — which is why the callbacks are a separate
+controller from the employer's routes, with a different authentication model.
+
+**The adapter owns the wire format; the service owns the state machine.** That split is what
+makes BR-19 provable: if an adapter could move an order, exactly-once crediting would be
+something each of them had to get right separately. Instead an adapter translates in both
+directions and never touches the database, so there is one state machine and the tests that
+cover it cover both providers. Six Payme methods and CLICK's two collapse into one normalized
+command union — `PerformTransaction` and `Complete` mean the same thing to a wallet.
+
+**There is no outbound HTTP in M13, and that is not an omission.** Both integrations are
+inbound; checkout is a URL the client opens. No HTTP client, no timeout policy, no retry
+policy. The provider retries, and BR-19 makes that safe.
+
+An unconfigured adapter **refuses rather than pretends**, the `LoggingSmsSender` rule — and
+here it is enforced by construction rather than by a second class per provider: verifying a
+Payme request needs the merchant key and verifying a CLICK request needs the secret, so with no
+credentials there is no code path that returns a verified command. §12.7 asks for the ledger to
+stay provider-agnostic so a store build can substitute Apple IAP or Google Play Billing without
+changing Candidate Unlock; what that costs is visible from the schema — `wallet_transactions`
+has no provider column, so it is one adapter and one `ALTER TYPE … ADD VALUE`.
+
+### The state change and its event are one transaction
+
+Same rule as BR-08's audit rows: a transition nobody recorded is a transition nobody can
+reconcile, and §6.7 requires the status history for exactly that. `payment_events` is the
+trail, append-only for the same reason the ledger is, and a check constraint makes the reverse
+unrepresentable — **a rejected callback cannot carry a state change**, which is §12.6's
+"verify before changing the internal Payment Order state" as a property rather than a habit.
+
+Its `order_id` is deliberately **nullable**: a callback whose signature fails, or that names an
+order that does not exist, still gets a row. Those are the events an incident review most wants,
+and they have no order to attach to. What is stored is the *normalized* event and never the
+provider's raw body — §12.6 says to log only non-sensitive identifiers, and not holding a
+payload cannot leak one.
+
+### Nothing throws from inside a transaction
+
+M1 paid for this rule twice (see [MEMORY.md](MEMORY.md)) and money is where it would cost most.
+`unlock` returns an outcome and throws after the commit: throwing from inside would roll back
+the debit and report "insufficient balance" *having taken the money*. Every callback handler
+does the same, because a throw would roll back the event row that explains why the callback was
+refused — losing the audit trail and the answer to the provider in one go.
+
+The one place this was nearly missed: a `CreateTransaction` naming a transaction id already
+attached to another order. The unique index would refuse it, but as a raw database error thrown
+out of the transaction. It is read first, so the provider gets a code it understands and the
+trail keeps the reason; the index stays a backstop.
+
+### Money outlives the account
+
+Three tables now hold `RESTRICT` references that BR-14's purge cannot cascade through:
+`employer_wallets.user_id`, `wallet_transactions.actor_user_id`, and `candidate_unlocks`'
+candidate — plus `payment_orders`, which points at the wallet. §6.7 requires payment records
+for reconciliation and BR-24 forbids rewriting the ledger, so an employer who has ever held a
+Coin is **anonymized, never deleted**, exactly as an administrator who has acted is. The
+identity goes; the balance stays against an id nobody can resolve to a person.
+
+This was found by a test in M12, one milestone after the audit log taught the same lesson, and
+the answer was the same both times: make the refusal happen at the top of the purge where it is
+legible, rather than half way down inside a cascade.
+
+### A reversal recovers what is there
+
+A provider can cancel a transaction it already performed, and the employer may have spent the
+Coins on unlocks that BR-16 makes permanent. A full debit would drive the balance negative,
+which the non-negative check refuses — so the transaction would abort and the order would be
+stuck at `paid` while the provider believed it was refunded. The reversal therefore recovers
+`min(balance, coins)` and writes the shortfall into the row's reason.
+
+That keeps the data honest. **Who absorbs the difference is a commercial decision and has not
+been made** — [docs/PAYMENTS.md](docs/PAYMENTS.md) carries it as a question rather than leaving
+it implied by the code.
+
+
 ## 11. Non-functional budget
 
 | Area | Target (§12.4) | How we hold it |
@@ -731,7 +870,10 @@ scheduler to own it.
 
 Rate limiting is required on OTP, authentication, search, messaging and file
 operations (§12.5) - five distinct buckets with different budgets, not one global
-limiter.
+limiter. M13 adds a sixth for payment provider callbacks, and it is the loosest of them:
+the caller is Payme or CLICK retrying, which BR-19 makes harmless, and throttling a
+provider out of delivering a `PerformTransaction` would leave money taken with no Coins
+credited.
 
 Logging must not expose sensitive user data (§12.1). pino redaction is already
 configured for auth headers and cookies; extend it as fields are added, and never
@@ -780,6 +922,30 @@ Answers change the schema, so raise them before the affected milestone:
    working, but four of them carry a conventional default rather than an approved
    list, and the occupation set is a starting point rather than a classifier. See
    `src/modules/dictionaries/seed/` - each type states its provenance.
+5. **Does a candidate's own application still reveal their contact details?** *(2026-08-10
+   revision, and the only one of these that changes behaviour already delivered)* §11.1 now
+   gates contact and CV on "a successful Candidate Unlock **or another explicitly approved
+   entitlement**", and §9.1 says an application is not one. Read literally, M6's delivered
+   BR-09 behaviour is superseded. Worth asking rather than assuming, because a candidate who
+   applies has volunteered their interest in that employer - the reading every other
+   recruitment product takes, and one §11.1's own escape hatch allows. **Answering "yes, an
+   application is an approved entitlement" leaves M6, M8's chat and their tests intact and
+   reduces the retrofit to new code only.** Blocks nothing else.
+6. ~~**Fiscal receipt attributes** (§6.7)~~ - **not blocking a payment, only a receipt.**
+   §6.7 assigns the service/product code, VAT and merchant configuration to the client's
+   accounting function. Declared as data in `modules/payments/payment-fiscal.ts` with a
+   `provenance` tag, and while it reads `unknown` **no receipt is sent to either provider** -
+   a guessed IKPU code on a real transaction ends up on a tax return rather than in a log.
+   See [docs/PAYMENTS.md](docs/PAYMENTS.md).
+7. **Who absorbs a refund of Coins that were already spent?** *(new with M13)* BR-16 makes an
+   unlock permanent, so a reversal can only recover what is left in the wallet; the code takes
+   `min(balance, coins)` and records the shortfall, because the alternative is a negative
+   balance the database refuses. The data stays honest either way - this is a commercial
+   question, not a technical one.
+8. **Merchant accounts, and §12.7's per-storefront channel** *(new with M13)*. Sandbox
+   credentials are enough to finish and verify everything; production activation is not
+   something engineering can do. §12.7's store-billing check is date-sensitive by nature and
+   has to happen immediately before release.
 
 *Answered:* time zone (single platform zone `Asia/Tashkent`), push provider
 (deferred with M9), file service (Telegram Bot API, §9 above).

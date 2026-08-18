@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { ExecutionContext } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
@@ -32,19 +32,28 @@ import { InvitationsService } from '@modules/invitations/invitations.service';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
 import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
+import { PaymentOrdersService } from '@modules/payments/payment-orders.service';
+import { ClickProvider } from '@modules/payments/providers/click.provider';
+import { PaymentProviderRegistry } from '@modules/payments/providers/payment-provider.registry';
+import { PaymeProvider } from '@modules/payments/providers/payme.provider';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { UsersService } from '@modules/users/users.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { WalletService } from '@modules/wallet/wallet.service';
 
 /**
- * The client's acceptance scenarios, walked end to end (§13.2, UAT-01..UAT-15).
+ * The client's acceptance scenarios, walked end to end (§13.2, UAT-01..UAT-23).
  *
- * **§13.1 has twenty-four scenarios since the 2026-08-10 revision.** UAT-16..UAT-23 cover
- * the wallet, Candidate Unlock and Payme/CLICK and arrive with M12 and M13; UAT-24 is a
- * restatement of UAT-13. The fifteen here are the original set - and several of them
- * assert the *pre-revision* BR-09 contract, where a hiring interaction reveals contact
- * details. That is what M12's retrofit changes, deliberately, rather than by deletion.
+ * **§13.1 has twenty-four scenarios since the 2026-08-10 revision**, and twenty-two of them
+ * are here. UAT-24 is a restatement of UAT-13, and **UAT-17 is present but half-asserted**:
+ * its Coin arithmetic holds today, while the sentence about chat and contact actions becoming
+ * available depends on the open question at the top of TODO.md and lands with M12's retrofit.
+ * That is written into the test rather than left as a silently missing assertion.
+ *
+ * Several of the original fifteen assert the *pre-revision* BR-09 contract, where a hiring
+ * interaction reveals contact details. That is what the retrofit changes, deliberately,
+ * rather than by deletion.
  *
  * Every other suite in this repository tests a module. This one tests the *product*: each
  * `describe` is one row of §13's table, and its title is that row's scenario. The test
@@ -83,8 +92,17 @@ let notifications: NotificationsService;
 let moderation: AdminModerationService;
 let adminUsers: AdminUsersService;
 let guard: AccountStatusGuard;
+let wallet: WalletService;
+let payments: PaymentOrdersService;
+let payme: PaymeProvider;
+let click: ClickProvider;
 
 const users: string[] = [];
+
+/** M13's test credentials. Real signatures, so the callbacks below genuinely verify. */
+const PAYME_KEY = 'uat-payme-merchant-key';
+const CLICK_SECRET = 'uat-click-secret';
+const CLICK_SERVICE = 'uat-click-service';
 
 /**
  * Both moderation flags **on**, because §13's scenarios describe a moderated product:
@@ -92,35 +110,44 @@ const users: string[] = [];
  * go active *after* moderation. Running these with the MVP flags off would pass while
  * testing something the client did not describe.
  */
+const ENV: Record<string, string | number | boolean> = {
+  PLATFORM_TIME_ZONE: 'Asia/Tashkent',
+  MODERATION_ENABLED: true,
+  EMPLOYER_VERIFICATION_ENABLED: true,
+  FILE_MAX_SIZE_BYTES: 10_485_760,
+  SEARCH_COUNT_CAP: 200,
+  TOKEN_HASH_PEPPER: 'uat-integration-pepper-at-least-32-characters',
+  JWT_SECRET: 'uat-integration-jwt-secret-at-least-32-chars',
+  ACCESS_TOKEN_TTL_SECONDS: 900,
+  REFRESH_TOKEN_TTL_DAYS: 30,
+  OTP_LENGTH: 6,
+  OTP_TTL_SECONDS: 300,
+  OTP_RESEND_DELAY_SECONDS: 0,
+  OTP_MAX_ATTEMPTS: 5,
+  OTP_ECHO_IN_RESPONSE: true,
+
+  // The Coin economy at §6.6's stated initial values, which UAT-16, UAT-17, UAT-19 and
+  // UAT-20 all quote as numbers: 10 free Coins, 2 per unlock, UZS 10 000 each.
+  COIN_PRICE_UZS: 10_000,
+  CANDIDATE_UNLOCK_COINS: 2,
+  EMPLOYER_REGISTRATION_BONUS_COINS: 10,
+
+  // M13. Both providers configured, so UAT-20..23 exercise verified callbacks.
+  PAYMENT_MIN_COINS: 1,
+  PAYMENT_MAX_COINS: 1_000,
+  PAYME_MERCHANT_ID: 'uat-merchant',
+  PAYME_MERCHANT_KEY: PAYME_KEY,
+  PAYME_CHECKOUT_URL: 'https://checkout.paycom.uz',
+  PAYME_ACCOUNT_FIELD: 'order_id',
+  CLICK_MERCHANT_ID: 'uat-click-merchant',
+  CLICK_SERVICE_ID: CLICK_SERVICE,
+  CLICK_SECRET_KEY: CLICK_SECRET,
+  CLICK_MERCHANT_USER_ID: '',
+  CLICK_CHECKOUT_URL: 'https://my.click.uz/services/pay',
+};
+
 const config = {
-  get: (key: string) =>
-    key === 'PLATFORM_TIME_ZONE'
-      ? 'Asia/Tashkent'
-      : key === 'MODERATION_ENABLED' || key === 'EMPLOYER_VERIFICATION_ENABLED'
-        ? true
-        : key === 'FILE_MAX_SIZE_BYTES'
-          ? 10_485_760
-          : key === 'SEARCH_COUNT_CAP'
-            ? 200
-            : key === 'TOKEN_HASH_PEPPER'
-              ? 'uat-integration-pepper-at-least-32-characters'
-              : key === 'JWT_SECRET'
-                ? 'uat-integration-jwt-secret-at-least-32-chars'
-                : key === 'ACCESS_TOKEN_TTL_SECONDS'
-                  ? 900
-                  : key === 'REFRESH_TOKEN_TTL_DAYS'
-                    ? 30
-                    : key === 'OTP_LENGTH'
-                      ? 6
-                      : key === 'OTP_TTL_SECONDS'
-                        ? 300
-                        : key === 'OTP_RESEND_DELAY_SECONDS'
-                          ? 0
-                          : key === 'OTP_MAX_ATTEMPTS'
-                            ? 5
-                            : key === 'OTP_ECHO_IN_RESPONSE'
-                              ? true
-                              : undefined,
+  get: (key: string) => ENV[key],
 } as unknown as ConfigService<AppEnv, true>;
 
 /**
@@ -213,6 +240,19 @@ beforeAll(() => {
   );
   adminUsers = new AdminUsersService(db, audit, notifications);
   guard = new AccountStatusGuard(db);
+
+  // M12 and M13. Both payment providers are configured here with test credentials, because
+  // UAT-20..23 are about *verified* callbacks: a scenario that ran against an unconfigured
+  // provider would assert a refusal and prove nothing about crediting.
+  wallet = new WalletService(db, config);
+  payme = new PaymeProvider(config);
+  click = new ClickProvider(config);
+  payments = new PaymentOrdersService(
+    db,
+    new PaymentProviderRegistry(payme, click),
+    wallet,
+    config,
+  );
 });
 
 afterAll(async () => {
@@ -226,10 +266,38 @@ afterAll(async () => {
       .where('actor_user_id', '=', id)
       .executeTakeFirst();
 
-    if (acted) {
+    // An employer who has held a wallet is left behind for the same reason, one constraint
+    // later: `employer_wallets.user_id` is RESTRICT because §6.7 requires payment records to
+    // survive for reconciliation and BR-24 forbids rewriting the ledger. `payment_events` is
+    // append-only too, so not even this test can erase why a Coin was credited.
+    const held = await db
+      .selectFrom('employer_wallets')
+      .select('user_id')
+      .where('user_id', '=', id)
+      .executeTakeFirst();
+
+    // And the administrator who made UAT-19's adjustment is held by the ledger's *other*
+    // RESTRICT, `wallet_transactions.actor_user_id` - which is what makes §10.5's "who
+    // adjusted this balance" unerasable.
+    const adjusted = await db
+      .selectFrom('wallet_transactions')
+      .select('id')
+      .where('actor_user_id', '=', id)
+      .executeTakeFirst();
+
+    if (acted || held || adjusted) {
       continue;
     }
 
+    await db
+      .deleteFrom('candidate_unlocks')
+      .where((eb) =>
+        eb.or([
+          eb('employer_user_id', '=', id),
+          eb('candidate_user_id', '=', id),
+        ]),
+      )
+      .execute();
     await db.deleteFrom('employers').where('user_id', '=', id).execute();
     await db
       .deleteFrom('stored_files')
@@ -306,21 +374,41 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 }
 
 /** Straight into the table, for the roles §13 does not ask us to register. */
+/**
+ * A user with a phone number nothing else has taken.
+ *
+ * The retry matters because this suite deliberately cannot delete every user it creates -
+ * administrators who acted and employers who hold a wallet stay behind - so the digits
+ * available under `+99897` accumulate across runs and a random one eventually collides with
+ * a row an earlier run left. Asking the unique index is cheaper than hoping.
+ */
 async function newUser(role: 'candidate' | 'employer' | 'admin'): Promise<{
   userId: string;
   phone: string;
 }> {
-  const phone = testPhone();
-  const row = await db
-    .insertInto('users')
-    .values({ phone, locale: 'uz-Latn' })
-    .returning('id')
-    .executeTakeFirstOrThrow();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const phone = testPhone();
+    const row = await db
+      .insertInto('users')
+      .values({ phone, locale: 'uz-Latn' })
+      .onConflict((oc) => oc.column('phone').doNothing())
+      .returning('id')
+      .executeTakeFirst();
 
-  await db.insertInto('user_roles').values({ user_id: row.id, role }).execute();
-  users.push(row.id);
+    if (!row) {
+      continue;
+    }
 
-  return { userId: row.id, phone };
+    await db
+      .insertInto('user_roles')
+      .values({ user_id: row.id, role })
+      .execute();
+    users.push(row.id);
+
+    return { userId: row.id, phone };
+  }
+
+  throw new Error('could not find a free test phone number in 20 attempts');
 }
 
 async function storedFile(
@@ -1198,5 +1286,360 @@ describe('UAT-15 - a vacancy deadline expires', () => {
     // stopped attracting applications.
     const owned = await vacancies.read(employerUserId, vacancyId);
     expect(owned.aggregate.row.deadline_on).toBe('2026-01-01');
+  });
+});
+
+// --- M12 and M13: the Coin wallet, Candidate Unlock, and top-up -------------
+
+/** A Payme JSON-RPC callback, authenticated exactly as Payme authenticates its own. */
+function paymeCall(
+  method: string,
+  params: Record<string, unknown>,
+): { headers: Record<string, string>; body: unknown } {
+  const credential = Buffer.from(`Paycom:${PAYME_KEY}`, 'utf8').toString(
+    'base64',
+  );
+
+  return {
+    headers: { authorization: `Basic ${credential}` },
+    body: { method, params, id: 1 },
+  };
+}
+
+/** A CLICK callback, signed with the merchant secret over CLICK's own field order. */
+function clickCall(
+  action: '0' | '1',
+  fields: {
+    orderId: string;
+    amountUzs: number;
+    clickTransId: string;
+    prepareId?: string;
+    error?: string;
+  },
+): { headers: Record<string, string>; body: unknown } {
+  const amount = fields.amountUzs.toFixed(2);
+  const signTime = '2026-08-18 12:00:00';
+  const signature = createHash('md5')
+    .update(
+      [
+        fields.clickTransId,
+        CLICK_SERVICE,
+        CLICK_SECRET,
+        fields.orderId,
+        ...(action === '1' ? [fields.prepareId ?? ''] : []),
+        amount,
+        action,
+        signTime,
+      ].join(''),
+      'utf8',
+    )
+    .digest('hex');
+
+  return {
+    headers: {},
+    body: {
+      click_trans_id: fields.clickTransId,
+      service_id: CLICK_SERVICE,
+      merchant_trans_id: fields.orderId,
+      ...(action === '1' ? { merchant_prepare_id: fields.prepareId } : {}),
+      amount,
+      action,
+      error: fields.error ?? '0',
+      sign_time: signTime,
+      sign_string: signature,
+    },
+  };
+}
+
+describe('UAT-16 - a user completes first employer registration', () => {
+  it('creates the wallet and credits exactly ten free Coins, once', async () => {
+    const { userId: employerUserId } = await newUser('employer');
+
+    const view = await wallet.read(employerUserId);
+
+    expect(view.balanceCoins).toBe(10);
+    expect(view.registrationBonusAt).toBeInstanceOf(Date);
+
+    // "Exactly once" is the whole scenario, and §6.6 lists four ways it would be retried -
+    // logout, reinstall, device change, role switching. Each is this call happening again.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await db
+        .transaction()
+        .execute((trx) => wallet.grantRegistrationBonus(trx, employerUserId));
+    }
+
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(10);
+  });
+});
+
+describe('UAT-17 - employer with 10 Coins unlocks a new candidate', () => {
+  it('debits two Coins and leaves a balance of eight', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const candidateUserId = await completeCandidate();
+
+    await wallet.read(employerUserId);
+    const unlock = await wallet.unlock(employerUserId, candidateUserId);
+
+    expect(unlock.charged).toBe(true);
+    expect(unlock.costCoins).toBe(2);
+    // The number the scenario states.
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(8);
+
+    // **The rest of this row is not asserted yet, and that is deliberate.** UAT-17 also says
+    // "protected phone/e-mail, CV, chat, and interview/contact actions become available",
+    // which today they are for a *hiring interaction* rather than for an unlock - M6's
+    // delivered BR-09 contract. Whether an application is also an approved entitlement is
+    // the open question at the top of TODO.md, and M12's retrofit answers it. Asserting
+    // either reading now would bake in a decision the client has not made.
+    expect(await wallet.hasUnlock(employerUserId, candidateUserId)).toBe(true);
+  });
+});
+
+describe('UAT-18 - employer revisits the same already-unlocked candidate', () => {
+  it('charges nothing more and keeps the entitlement', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const candidateUserId = await completeCandidate();
+
+    await wallet.read(employerUserId);
+    await wallet.unlock(employerUserId, candidateUserId);
+
+    const again = await wallet.unlock(employerUserId, candidateUserId);
+
+    expect(again.charged).toBe(false);
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(8);
+    expect(await wallet.hasUnlock(employerUserId, candidateUserId)).toBe(true);
+  });
+});
+
+describe('UAT-19 - employer with fewer than 2 Coins attempts Candidate Unlock', () => {
+  it('blocks the unlock and says what a top-up would cost', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const candidateUserId = await completeCandidate();
+    const { userId: adminUserId } = await newUser('admin');
+
+    await wallet.read(employerUserId);
+    // Down to one Coin through a real ledger entry, so even the fixture cannot put the
+    // wallet in a state the product could not reach.
+    await wallet.adjust(adminUserId, employerUserId, -9, 'UAT-19 fixture.');
+
+    await expect(
+      wallet.unlock(employerUserId, candidateUserId),
+    ).rejects.toMatchObject({ messageKey: 'wallet.insufficient_coins' });
+
+    // "The Wallet top-up action is shown": the server's half of that is telling the client
+    // what a top-up would be for, and which providers can take it.
+    const view = await wallet.read(employerUserId);
+    expect(view.balanceCoins).toBe(1);
+    expect(view.pricing.candidateUnlockCoins).toBe(2);
+    expect(payments.availableProviders()).toEqual(['payme', 'click']);
+
+    // And the refusal wrote no entitlement.
+    expect(await wallet.hasUnlock(employerUserId, candidateUserId)).toBe(false);
+  });
+});
+
+describe('UAT-20 - employer buys 10 Coins through Payme at the initial price', () => {
+  it('creates a UZS 100 000 order and credits exactly ten Coins once', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const { order } = await payments.create(
+      employerUserId,
+      'payme',
+      10,
+      'uz-Latn',
+    );
+
+    // The scenario's own arithmetic.
+    expect(order.amountUzs).toBe(100_000);
+    expect(order.status).toBe('created');
+
+    const before = (await wallet.read(employerUserId)).balanceCoins;
+    const transactionId = `uat20-${order.id}`;
+
+    // The provider's lifecycle, in the order Payme performs it (§12.6).
+    const allowed = (await payments.handleCallback(
+      'payme',
+      paymeCall('CheckPerformTransaction', {
+        // Payme speaks tiyin.
+        amount: order.amountUzs * 100,
+        account: { order_id: order.id },
+      }),
+    )) as { body: { result: { allow: boolean } } };
+
+    expect(allowed.body.result.allow).toBe(true);
+
+    await payments.handleCallback(
+      'payme',
+      paymeCall('CreateTransaction', {
+        id: transactionId,
+        amount: order.amountUzs * 100,
+        account: { order_id: order.id },
+      }),
+    );
+
+    const performed = (await payments.handleCallback(
+      'payme',
+      paymeCall('PerformTransaction', { id: transactionId }),
+    )) as { body: { result: { state: number } } };
+
+    expect(performed.body.result.state).toBe(2);
+
+    const paid = await payments.read(employerUserId, order.id);
+    expect(paid.status).toBe('paid');
+    expect(paid.paidAt).not.toBeNull();
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(before + 10);
+  });
+});
+
+describe('UAT-21 - employer buys Coins through CLICK', () => {
+  it('moves the order to PAID on verified completion and credits once', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const { order } = await payments.create(
+      employerUserId,
+      'click',
+      5,
+      'uz-Latn',
+    );
+    const before = (await wallet.read(employerUserId)).balanceCoins;
+
+    const prepared = (await payments.handleCallback(
+      'click',
+      clickCall('0', {
+        orderId: order.id,
+        amountUzs: order.amountUzs,
+        clickTransId: `uat21-${order.id}`,
+      }),
+    )) as { body: { error: number; merchant_prepare_id: string } };
+
+    expect(prepared.body.error).toBe(0);
+
+    const completed = (await payments.handleCallback(
+      'click',
+      clickCall('1', {
+        orderId: order.id,
+        amountUzs: order.amountUzs,
+        clickTransId: `uat21-${order.id}`,
+        prepareId: prepared.body.merchant_prepare_id,
+      }),
+    )) as { body: { error: number } };
+
+    expect(completed.body.error).toBe(0);
+    expect((await payments.read(employerUserId, order.id)).status).toBe('paid');
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(before + 5);
+  });
+});
+
+describe('UAT-22 - the same successful provider callback is delivered twice', () => {
+  it('is idempotent and does not duplicate the wallet credit', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const { order } = await payments.create(
+      employerUserId,
+      'payme',
+      10,
+      'uz-Latn',
+    );
+    const transactionId = `uat22-${order.id}`;
+    const perform = paymeCall('PerformTransaction', { id: transactionId });
+
+    await payments.handleCallback(
+      'payme',
+      paymeCall('CreateTransaction', {
+        id: transactionId,
+        amount: order.amountUzs * 100,
+        account: { order_id: order.id },
+      }),
+    );
+
+    await payments.handleCallback('payme', perform);
+    const afterFirst = (await wallet.read(employerUserId)).balanceCoins;
+
+    // The second delivery. Still a success, because telling Payme otherwise makes it retry
+    // forever - and still one credit (BR-19).
+    const second = (await payments.handleCallback('payme', perform)) as {
+      body: { result: { state: number } };
+    };
+
+    expect(second.body.result.state).toBe(2);
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(afterFirst);
+
+    const credits = await db
+      .selectFrom('wallet_transactions')
+      .select('id')
+      .where('kind', '=', 'top_up')
+      .where('reference_id', '=', order.id)
+      .execute();
+
+    expect(credits).toHaveLength(1);
+  });
+});
+
+describe('UAT-23 - a Payme/CLICK payment fails or is cancelled', () => {
+  it('credits no Coins and leaves the status and a retry visible in Wallet', async () => {
+    const { employerUserId } = await verifiedEmployer();
+    const before = (await wallet.read(employerUserId)).balanceCoins;
+
+    // The Payme half: a transaction cancelled before it ever performed.
+    const { order: paymeOrder } = await payments.create(
+      employerUserId,
+      'payme',
+      10,
+      'uz-Latn',
+    );
+    const transactionId = `uat23-${paymeOrder.id}`;
+
+    await payments.handleCallback(
+      'payme',
+      paymeCall('CreateTransaction', {
+        id: transactionId,
+        amount: paymeOrder.amountUzs * 100,
+        account: { order_id: paymeOrder.id },
+      }),
+    );
+    await payments.handleCallback(
+      'payme',
+      paymeCall('CancelTransaction', { id: transactionId, reason: 3 }),
+    );
+
+    // The CLICK half: a completion carrying CLICK's own error.
+    const { order: clickOrder } = await payments.create(
+      employerUserId,
+      'click',
+      10,
+      'uz-Latn',
+    );
+    const prepared = (await payments.handleCallback(
+      'click',
+      clickCall('0', {
+        orderId: clickOrder.id,
+        amountUzs: clickOrder.amountUzs,
+        clickTransId: `uat23-${clickOrder.id}`,
+      }),
+    )) as { body: { merchant_prepare_id: string } };
+
+    await payments.handleCallback(
+      'click',
+      clickCall('1', {
+        orderId: clickOrder.id,
+        amountUzs: clickOrder.amountUzs,
+        clickTransId: `uat23-${clickOrder.id}`,
+        prepareId: prepared.body.merchant_prepare_id,
+        error: '-31',
+      }),
+    );
+
+    // BR-20: neither one increased the balance.
+    expect((await wallet.read(employerUserId)).balanceCoins).toBe(before);
+
+    // "The final/retry status is visible in Wallet" - both orders, with a reason, in the
+    // list the Wallet screen reads.
+    const orderHistory = await payments.list(employerUserId, 20, 0);
+    const byId = new Map(orderHistory.map((row) => [row.id, row]));
+
+    expect(byId.get(paymeOrder.id)?.status).toBe('cancelled');
+    expect(byId.get(clickOrder.id)?.status).toBe('cancelled');
+    expect(byId.get(clickOrder.id)?.failureCode).toBe('-31');
+
+    // Retrying is opening a new order, which the wallet permits with the old ones visible.
+    const retry = await payments.create(employerUserId, 'payme', 10, 'uz-Latn');
+    expect(retry.order.status).toBe('created');
   });
 });

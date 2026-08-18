@@ -25,6 +25,7 @@ import { HealthModule } from '@modules/health/health.module';
 import { InterviewsModule } from '@modules/interviews/interviews.module';
 import { InvitationsModule } from '@modules/invitations/invitations.module';
 import { SchemasModule } from '@modules/schemas/schemas.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { WalletModule } from '@modules/wallet/wallet.module';
 import { UsersModule } from '@modules/users/users.module';
 import { VacanciesModule } from '@modules/vacancies/vacancies.module';
@@ -68,6 +69,7 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     AuthModule,
     UsersModule,
     WalletModule,
+    PaymentsModule,
     DictionariesModule,
     SchemasModule,
     CandidatesModule,

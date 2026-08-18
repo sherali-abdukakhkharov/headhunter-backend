@@ -21,6 +21,8 @@ export interface DueAccount {
   auditRows: number;
   /** How many wallet transactions do. Financial history outlives the account (BR-24). */
   walletRows: number;
+  /** And how many Payment Orders, which §6.7 keeps for reconciliation (M13). */
+  paymentOrders: number;
 }
 
 export interface RetentionDue {
@@ -169,6 +171,29 @@ export class RetentionService {
             .select((inner) => inner.fn.countAll<string>().as('count'))
             .whereRef('w.employer_user_id', '=', 'd.user_id')
             .as('walletRows'),
+        // **The wallet row itself, which is the thing the constraint actually protects.**
+        // Counting ledger rows is not the same question: `employer_wallets.user_id` is
+        // `ON DELETE RESTRICT`, so a wallet with *no* transactions still refuses the delete -
+        // reachable whenever `EMPLOYER_REGISTRATION_BONUS_COINS` is 0, which the environment
+        // schema deliberately allows as a pricing decision. Under the default bonus every
+        // wallet has at least one row and the two agree, which is exactly why this would have
+        // stayed hidden until an instance turned the bonus off.
+        (eb) =>
+          eb
+            .selectFrom('employer_wallets as ew')
+            .select((inner) => inner.fn.countAll<string>().as('count'))
+            .whereRef('ew.user_id', '=', 'd.user_id')
+            .as('walletRow'),
+        // M13's payment records, for the report rather than for the decision: an order can
+        // only exist against a wallet, so `walletRow` already covers the constraint. §6.7
+        // requires these kept for reconciliation, and an administrator deciding to anonymize
+        // an account should see how much financial history is behind it.
+        (eb) =>
+          eb
+            .selectFrom('payment_orders as po')
+            .select((inner) => inner.fn.countAll<string>().as('count'))
+            .whereRef('po.employer_user_id', '=', 'd.user_id')
+            .as('paymentOrders'),
       ])
       .where('d.cancelled_at', 'is', null)
       .where('d.requested_at', '<', cutoff)
@@ -180,19 +205,24 @@ export class RetentionService {
     return rows.map((row) => {
       const auditRows = Number(row.auditRows ?? 0);
       const walletRows = Number(row.walletRows ?? 0);
+      const paymentOrders = Number(row.paymentOrders ?? 0);
+      const hasWallet = Number(row.walletRow ?? 0) > 0;
 
       return {
         userId: row.userId,
         requestedAt: row.requestedAt,
         // Either kind of record keeps the row alive. Both are append-only by design, and
         // neither can be rewritten to forget who it belonged to - so the person is erased
-        // and the id survives.
+        // and the id survives. The decision is made on what the **constraints** refuse, not
+        // on how much history there is: an audit row (`RESTRICT` on the actor) or a wallet
+        // row (`RESTRICT` on the owner).
         action:
-          auditRows > 0 || walletRows > 0
+          auditRows > 0 || hasWallet
             ? ('anonymize' as const)
             : ('purge' as const),
         auditRows,
         walletRows,
+        paymentOrders,
       };
     });
   }
@@ -297,12 +327,14 @@ export class RetentionService {
         reason:
           account.action === 'anonymize'
             ? `BR-14: identity erased, id retained for ${account.auditRows} audit ` +
-              `row(s) and ${account.walletRows} wallet transaction(s)`
+              `row(s), ${account.walletRows} wallet transaction(s) and ` +
+              `${account.paymentOrders} payment order(s)`
             : 'BR-14: account and personal data deleted',
         details: {
           action: account.action,
           auditRows: account.auditRows,
           walletRows: account.walletRows,
+          paymentOrders: account.paymentOrders,
         },
       });
     });

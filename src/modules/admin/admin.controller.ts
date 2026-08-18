@@ -662,9 +662,11 @@ export class AdminController {
     description:
       'A preview, and the reason there is no scheduler behind any of this: while the ' +
       'periods are provisional, an administrator looks at what is due before anything ' +
-      'is erased. `action` is `anonymize` for an account that is the actor on an audit ' +
-      'row - §10.4 will not let that row lose who acted, so the person is erased and the ' +
-      'id survives.',
+      'is erased. `action` is `anonymize` for an account some record has to outlive: the ' +
+      'actor on an audit row (§10.4 will not let it lose who acted) or an employer holding ' +
+      'a wallet (§6.7 keeps payment records for reconciliation, BR-24 forbids rewriting ' +
+      'the ledger). In both cases the person is erased and the id survives; `walletRows` ' +
+      'and `paymentOrders` say how much financial history is behind the decision.',
   })
   @ApiOkResponse({ type: RetentionDueDto })
   async retentionDue(): Promise<RetentionDueDto> {

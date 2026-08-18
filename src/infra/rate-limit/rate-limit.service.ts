@@ -7,12 +7,18 @@ import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AppEnv } from '@infra/env-schema';
 
 /**
- * §12.5's five buckets, complete since M11.
+ * §12.5's five buckets, complete since M11, plus M13's payment callbacks.
  *
- * Five rather than one global limiter because the budgets differ by two orders of
- * magnitude: an OTP costs an SMS, a search costs a query plan, a message costs a row.
+ * Separate buckets rather than one global limiter because the budgets differ by two orders
+ * of magnitude: an OTP costs an SMS, a search costs a query plan, a message costs a row.
  */
-export type RateLimitBucket = 'otp' | 'auth' | 'files' | 'search' | 'messaging';
+export type RateLimitBucket =
+  | 'otp'
+  | 'auth'
+  | 'files'
+  | 'search'
+  | 'messaging'
+  | 'payments';
 
 /** What a bucket is counted by. A request missing the value skips that rule. */
 export type RateLimitKey = 'ip' | 'phone';
@@ -93,6 +99,20 @@ export class RateLimitService {
         {
           key: 'ip',
           limit: config.get('RATE_LIMIT_MESSAGING_PER_IP', { infer: true }),
+        },
+      ],
+      // M13's provider callbacks: the first public **mutating** routes in the product, so
+      // they get their own budget rather than sharing one with a person's traffic. The
+      // limit is generous because the caller is a payment provider retrying in good faith
+      // - BR-19 is what makes those retries harmless - and because throttling a provider
+      // into giving up on a `PerformTransaction` would leave money taken and no Coins
+      // credited. What this bucket stops is a flood from something that is *not* the
+      // provider, and it counts per IP for the same reason: a signature check is cheap but
+      // not free.
+      payments: [
+        {
+          key: 'ip',
+          limit: config.get('RATE_LIMIT_PAYMENTS_PER_IP', { infer: true }),
         },
       ],
     };

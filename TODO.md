@@ -68,18 +68,32 @@ needs them.
       allows. Answering "an application is an approved entitlement" leaves M6, M8's chat
       and their tests intact and reduces M12 to new code only. Answering "no" is also
       fine - it just costs the retrofit in [PLAN.md](PLAN.md) M12.
-- [?] **Payme and CLICK merchant accounts** *(new, blocks M13's completion)* - sandbox
-      credentials are enough to build and test the whole flow; production activation
-      needs the real merchant accounts, and §12.6 requires provider-test-environment
-      testing first. Same shape as the Eskiz account: the code can be finished and
-      verified without them, and cannot be *switched on* without them.
-      Ask on setup: merchant ids and secret keys for both providers, the callback URL to
-      register (a public HTTPS endpoint - we have `hh.qitmir.uz`, but it is a dev
-      tunnel), and whether one merchant account covers both Coin packages and future
-      products.
-- [?] **Fiscal receipt attributes** *(new)* - §6.7 leaves the service/product code, VAT
-      and related merchant configuration to "the Client/accounting function". We cannot
-      guess these; they go in configuration once supplied.
+- [?] **Payme and CLICK merchant accounts** *(blocks switching M13 on, and nothing else
+      now)* - **the code is finished and verified.** Both adapters, both callback routes,
+      exactly-once crediting and 65 tests are in; with no credentials the adapters refuse
+      every callback and `GET /payments/providers` answers with an empty list, so the
+      product is complete and honest without an account. Same shape as Eskiz: it cannot be
+      *switched on* without one.
+      Everything to ask for is in [docs/PAYMENTS.md](docs/PAYMENTS.md) - merchant ids and
+      secret keys for both, plus the callback URLs to register. **The harder half is not
+      the credentials but the host**: a production merchant account should not point at
+      `hh.qitmir.uz`, which is a Cloudflare tunnel on a developer machine, and
+      re-registering a callback URL later is a support ticket with the provider.
+- [?] **Fiscal receipt attributes** *(§6.7)* - **not blocking a payment, only a receipt.**
+      §6.7 leaves the service/product code, VAT and merchant configuration to "the
+      Client/accounting function", so it is declared as data in
+      [payment-fiscal.ts](src/modules/payments/payment-fiscal.ts) with a `provenance` tag -
+      the fourth time that pattern has answered an open question here. **While it reads
+      `unknown` no receipt is sent to either provider**, and a unit test asserts that: a
+      guessed IKPU code on a real transaction ends up on a tax return rather than in a log.
+      One edit to one file when the codes arrive.
+- [?] **Who absorbs a refund of Coins that were already spent?** *(new with M13)* BR-16
+      makes an unlock permanent, so a reversal can only recover what is still in the wallet.
+      The code takes `min(balance, coins)` and writes the shortfall into the ledger row's
+      reason, because a full debit would drive the balance negative, which the database
+      refuses - and a refused transaction would leave the order stuck at `paid` while the
+      provider believed it was refunded. The data stays honest either way; **who eats the
+      difference is a commercial decision**, and there is a test for the case.
 - [?] **§12.7: which payment channel ships per storefront** *(new)* - Coins unlock
       in-app digital functionality, so Apple and Google may require their own billing
       rather than Payme/CLICK. The specification requires the ledger to stay
@@ -899,3 +913,168 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       failure on the first run was the test asserting a name the code never
       used, which is what a walkthrough written against the spec rather than
       against the code is supposed to feel like
+
+## M12 - Employer wallet, Coins, Candidate Unlock *(built; the BR-09 retrofit is open)*
+
+Wire shapes are in [docs/openapi.json](docs/openapi.json); the design record is
+[ARCHITECTURE.md](ARCHITECTURE.md) §10b.
+
+### Schema *(done - `20260810120000_create_wallets`, `20260810140000_wallet_survives_purge`)*
+- [x] `employer_wallets`, `wallet_transactions`, `candidate_unlocks`. **The ledger is the
+      truth and the balance is a cache**; a test asserts they agree after every kind of
+      transaction, which is the only thing that keeps a denormalized balance honest
+- [x] Append-only in the database (BR-24) - the same three statement-level triggers M10 used
+      for the audit log, so `UPDATE ... WHERE false` is refused too
+- [x] BR-16 is the `(employer, candidate)` primary key, not a check: two taps race and the
+      database picks a winner
+- [x] BR-15 is a partial unique index, which answers all four of §6.6's cases - logout,
+      reinstall, device change, role switch - because each is a retry of the same insert
+- [x] Row-level arithmetic: `balance_after = balance_before + amount_coins`, an unlock cannot
+      be positive, an adjustment cannot exist without a reason **and** an actor
+- [x] A unique index for one `top_up` per payment order, **written before M13 existed** - so
+      no row could ever have been written without it
+- [x] **A test found that deleting a user cascaded into the append-only ledger**, so BR-14's
+      purge could not delete any employer who had ever held a Coin. Same collision as the
+      audit log, one milestone later. `employer_wallets` now references `users` with
+      `RESTRICT` so the refusal is legible at the top of the purge rather than half way down
+      a cascade, and those accounts are anonymized instead
+
+### Endpoints *(done)*
+- [x] `GET /wallet` - balance, pricing, and the wallet created on first read, which
+      back-grants the bonus to employers who registered before this shipped. Relying on the
+      index rather than on "has this employer registered" settles that case without writing
+      money into a data migration
+- [x] `GET /wallet/transactions`, `GET /wallet/unlocks/{id}`, `POST /wallet/unlocks`
+- [x] `GET /admin/wallets`, `GET /admin/wallets/{userId}`,
+      `POST /admin/wallets/{userId}/adjust` (§10.5) - mandatory reason, a ledger row **and**
+      an audit row in one transaction
+- [x] **No `Idempotency-Key` on the unlock, deliberately.** The pair is a natural key, so a
+      retry returns the existing entitlement with `charged: false`. A header key answers the
+      same question worse: one key per tap is two keys for one intent
+- [x] The debit and the entitlement are one transaction (BR-18), and it **returns an outcome
+      rather than throwing** - throwing inside would roll back the write and report
+      "insufficient balance" having taken the money
+
+### The BR-09 retrofit *(not built, and waiting on one answer)*
+- [?] §11.1 and §9.1 gate contact details, CV, chat, interviews and invitations on the
+      entitlement; M6/M7/M8 gate them on a live hiring interaction. **Whether an
+      application is also an approved entitlement is the question at the top of this file**,
+      and it halves this work. Nothing else in M12 depends on it.
+      Touches, when answered: `infra/privacy/contact-exposure.ts` (the one place the rule
+      lives), `CandidateViewService`, the four entitlement-bearing file routes, `ChatService`
+      and `InvitationsService.invite` - plus every existing BR-09 test, which asserts the old
+      contract and has to change **deliberately**
+- [x] `wallet.unlock_required` is already in the message catalogue with all four labels, so
+      the retrofit is a code change and not a translation round
+
+### Tests *(done - 19 integration, four of them concurrent)*
+- [x] Two concurrent unlocks of the same pair: one debit, one entitlement
+- [x] Two concurrent first-registrations: one bonus
+- [x] A wallet holding 1 Coin refuses the unlock and writes no ledger row
+- [x] The cached balance equals the ledger sum after a mixed sequence
+- [x] `UPDATE` and `DELETE` on `wallet_transactions` are refused by the database, including
+      an `UPDATE` that matches nothing
+- [x] UAT-16, UAT-18 and UAT-19 walked in `src/uat/uat.int.spec.ts`. **UAT-17 is
+      half-asserted on purpose**: its Coin arithmetic holds, and the sentence about chat and
+      contact actions becoming available is the retrofit's, so the test says so rather than
+      quietly omitting it
+
+---
+
+## M13 - Payme and CLICK top-up *(done; needs merchant accounts to switch on)*
+
+Everything is in [docs/PAYMENTS.md](docs/PAYMENTS.md), including what to ask for on purchase.
+
+### Schema *(done - `20260810160000_create_payments`)*
+- [x] `payment_orders` with §6.7's six statuses, the price quoted **onto the order** (§10.5),
+      and `amount_uzs = coins * coin_price_uzs` as a **check constraint** - §12.3.1's "client
+      totals are never trusted" as arithmetic on the row rather than a habit at a call site
+- [x] A unique index on `(provider, provider_transaction_id)`, so one provider transaction
+      belongs to exactly one order and a callback cannot be replayed against another
+- [x] A paid order cannot exist without a provider transaction id and a `paid_at` - a paid
+      order nobody can reconcile is the thing §6.7 exists to prevent
+- [x] `payment_events`, the reconciliation trail, **append-only** with the same three
+      triggers. `order_id` is **nullable on purpose**: a callback that fails its signature or
+      names no order is exactly the event an incident review wants, and it has nothing to
+      attach to
+- [x] A check constraint makes **a rejected event with a state change unrepresentable**,
+      which is §12.6's "verify before changing the internal state" as a property of the table
+- [x] **No raw provider payload is stored** - §12.6 says log only non-sensitive identifiers,
+      so each adapter hands over the fields this system understands. A redaction denylist
+      would have to be maintained forever; not holding the data cannot leak it
+
+### The provider seam, for the third time *(done)*
+- [x] One `PaymentProvider` abstraction, `PaymeProvider`, `ClickProvider`, and a registry that
+      only offers what is configured. **An unconfigured adapter refuses by construction**
+      rather than via a fourth no-op class: verifying Payme needs the merchant key and
+      verifying CLICK needs the secret, so with no credential there is no path that returns a
+      verified command
+- [x] **The adapter owns the wire format; the service owns the state machine.** Six Payme
+      methods and CLICK's two collapse into one normalized command union, so there is one
+      state machine and its tests cover both providers
+- [x] **No outbound HTTP in this milestone, and that is not an omission** - both integrations
+      are inbound and checkout is a URL the client opens. No HTTP client, no timeouts, no
+      retry policy: the provider retries, and BR-19 makes that safe
+- [x] Payme: JSON-RPC, Basic `Paycom:<key>`, **amounts in tiyin** - converted in one pair of
+      functions with a test pinning both directions, because that is the one place in this
+      milestone to be wrong by two orders of magnitude
+- [x] CLICK: MD5 `sign_string`, and the **signed field list differs between `Prepare` and
+      `Complete`**. `merchant_prepare_id` is derived from the order id rather than stored, so
+      a completion naming a different one fails verification instead of being accepted
+- [x] `PAYME_ACCOUNT_FIELD` is configuration because it is *their* setting; a mismatch makes
+      every callback fail as "order not found", which is a confusing way to find out
+
+### Endpoints *(done)*
+- [x] `GET /payments/providers` - what the top-up screen may offer, so an empty list and a
+      §12.7 storefront decision are both configuration rather than an app release
+- [x] `POST /payments/orders`, `GET /payments/orders`, `GET /payments/orders/{id}`. The
+      request carries a **Coin count, never a total**
+- [x] `POST /payments/callbacks/payme` and `.../click` - **the first public mutating routes in
+      the product.** Added to `api-surface.spec.ts`'s frozen list with the argument written
+      out, given their own rate-limit bucket, excluded from the client's OpenAPI document,
+      and never localized: a provider is not a person
+- [x] Both callbacks answer **200 with the provider's own error in the body**, because an HTTP
+      error makes a provider retry a request already decided
+
+### Tests *(done - 29 unit, 32 integration, 4 UAT)*
+- [x] **UAT-22, the most important test in the milestone**: the same successful callback
+      delivered twice credits once. And again *concurrently*, which is the case the row lock
+      exists for
+- [x] BR-19 is four constraints in four places, and each is tested: the row lock, the
+      conditional `UPDATE ... WHERE status = 'pending'`, the ledger's unique index, and the
+      one-order-per-provider-transaction index
+- [x] BR-20: a cancelled Payme transaction and a CLICK `Complete` carrying its own error both
+      credit nothing, and the reason is visible in Wallet (UAT-23)
+- [x] A reversal after payment is a **new** ledger row and the balance moves; nothing is
+      rewritten (BR-24). When the Coins were already spent it recovers what is left and
+      records the shortfall - see the open question below
+- [x] An amount one soum short is refused; the comparison is exact, not a tolerance
+- [x] A wrong signature, a wrong `service_id`, a wrong username on the Basic credential, and a
+      key that is a prefix of the right one are all refused - and the order is untouched
+- [x] An account field that is not a UUID at all does not abort the transaction that records
+      it. `WHERE id = 'garbage'` is a Postgres type error, which would have taken the event
+      row with it
+- [x] **Found while testing:** a `CreateTransaction` reusing another order's transaction id
+      hit the unique index as a raw error thrown out of the transaction - rolling back the
+      event row that explained it and answering the provider with a 500. The collision is now
+      read first and the index is a backstop
+- [x] `payment_events` refuses `UPDATE`, `DELETE`, and an `UPDATE` matching nothing
+
+### What is left, and none of it is code
+- [ ] **Merchant accounts for Payme and CLICK.** Sandbox credentials are enough to finish and
+      verify everything; §12.6 requires provider-test-environment testing before production
+      credentials are activated, so that order is the client's constraint too
+- [ ] **A stable public HTTPS callback host.** `hh.qitmir.uz` is a dev tunnel on a developer
+      machine: a sandbox can reach it, but a production merchant account should not point at
+      something that stops answering when the machine is off - and re-registering a callback
+      URL is a support ticket with the provider
+- [ ] **Fiscal receipt attributes** (§6.7). Declared as data with a `provenance` tag, and
+      **no receipt is sent while it reads `unknown`** - a guessed IKPU code on a real
+      transaction ends up on a tax return. Payments work without one
+- [ ] **Who absorbs a refund of Coins already spent?** BR-16 makes an unlock permanent, so a
+      reversal can only recover what is left. The code takes `min(balance, coins)` and records
+      the shortfall, because a negative balance is refused by the database. Commercial
+      question, not a technical one
+- [ ] **§12.7's store-billing check**, which §12.6 and §12.7 both say must happen immediately
+      before release. If the answer is Apple or Google billing, it costs one adapter and one
+      `ALTER TYPE` - the ledger has no provider column, which is the whole point

@@ -619,6 +619,161 @@
         ]
       }
     },
+    "/payments/providers": {
+      "get": {
+        "description": "The providers with a merchant account configured, the order bounds, and today’s Coin price. **Build the top-up screen from this** rather than hard-coding two buttons: an empty list is a valid answer on a deployment whose merchant accounts are not activated yet, and §12.7 may require a different channel per storefront - both of which are then a configuration change rather than an app release.",
+        "operationId": "PaymentsController_providers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentProvidersDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What the top-up screen can offer (§6.7)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/orders": {
+      "post": {
+        "description": "Send a **Coin count**, not a total: §12.3.1 requires the payable amount to be calculated server-side from the current Coin price, and it is written onto the order so a later repricing cannot change what this checkout charges (§10.5).\n\nThen open `checkout.url`. **Do not credit anything on the redirect back** - §6.7 is explicit that a client-side success redirect is not sufficient. Poll `GET /payments/orders/{id}` until the status settles; `paid` is the only status that means the Coins are in the wallet.\n\nNo `Idempotency-Key` here, for the same reason the unlock has none: a second tap is a second *intent* to pay, and two open orders are legitimate - only one of them can ever reach `paid` per provider transaction (BR-19). Abandoned orders simply stay `created`.",
+        "operationId": "PaymentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopUpRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopUpDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That provider has no merchant account configured on this deployment (`payments.provider_unavailable`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Open a Payment Order and get its checkout (§6.7)",
+        "tags": [
+          "payments"
+        ]
+      },
+      "get": {
+        "description": "The top-up history behind the Wallet screen, including the failed and cancelled orders §12.6 requires to be visible with a retry option.",
+        "operationId": "PaymentsController_list",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentOrderListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "This employer’s Payment Orders, newest first (§6.7)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/orders/{orderId}": {
+      "get": {
+        "description": "What the client polls after returning from a provider checkout. Scoped to the caller: an order id is an identifier, not an authorization.",
+        "operationId": "PaymentsController_read",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentOrderDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such order for this employer."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One Payment Order (§6.7)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/dictionaries/manifest": {
       "get": {
         "description": "One request tells a cold client exactly what it needs to refetch. Locale-independent, so it is safe to cache across a language change.",
@@ -5690,7 +5845,7 @@
     },
     "/admin/retention/due": {
       "get": {
-        "description": "A preview, and the reason there is no scheduler behind any of this: while the periods are provisional, an administrator looks at what is due before anything is erased. `action` is `anonymize` for an account that is the actor on an audit row - §10.4 will not let that row lose who acted, so the person is erased and the id survives.",
+        "description": "A preview, and the reason there is no scheduler behind any of this: while the periods are provisional, an administrator looks at what is due before anything is erased. `action` is `anonymize` for an account some record has to outlive: the actor on an audit row (§10.4 will not let it lose who acted) or an employer holding a wallet (§6.7 keeps payment records for reconciliation, BR-24 forbids rewriting the ledger). In both cases the person is erased and the id survives; `walletRows` and `paymentOrders` say how much financial history is behind the decision.",
         "operationId": "AdminController_retentionDue",
         "parameters": [],
         "responses": {
@@ -6707,6 +6862,195 @@
         "required": [
           "requestedAt",
           "purgeAfter"
+        ]
+      },
+      "PaymentProvidersDto": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "description": "The providers this deployment can actually take money through - the ones with a merchant account configured. **Render the top-up options from this list**, because an empty list is a valid answer and §12.7 may make the answer per-storefront.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "payme",
+                "click"
+              ]
+            }
+          },
+          "minCoins": {
+            "type": "number",
+            "example": 1
+          },
+          "maxCoins": {
+            "type": "number",
+            "example": 1000
+          },
+          "coinPriceUzs": {
+            "type": "number",
+            "example": 10000,
+            "description": "Today’s Coin price. The same value `GET /wallet` reports."
+          }
+        },
+        "required": [
+          "providers",
+          "minCoins",
+          "maxCoins",
+          "coinPriceUzs"
+        ]
+      },
+      "TopUpRequestDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "payme",
+              "click"
+            ],
+            "description": "Which provider to pay through. Must be one of the providers `GET /payments/providers` currently lists - a provider with no merchant account configured is refused rather than offered a checkout that cannot complete."
+          },
+          "coins": {
+            "type": "number",
+            "example": 10,
+            "description": "How many Coins to buy. **The client sends a Coin count and never a total**: §12.3.1 requires the payable amount to be calculated server-side from the current Coin price, so an amount in the request would be ignored if it were accepted at all."
+          }
+        },
+        "required": [
+          "provider",
+          "coins"
+        ]
+      },
+      "PaymentOrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The internal Payment Order id (§6.7). Quote it in a support request."
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "payme",
+              "click"
+            ]
+          },
+          "coins": {
+            "type": "number",
+            "example": 10
+          },
+          "coinPriceUzs": {
+            "type": "number",
+            "example": 10000,
+            "description": "The Coin price this order was quoted at, which is not necessarily today’s. §10.5: repricing affects future transactions only."
+          },
+          "amountUzs": {
+            "type": "number",
+            "example": 100000,
+            "description": "What the provider will charge, in UZS. Always `coins × coinPriceUzs`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "pending",
+              "paid",
+              "failed",
+              "cancelled",
+              "reversed"
+            ],
+            "description": "§6.7’s statuses. **Only `paid` means the Coins arrived**, and it is reached from a verified provider callback - never from the client returning to the app. A client that treats its own success redirect as payment will show a balance that does not exist."
+          },
+          "providerTransactionId": {
+            "type": "object",
+            "nullable": true,
+            "description": "The provider’s transaction id once it has opened one. For support."
+          },
+          "failureCode": {
+            "type": "object",
+            "nullable": true,
+            "description": "Why a `failed`, `cancelled` or `reversed` order ended that way, as the provider reported it (§12.6’s \"clear status and retry option\")."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601 with the platform offset."
+          },
+          "paidAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "coins",
+          "coinPriceUzs",
+          "amountUzs",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CheckoutDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "payme",
+              "click"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL to open for payment: a provider payment page, payment link or deep link. It carries no secret (BR-22) and no card data ever reaches this API."
+          },
+          "amountUzs": {
+            "type": "number",
+            "example": 100000
+          }
+        },
+        "required": [
+          "provider",
+          "url",
+          "amountUzs"
+        ]
+      },
+      "TopUpDto": {
+        "type": "object",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/PaymentOrderDto"
+          },
+          "checkout": {
+            "description": "Open this, then poll `GET /payments/orders/{id}` (or reopen the wallet) until the status settles. §6.7: a client-side success redirect is not sufficient to credit Coins, so the app must read the status from here.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CheckoutDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "order",
+          "checkout"
+        ]
+      },
+      "PaymentOrderListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentOrderDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "TypeVersionDto": {
@@ -10104,18 +10448,28 @@
               "purge",
               "anonymize"
             ],
-            "description": "`anonymize` when the account is the actor on an audit row: §10.4 will not let that row lose who acted, so the person is erased and the actor id survives."
+            "description": "`anonymize` when some record has to outlive the person, and there are two such records. §10.4 will not let an audit row lose who acted, and §6.7 keeps payment records for reconciliation while BR-24 forbids rewriting the ledger — so in either case the person is erased and the id survives.\n\n**The decision is made on what the database refuses, not on how much history there is**: holding a wallet at all is enough, even with an empty ledger."
           },
           "auditRows": {
             "type": "number",
             "description": "Audit rows depending on this id surviving."
+          },
+          "walletRows": {
+            "type": "number",
+            "description": "Wallet ledger rows that will be kept (BR-24). Zero with `anonymize` is normal: an employer can hold a wallet with no transactions in it."
+          },
+          "paymentOrders": {
+            "type": "number",
+            "description": "Payment Orders that will be kept for reconciliation (§6.7)."
           }
         },
         "required": [
           "userId",
           "requestedAt",
           "action",
-          "auditRows"
+          "auditRows",
+          "walletRows",
+          "paymentOrders"
         ]
       },
       "TransientCountDto": {

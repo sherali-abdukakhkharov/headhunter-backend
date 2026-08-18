@@ -633,6 +633,32 @@ export const MESSAGES = {
     en: 'This candidate’s contact details are locked. Unlock them for {coins} Coins.',
   },
 
+  // --- Coin top-up (§6.7, M13) ---------------------------------------------
+  // Only the *employer-facing* half of M13 is here. Provider callbacks are answered in
+  // Payme's and CLICK's own error vocabularies, which are protocol strings rather than
+  // user-facing text: nothing on that path reads `x-lang`, because a provider is not a
+  // person and has no language.
+  'payments.coins_out_of_range': {
+    'uz-Latn': 'Bir marta {min} dan {max} tagacha tanga sotib olish mumkin.',
+    'uz-Cyrl': 'Бир марта {min} дан {max} тагача танга сотиб олиш мумкин.',
+    ru: 'За один раз можно купить от {min} до {max} монет.',
+    en: 'One order can buy between {min} and {max} Coins.',
+  },
+  // The client reads the provider list from `GET /wallet`, so this is reachable only with a
+  // stale list - or on a deployment that holds no merchant account yet.
+  'payments.provider_unavailable': {
+    'uz-Latn': 'Bu toʻlov usuli hozir ishlamaydi. Boshqasini tanlang.',
+    'uz-Cyrl': 'Бу тўлов усули ҳозир ишламайди. Бошқасини танланг.',
+    ru: 'Этот способ оплаты сейчас недоступен. Выберите другой.',
+    en: 'That payment method is unavailable. Please choose another.',
+  },
+  'payments.order_not_found': {
+    'uz-Latn': 'Toʻlov buyurtmasi topilmadi.',
+    'uz-Cyrl': 'Тўлов буюртмаси топилмади.',
+    ru: 'Заказ на оплату не найден.',
+    en: 'Payment order not found.',
+  },
+
   // --- SMS bodies (§4.1) ---------------------------------------------------
   // The one message this product sends over SMS. It lives here with everything else
   // a user reads, but it is **not** free text: Eskiz approves templates, so changing

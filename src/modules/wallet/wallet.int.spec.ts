@@ -57,26 +57,72 @@ afterAll(async () => {
   }
 
   for (const id of users) {
+    // **An employer who has held a wallet is left behind, and that is the design.**
+    // `employer_wallets.user_id` is `ON DELETE RESTRICT` (migration 20) because §6.7
+    // requires payment records to survive for reconciliation and BR-24 forbids rewriting
+    // the ledger, so this delete would be refused - by the same constraint, for the same
+    // reason, as the administrators `admin.int.spec.ts` leaves behind. BR-14's answer is to
+    // anonymize such an account rather than delete it, which `RetentionService` does.
+    //
+    // The administrators the fixtures use are held by the *second* RESTRICT on the same
+    // table: `wallet_transactions.actor_user_id`, which is what makes §10.5's "who adjusted
+    // this balance" unerasable. Both are checked here rather than caught, so an unexpected
+    // refusal on some *other* constraint still fails this suite.
+    const held = await db
+      .selectFrom('employer_wallets')
+      .select('user_id')
+      .where('user_id', '=', id)
+      .executeTakeFirst();
+
+    const acted = await db
+      .selectFrom('wallet_transactions')
+      .select('id')
+      .where('actor_user_id', '=', id)
+      .executeTakeFirst();
+
+    if (held || acted) {
+      continue;
+    }
+
     await db.deleteFrom('users').where('id', '=', id).execute();
   }
 
   await destroy();
 });
 
+/**
+ * A user with a phone number nothing else has taken.
+ *
+ * The retry matters because the employers this suite creates cannot be deleted - see
+ * `afterAll` - so the digits under `+99892` accumulate across runs and a random one
+ * eventually collides with a row an earlier run left behind.
+ */
 async function newUser(
   role: 'candidate' | 'employer' | 'admin',
 ): Promise<string> {
-  const phone = `+99892${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
-  const row = await db
-    .insertInto('users')
-    .values({ phone, locale: 'uz-Latn' })
-    .returning('id')
-    .executeTakeFirstOrThrow();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const phone = `+99892${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+    const row = await db
+      .insertInto('users')
+      .values({ phone, locale: 'uz-Latn' })
+      .onConflict((oc) => oc.column('phone').doNothing())
+      .returning('id')
+      .executeTakeFirst();
 
-  await db.insertInto('user_roles').values({ user_id: row.id, role }).execute();
-  users.push(row.id);
+    if (!row) {
+      continue;
+    }
 
-  return row.id;
+    await db
+      .insertInto('user_roles')
+      .values({ user_id: row.id, role })
+      .execute();
+    users.push(row.id);
+
+    return row.id;
+  }
+
+  throw new Error('could not find a free test phone number in 20 attempts');
 }
 
 /** An employer with a wallet holding exactly this many Coins, through the real paths. */

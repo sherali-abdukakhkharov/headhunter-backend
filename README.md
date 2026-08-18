@@ -176,6 +176,27 @@ session issuance, so an account can hold both credentials. Details, and what it 
 take to make it primary again, are in
 [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md).
 
+## Coins and payment providers
+
+Employers buy Coins to unlock a candidate's contact details (§6.6). The prices are
+**server configuration** — `COIN_PRICE_UZS`, `CANDIDATE_UNLOCK_COINS`,
+`EMPLOYER_REGISTRATION_BONUS_COINS` — because §6.6 forbids hard-coding them in Flutter and
+§10.5 allows changing them; every ledger row stores the price it was priced at, so a
+repricing never restates history.
+
+**No payment provider is connected yet, and that is a supported state.** Payme and CLICK are
+both implemented behind one seam; with no credentials the adapters refuse every callback and
+`GET /payments/providers` answers with an empty list, which is what the client renders the
+top-up screen from. Setting one provider's variables is the whole connection —
+[docs/PAYMENTS.md](docs/PAYMENTS.md) has what to ask for on purchase, and the three questions
+only the client can answer.
+
+Two things there are easy to undo. The credit path is reached **only** from a verified
+provider callback (§6.7: "a client-side success redirect is not sufficient to credit Coins"),
+so never add a route a client can call that credits. And BR-19's exactly-once guarantee is
+four constraints in four places, not one — see [ARCHITECTURE.md](ARCHITECTURE.md) §10b before
+simplifying any of them.
+
 ## File storage
 
 Bytes live in **Telegram**, not in object storage. A bot posts each upload to one
@@ -388,11 +409,34 @@ Every one of these was hit while setting the project up:
   (`infra/i18n`), and Telegram-backed file storage with owner-scoped
   upload / download / delete (`infra/files`, `/files`).
 
+- **M7–M11** are built too: candidate search, invitations and shortlists; chat and
+  interviews; notifications with FCM push; the admin module and its append-only audit log;
+  and M11's hardening — §12.4 measured at 200k profiles, §12.5 reviewed, a rehearsed
+  restore, BR-14 answered as data, and UAT-01..15 as an executable suite. **The list above
+  stops at M6 in detail; [PLAN.md](PLAN.md) and [TODO.md](TODO.md) are authoritative** and
+  say what each milestone actually delivered.
+- **M12** the employer Coin wallet: an append-only ledger with the balance as a checked
+  cache, Candidate Unlock charged once per pair by primary key, BR-15's bonus as a partial
+  unique index, and §10.5's administrator adjustment. The debit and the entitlement are one
+  transaction, and it returns an outcome rather than throwing — throwing inside would report
+  "insufficient balance" having taken the money.
+- **M13** Coin top-up through Payme and CLICK: both protocols behind one `PaymentProvider`
+  seam, the first public **mutating** routes in the product (provider callbacks, verified
+  before anything is read), and crediting exactly once however often a provider retries —
+  a row lock, a conditional update and two unique indexes, each catching what the others
+  cannot. **Built, not bought**: with no merchant credentials the adapters refuse every
+  callback and the provider list is empty ([docs/PAYMENTS.md](docs/PAYMENTS.md)).
+
 ## Not built yet
 
-Candidate search and invitations, chat and interviews, notifications, admin (M7 onward).
-Smaller gaps worth knowing: CI,
-the pruning job for `rate_limit_counters`, and malware scanning on uploads (§12.5
-asks for it "where infrastructure permits"; Telegram does none on a bot upload, and
-the content checks in `FilesService` are type validation, not scanning). The
-`/health` module remains the wiring proof.
+**One feature, and it is waiting on an answer rather than on work.** The 2026-08-10
+revision rewrote §11.1 and §9.1 so contact details and a CV need a Candidate Unlock
+"or another explicitly approved entitlement" — and whether a candidate's own application
+counts as one is the question at the top of [TODO.md](TODO.md). One answer leaves M6's
+delivered BR-09 behaviour intact; the other requires a retrofit through the privacy helper,
+the candidate view, four file routes, chat and invitations. Guessing costs either way.
+
+Smaller gaps worth knowing: CI, the pruning job for `rate_limit_counters`, and malware
+scanning on uploads (§12.5 asks for it "where infrastructure permits"; Telegram does none
+on a bot upload, and the content checks in `FilesService` are type validation, not
+scanning). The `/health` module remains the wiring proof.

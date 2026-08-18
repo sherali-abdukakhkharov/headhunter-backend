@@ -191,6 +191,16 @@ export interface AppEnv {
   RATE_LIMIT_MESSAGING_PER_IP: number;
 
   /**
+   * Payment provider callbacks (§6.7, M13).
+   *
+   * The loosest bucket in the product, and deliberately so: the caller is Payme or CLICK
+   * retrying, which BR-19 makes harmless, and throttling a provider out of delivering a
+   * `PerformTransaction` would mean money taken with no Coins credited. What it guards is a
+   * flood from something that is not the provider.
+   */
+  RATE_LIMIT_PAYMENTS_PER_IP: number;
+
+  /**
    * The Firebase service-account JSON, base64-encoded, or empty to disable push.
    *
    * Base64 because the document is multi-line and its private key contains newlines,
@@ -241,6 +251,53 @@ export interface AppEnv {
   COIN_PRICE_UZS: number;
   CANDIDATE_UNLOCK_COINS: number;
   EMPLOYER_REGISTRATION_BONUS_COINS: number;
+
+  /**
+   * How many Coins one order may buy (§6.7, M13).
+   *
+   * A floor and a ceiling, because the amount an order asks for becomes a real charge at a
+   * real provider. The ceiling is not a business rule anybody stated - it is a guard
+   * against a client sending 10^9, which would create an order for a sum no employer meant
+   * to authorize and would sit in the reconciliation trail forever.
+   */
+  PAYMENT_MIN_COINS: number;
+  PAYMENT_MAX_COINS: number;
+
+  /**
+   * Payme Merchant API (§6.7, §12.6, docs/PAYMENTS.md).
+   *
+   * **Empty is a supported state**, as it is for Eskiz and FCM: the whole flow is built and
+   * tested without an account, and with these empty the adapter refuses every callback
+   * rather than pretending one succeeded. Boot does not refuse them in production - an
+   * instance that cannot sell Coins is degraded, not unsafe.
+   *
+   * `PAYME_MERCHANT_KEY` is the password half of the Basic credential Payme authenticates
+   * its callbacks with; the username is the fixed string `Paycom`. It is a **secret**, and
+   * BR-22 requires it to live only here.
+   *
+   * `PAYME_ACCOUNT_FIELD` is the name Payme was told our order id would arrive under when
+   * the cash-box was created. It is configuration because it is *their* setting: a mismatch
+   * makes every callback fail as "order not found", which is a confusing way to find out.
+   */
+  PAYME_MERCHANT_ID: string;
+  PAYME_MERCHANT_KEY: string;
+  PAYME_CHECKOUT_URL: string;
+  PAYME_ACCOUNT_FIELD: string;
+
+  /**
+   * CLICK Shop API (§6.7, §12.6, docs/PAYMENTS.md).
+   *
+   * Same rule: empty means the adapter refuses. `CLICK_SECRET_KEY` is what the `Prepare`
+   * and `Complete` signatures are computed with, so it is the credential BR-22 keeps out of
+   * the app. `CLICK_MERCHANT_USER_ID` is only needed for CLICK's outbound API, which this
+   * milestone does not call - it is carried so that connecting the account is one edit to
+   * one file.
+   */
+  CLICK_MERCHANT_ID: string;
+  CLICK_SERVICE_ID: string;
+  CLICK_SECRET_KEY: string;
+  CLICK_MERCHANT_USER_ID: string;
+  CLICK_CHECKOUT_URL: string;
 
   /**
    * How far §7.2's count-before-open counts before answering "n+".
@@ -400,6 +457,8 @@ export const envSchema = Joi.object<AppEnv, true>({
   // screen, but an employer refining filters legitimately fires several per minute.
   RATE_LIMIT_SEARCH_PER_IP: Joi.number().integer().min(1).default(240),
   RATE_LIMIT_MESSAGING_PER_IP: Joi.number().integer().min(1).default(600),
+  // A provider retrying is expected traffic; a thousand an hour from one address is not.
+  RATE_LIMIT_PAYMENTS_PER_IP: Joi.number().integer().min(1).default(1_200),
 
   // §7.2: "the current number of matching candidates ... where technically reasonable".
   // 200 is where a client renders "200+" rather than a number anyone reads.
@@ -442,6 +501,53 @@ export const envSchema = Joi.object<AppEnv, true>({
   CANDIDATE_UNLOCK_COINS: Joi.number().integer().min(1).default(2),
   // Zero *is* allowed here: an instance that gives no free Coins is a pricing decision.
   EMPLOYER_REGISTRATION_BONUS_COINS: Joi.number().integer().min(0).default(10),
+
+  // Top-up bounds (§6.7). One Coin is the smallest purchase that means anything, and the
+  // ceiling exists so a malformed client cannot open an order for a sum nobody authorized.
+  // 1 000 Coins is UZS 10 000 000 at the initial price - far above any real top-up and far
+  // below a number that would look like an incident.
+  PAYMENT_MIN_COINS: Joi.number().integer().min(1).default(1),
+  PAYMENT_MAX_COINS: Joi.number().integer().min(1).default(1_000),
+
+  // Payme and CLICK (§6.7, §12.6). Every credential defaults to empty, and empty means the
+  // adapter refuses rather than pretends - the same arrangement as Eskiz and FCM, for the
+  // same reason: the flow must be complete and testable before a merchant account exists.
+  //
+  // Each provider's secret is required *together with* its ids, because half a credential
+  // is a misconfiguration that would otherwise surface as a failed callback at the worst
+  // possible moment - after an employer has paid.
+  PAYME_MERCHANT_ID: Joi.string().allow('').default(''),
+  PAYME_MERCHANT_KEY: Joi.string()
+    .allow('')
+    .default('')
+    .when('PAYME_MERCHANT_ID', {
+      is: Joi.string().min(1),
+      then: Joi.string().min(1).messages({
+        'string.empty':
+          'PAYME_MERCHANT_KEY is required when PAYME_MERCHANT_ID is set',
+      }),
+    }),
+  PAYME_CHECKOUT_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .default('https://checkout.paycom.uz'),
+  PAYME_ACCOUNT_FIELD: Joi.string().min(1).default('order_id'),
+
+  CLICK_MERCHANT_ID: Joi.string().allow('').default(''),
+  CLICK_SERVICE_ID: Joi.string().allow('').default(''),
+  CLICK_SECRET_KEY: Joi.string()
+    .allow('')
+    .default('')
+    .when('CLICK_SERVICE_ID', {
+      is: Joi.string().min(1),
+      then: Joi.string().min(1).messages({
+        'string.empty':
+          'CLICK_SECRET_KEY is required when CLICK_SERVICE_ID is set',
+      }),
+    }),
+  CLICK_MERCHANT_USER_ID: Joi.string().allow('').default(''),
+  CLICK_CHECKOUT_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .default('https://my.click.uz/services/pay'),
 
   // Telegram login (ARCHITECTURE.md §8). The bot id is the numeric part of the bot
   // token; it is public, and it is the audience an id_token must be addressed to.

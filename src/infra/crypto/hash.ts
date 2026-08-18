@@ -48,6 +48,29 @@ export function verifySecret(
   return timingSafeEqual(candidateHash, expected);
 }
 
+/**
+ * Constant-time comparison of two strings that are not hashes.
+ *
+ * `verifySecret` above covers the hex-hash case. This is for a credential compared against
+ * a configured value directly: Payme's merchant key arrives in a Basic header and CLICK's
+ * signature is an MD5 digest, and both are checked on **public** callback routes (M13),
+ * where an attacker chooses how many attempts to make. A plain `===` there leaks how many
+ * leading characters were right.
+ *
+ * The length is compared first and is not itself protected. `timingSafeEqual` throws on
+ * unequal lengths, and the length of a merchant key is not the secret worth hiding.
+ */
+export function timingSafeEquals(candidate: string, expected: string): boolean {
+  const left = Buffer.from(candidate, 'utf8');
+  const right = Buffer.from(expected, 'utf8');
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return timingSafeEqual(left, right);
+}
+
 /** A refresh token: 256 bits of CSPRNG output, URL-safe. */
 export function generateRefreshToken(): string {
   return randomBytes(32).toString('base64url');

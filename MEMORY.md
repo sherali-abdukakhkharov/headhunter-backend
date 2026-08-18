@@ -30,6 +30,69 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-18 (M13) - Payme and CLICK: what the seam bought, and what nearly went wrong
+
+Top-up is built and both merchant accounts are unbought, which is the third time this product
+has shipped a third-party integration that way. Five things are worth keeping.
+
+**There is no outbound HTTP in the milestone at all.** Both integrations are *inbound* - Payme's
+Merchant API calls us with all six of §12.6's methods, CLICK's Shop API calls us with `Prepare`
+and `Complete`, and checkout is a URL the client opens. That was not obvious before reading both
+protocols, and it deleted a whole category of work: no HTTP client, no timeout policy, no retry
+policy, no queue. The provider retries, and BR-19 is what makes that safe rather than dangerous.
+
+**The adapter owns the wire format; the service owns the state machine.** If a provider adapter
+could move an order, exactly-once crediting would be something each adapter had to get right
+separately, and the tests for one would say nothing about the other. Splitting it that way means
+six Payme methods and CLICK's two collapse into one normalized command union - `PerformTransaction`
+and `Complete` mean the same thing to a wallet - so there is one state machine and its tests cover
+both providers. This is the reason to resist "just let the Payme adapter update the row".
+
+**The unconfigured case needed no no-op class, and that is not a departure from the house rule.**
+`SmsSender` and `PushSender` each have one because their caller must be handed *something* to
+call mid-flow. Here refusal is structural instead: verifying a Payme request needs the merchant
+key and verifying a CLICK request needs the secret, so with no credentials there is **no code
+path that returns a verified command**. The rule ("never claim a success you did not verify") is
+kept by construction rather than by a fourth file.
+
+**A test found a real bug, and only because the suite cannot clean up after itself.** A
+`CreateTransaction` naming a transaction id already attached to a *different* order hit the unique
+index as a raw Postgres error thrown out of the transaction - which rolled back the event row that
+explained the refusal and answered the provider with a 500 instead of `-31008`. Exactly the M1 trap
+("a side effect and the throw that reports it cannot share a transaction"), now in a place where it
+would have been an unexplained failed payment. The collision is read first; the index is a
+backstop. It surfaced because `payment_events` is append-only so the suite leaves its rows behind,
+and a reused constant transaction id in a test collided with a previous run. A suite that tidied
+up perfectly would have hidden it.
+
+**Three int suites were red at HEAD before this started**, all from the same M12 constraint. The
+wallet's own spec, the retention spec, and (once M13's UAT rows landed) the UAT spec all tried to
+delete users that `employer_wallets.user_id`'s `RESTRICT` protects - and `wallet_transactions.
+actor_user_id` protects a second set, the administrators who made an adjustment. Every test inside
+them passed; the *suites* failed in `afterAll`, which is easy to miss when reading a run's tail.
+The fix is the pattern `admin.int.spec.ts` set: check what the constraint protects and skip it,
+saying why. Which also means the dev database accumulates test employers permanently, so the
+fixtures now ask the unique index for a free phone number instead of hoping a random one is free.
+
+*And one decision that is deliberately unfinished:* a reversal recovers `min(balance, coins)`
+because BR-16 makes an already-used unlock permanent and the balance cannot go negative. That
+keeps the ledger arithmetic true and the order's state honest. Who absorbs the shortfall is a
+commercial question, tagged as such in [docs/PAYMENTS.md](docs/PAYMENTS.md) rather than settled by
+whoever wrote the method.
+
+### 2026-08-10 (M12) - The registration bonus relies on an index, not on a check
+
+`grantRegistrationBonus` has no "has this employer had one already" branch, and adding one would
+be a regression. `ON CONFLICT DO NOTHING` against the partial unique index answers every case
+§6.6 lists - logout, reinstall, device change, role switching - because each of those is a retry
+of the same insert, plus the two that race, which a check cannot answer at all.
+
+Relying on the index rather than on "the wallet did not exist yet" also settled a case the
+specification never mentions: **employers who registered before M12 shipped.** Their first wallet
+touch grants the bonus once. Guarding on wallet creation instead would have quietly denied them
+the bonus forever, which is a decision nobody made - and the alternative, a data migration that
+credited every existing employer, would have written money into a migration that could be re-run.
+
 ### 2026-08-10 (M1, late) - SMS delivery is built; two rules in it are easy to undo
 
 The Eskiz integration exists behind the same seam as push - `SmsSender`, a real
@@ -1015,9 +1078,21 @@ ones most likely to bite again:
 
 ## Open questions with the client
 
-Tracked as `[?]` items at the top of [TODO.md](TODO.md). **Nothing is blocking any
-more.** The last one - data-retention periods (BR-14) - came off on 2026-08-08 the
-same way the other two did.
+Tracked as `[?]` items at the top of [TODO.md](TODO.md).
+
+**One question blocks work again, and it is the first time an answer would change behaviour
+that is already delivered.** The 2026-08-10 revision rewrote §11.1 and §9.1 so that contact
+details and a CV need a Candidate Unlock "or another explicitly approved entitlement" - and
+§9.1 says an application is not one. Read literally, M6's BR-09 behaviour is superseded and
+M12 owes a retrofit through `contact-exposure.ts`, the candidate view, four file routes, chat
+and invitations, plus every existing BR-09 test. **Answering "an application *is* an approved
+entitlement" leaves all of that intact and reduces the work to new code only**, and it is the
+reading every other recruitment product takes: a candidate who applies has volunteered their
+interest in that employer. Guessing either way is worse than asking - one direction rewrites
+delivered behaviour for nothing, the other ships a gate the client did not ask for.
+
+Everything else that was blocking came off the list as data with a provenance tag. The
+retention periods (BR-14) were the last, on 2026-08-08.
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
@@ -1034,3 +1109,13 @@ The dictionary value lists are no longer a blocker - all 16 types are seeded and
 working - but four of them and the occupation set are compiled starting points
 awaiting client review, and each says so in its data file. Getting that review is
 now a quality task, not a dependency.
+
+M13 added three more of the same shape, none of which blocks the code
+([docs/PAYMENTS.md](docs/PAYMENTS.md)): the **fiscal receipt attributes** (§6.7, declared as
+data and deliberately not sent while unknown - a guessed IKPU code lands on a tax return),
+**who absorbs a refund of Coins already spent** (a commercial question the code answers
+conservatively), and **§12.7's per-storefront billing check**, which by its nature cannot be
+done early. What genuinely gates going live is the same thing as with Eskiz: an account
+somebody has to buy, plus - and this is the part easy to miss - a **stable public HTTPS host**
+for the callbacks, because a production merchant account should not point at a dev tunnel and
+re-registering the URL later is a support ticket with the provider.

@@ -703,13 +703,29 @@ export class DueAccountDto {
   @ApiProperty({
     enum: ['purge', 'anonymize'],
     description:
-      '`anonymize` when the account is the actor on an audit row: §10.4 will not let ' +
-      'that row lose who acted, so the person is erased and the actor id survives.',
+      '`anonymize` when some record has to outlive the person, and there are two such ' +
+      'records. §10.4 will not let an audit row lose who acted, and §6.7 keeps payment ' +
+      'records for reconciliation while BR-24 forbids rewriting the ledger — so in either ' +
+      'case the person is erased and the id survives.\n\n' +
+      '**The decision is made on what the database refuses, not on how much history there ' +
+      'is**: holding a wallet at all is enough, even with an empty ledger.',
   })
   action!: string;
 
   @ApiProperty({ description: 'Audit rows depending on this id surviving.' })
   auditRows!: number;
+
+  @ApiProperty({
+    description:
+      'Wallet ledger rows that will be kept (BR-24). Zero with `anonymize` is normal: an ' +
+      'employer can hold a wallet with no transactions in it.',
+  })
+  walletRows!: number;
+
+  @ApiProperty({
+    description: 'Payment Orders that will be kept for reconciliation (§6.7).',
+  })
+  paymentOrders!: number;
 }
 
 export class TransientCountDto {

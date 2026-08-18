@@ -63,11 +63,32 @@ GET  /admin/retention/due      what a purge would remove, right now
 POST /admin/retention/purge    do it - irreversible
 ```
 
-`due` reports, per account, whether it would be deleted or anonymized and how many audit
-rows depend on its id. `purge` works **one account per transaction**: an account that
-cannot be purged is reported in `failed` rather than rolling back the others.
+`due` reports, per account, whether it would be deleted or anonymized, and how many audit
+rows, wallet ledger rows and Payment Orders depend on its id. `purge` works **one account per
+transaction**: an account that cannot be purged is reported in `failed` rather than rolling
+back the others.
 
 The only recovery from a purge is a restore from [BACKUP.md](BACKUP.md).
+
+## Money outlives the account, and that decides `anonymize` too
+
+M12 and M13 added a second reason an account cannot be deleted, alongside §10.4's audit log.
+§6.7 requires payment records "for support and reconciliation" and BR-24 forbids rewriting the
+ledger, so `employer_wallets.user_id` is `ON DELETE RESTRICT` — as is
+`wallet_transactions.actor_user_id`, which is what keeps §10.5's "who adjusted this balance"
+answerable. `payment_orders` points at the wallet the same way.
+
+So **an employer who has ever held a Coin is anonymized, never deleted**: phone, Telegram
+identity and login history are cleared, the id stays, and the balance remains attached to an id
+nobody can resolve to a person. Exactly the arrangement administrators already get.
+
+**One subtlety, and it was a real defect:** the decision is made on *holding a wallet*, not on
+how many ledger rows are in it. Those are different questions — a wallet with an empty ledger
+still refuses the delete — and they only look the same because the default configuration grants
+a registration bonus, so every wallet has a row. Set `EMPLOYER_REGISTRATION_BONUS_COINS=0`,
+which the environment schema deliberately permits as a pricing decision, and an account would
+have been classified `purge` and then failed at the constraint. `retention.int.spec.ts` pins
+the empty-wallet case.
 
 ## What the implementation had to work around
 

@@ -407,6 +407,138 @@ export class WalletService {
   }
 
   /**
+   * BR-19's ledger half: credits a paid top-up **at most once**, in the caller's
+   * transaction (§6.7, M13).
+   *
+   * Takes the transaction rather than opening one, exactly as `grantRegistrationBonus`
+   * does, and for a stronger reason: the order reaching `paid` and the Coins arriving are
+   * the same event. Two transactions would allow an order marked paid whose Coins were
+   * never credited - which is the failure §6.7 is written to prevent, and the one nobody
+   * would notice until an employer complained.
+   *
+   * **The idempotency is the index, not a check.** `wallet_transactions_one_credit_per_
+   * reference_idx` - created in M12 before there was anything to write into it - allows one
+   * `top_up` row per order id, so `ON CONFLICT DO NOTHING` answers a duplicate callback,
+   * a provider retry, a status poll that arrives late and two callbacks racing each other.
+   * `false` means "already credited", which is a success from the provider's point of view
+   * and is why this returns a boolean instead of throwing.
+   *
+   * **The price comes from the order, never from today's configuration.** §10.5: repricing
+   * "affects future transactions only". An order quoted at last month's price credits at
+   * last month's price, and the ledger records what was actually charged.
+   */
+  async creditTopUp(
+    trx: Transaction<DB>,
+    employerUserId: string,
+    order: { id: string; coins: number; coinPriceUzs: number },
+  ): Promise<boolean> {
+    const wallet = await this.lockWallet(trx, employerUserId);
+    const balanceAfter = wallet.balance_coins + order.coins;
+
+    const credited = await trx
+      .insertInto('wallet_transactions')
+      .values({
+        employer_user_id: employerUserId,
+        kind: 'top_up',
+        amount_coins: order.coins,
+        balance_before: wallet.balance_coins,
+        balance_after: balanceAfter,
+        coin_price_uzs: String(order.coinPriceUzs),
+        amount_uzs: String(order.coins * order.coinPriceUzs),
+        reference_id: order.id,
+      })
+      .onConflict((oc) => oc.doNothing())
+      .returning('id')
+      .executeTakeFirst();
+
+    if (!credited) {
+      return false;
+    }
+
+    await this.setBalance(trx, employerUserId, balanceAfter);
+
+    this.logger.log(
+      `Credited ${order.coins} coins to employer ${employerUserId} ` +
+        `for payment order ${order.id} (balance ${balanceAfter})`,
+    );
+
+    return true;
+  }
+
+  /**
+   * Takes back a top-up that the provider reversed or refunded (§6.7's REVERSED state).
+   *
+   * BR-24 forbids rewriting the credit, so this is a **new** row in the opposite direction,
+   * which is what "reversals are separate audited transaction entries" means.
+   *
+   * **It recovers what is there, not necessarily what was credited, and that is a decision
+   * rather than an oversight.** The employer may have spent the Coins on an unlock before
+   * the reversal arrived; those unlocks are entitlements somebody already used, and BR-16
+   * makes them permanent. A full debit would drive the balance negative, which the
+   * `employer_wallets_balance_non_negative` check refuses - so the transaction would abort
+   * and the order would be stuck at `paid` while the provider believed it was refunded.
+   * Recovering `min(balance, coins)` keeps the ledger arithmetic true and the order's state
+   * honest, and the shortfall is written into the row's reason so support can see it.
+   * **docs/PAYMENTS.md records this as a question for the client**, because who absorbs an
+   * unrecovered refund is a commercial decision and not an engineering one.
+   *
+   * Idempotency here is the order's own state machine: this is only ever called inside the
+   * conditional `UPDATE ... WHERE status = 'paid'` that performs the transition, so a
+   * second reversal of the same order never reaches it.
+   */
+  async reverseTopUp(
+    trx: Transaction<DB>,
+    employerUserId: string,
+    order: { id: string; coins: number; coinPriceUzs: number },
+  ): Promise<{ recoveredCoins: number; shortfallCoins: number }> {
+    const wallet = await this.lockWallet(trx, employerUserId);
+    const recovered = Math.min(wallet.balance_coins, order.coins);
+    const shortfall = order.coins - recovered;
+
+    if (recovered === 0) {
+      // `wallet_transactions_direction` refuses a reversal of zero, and it is right to: a
+      // ledger row that moves nothing records nothing. The order still becomes `reversed`,
+      // which is where this shows up.
+      this.logger.warn(
+        `Reversed payment order ${order.id} for employer ${employerUserId} ` +
+          `with nothing to recover: all ${order.coins} coins were already spent`,
+      );
+
+      return { recoveredCoins: 0, shortfallCoins: shortfall };
+    }
+
+    const balanceAfter = wallet.balance_coins - recovered;
+
+    await trx
+      .insertInto('wallet_transactions')
+      .values({
+        employer_user_id: employerUserId,
+        kind: 'reversal',
+        amount_coins: -recovered,
+        balance_before: wallet.balance_coins,
+        balance_after: balanceAfter,
+        coin_price_uzs: String(order.coinPriceUzs),
+        amount_uzs: String(recovered * order.coinPriceUzs),
+        reference_id: order.id,
+        reason:
+          shortfall === 0
+            ? `Payment order ${order.id} reversed by the provider`
+            : `Payment order ${order.id} reversed by the provider; ` +
+              `${shortfall} of ${order.coins} coins were already spent`,
+      })
+      .execute();
+
+    await this.setBalance(trx, employerUserId, balanceAfter);
+
+    this.logger.log(
+      `Reversed ${recovered} coins from employer ${employerUserId} ` +
+        `for payment order ${order.id} (balance ${balanceAfter}, shortfall ${shortfall})`,
+    );
+
+    return { recoveredCoins: recovered, shortfallCoins: shortfall };
+  }
+
+  /**
    * §10.5's manual adjustment: a mandatory reason, a ledger row, and an audit row.
    *
    * The audit row is the caller's job (`AdminWalletsService`), because §10.4 owns that

@@ -1520,6 +1520,132 @@ at them, after which nothing in this API can find or serve one. Unreachable is n
 and a privacy policy that promises erasure has to say so. Backups taken before a purge also
 still contain what it removed, for the 14 days [BACKUP.md](BACKUP.md) keeps them.
 
+## 4k. The Coin wallet and Candidate Unlock (§6.6, §10.5, §12.3.1)
+
+Employer-only. Nothing here is public, and an administrator reads a wallet through `/admin`
+so their access is logged as an administrator's rather than looking like the employer's.
+
+| Route | Answers |
+|---|---|
+| `GET /wallet` | Balance, its UZS value, current pricing, and when the bonus was granted |
+| `GET /wallet/transactions` | The ledger, newest first, paged |
+| `GET /wallet/unlocks/{candidateUserId}` | Whether this candidate is already unlocked |
+| `POST /wallet/unlocks` | Buys the unlock: the debit and the entitlement, atomically |
+| `GET /admin/wallets`, `GET /admin/wallets/{userId}`, `POST /admin/wallets/{userId}/adjust` | §10.5 |
+
+### The prices come from the server, and the client must not hold a copy
+
+§6.6 requires the Coin price and the unlock cost to be "server-side business configuration,
+not hard-coded in Flutter", and §10.5 allows changing them. `GET /wallet` returns
+`pricing.coinPriceUzs`, `pricing.candidateUnlockCoins` and `pricing.candidateUnlockUzs`;
+render from those. A hard-coded "2 Coins" in the app becomes wrong the day the client
+reprices, and it becomes wrong silently.
+
+`GET /wallet/transactions` reports the price **each transaction was priced at**, which is not
+necessarily today's — §10.5 says a change "affects future transactions only and does not
+rewrite historical ledger records". A history screen that recomputed value from the current
+price would restate last month.
+
+### A wallet exists after the first read, and the bonus arrives once
+
+An employer who registered before the wallet existed has no row until something touches it,
+so `GET /wallet` creates one and grants BR-15's ten Coins if they are still owed. That read is
+therefore safe to call at any point, including as the first thing the Wallet screen does, and
+it cannot double-credit: the bonus is a unique index, not a check, so logging out, reinstalling,
+changing device or switching roles all reach the same single row.
+
+### `POST /wallet/unlocks` has no `Idempotency-Key`, and that is deliberate
+
+Unlike `POST /applications`, this operation has a natural key. The `(employer, candidate)` pair
+is unique, so a retry — or a double tap — returns the existing entitlement with
+**`charged: false`** and no second debit. Send the same request again as often as necessary.
+
+Two Coins for one candidate, once, forever: BR-16 is the primary key of the table, so it holds
+even when two taps race.
+
+### `402` is a price, not an error to swallow
+
+An unlock with too few Coins answers **402** with `wallet.insufficient_coins`, whose message
+carries `required` and `balance`. §6.6 says the user is "routed to wallet top-up", so that is
+the response to route on — not a generic failure toast. No ledger row is written for a refusal.
+
+`409 wallet.cannot_unlock_self` exists because a multi-role account holds both roles (§2.3).
+
+### Reading a locked candidate
+
+`GET /wallet/unlocks/{candidateUserId}` exists so the client can render the unlocked state
+without guessing or provoking a 402. Ask it before showing a contact block.
+
+---
+
+## 4l. Coin top-up through Payme and CLICK (§6.7, §12.6, §12.7)
+
+| Route | Answers |
+|---|---|
+| `GET /payments/providers` | Which providers this deployment can take money through, the order bounds, and today's price |
+| `POST /payments/orders` | Opens a Payment Order and returns the checkout to open |
+| `GET /payments/orders` | This employer's top-up history, newest first |
+| `GET /payments/orders/{orderId}` | One order — what the client polls |
+
+The provider callbacks are **not** in this contract and not in `docs/openapi.json`. Their
+audience is Payme and CLICK, whose own specifications define them; a client has no reason to
+call one. See [PAYMENTS.md](PAYMENTS.md).
+
+### Build the top-up screen from `GET /payments/providers`
+
+**An empty `providers` list is a valid answer**, and it is what a deployment with no merchant
+account returns — which is the state today. Two hard-coded buttons would offer a checkout that
+cannot complete. It is also how §12.7's storefront question stays a configuration change: if a
+store build has to use Apple or Google billing instead, this list changes and the app does not.
+
+### Send a Coin count, never a total
+
+`POST /payments/orders` takes `provider` and `coins`. §12.3.1 forbids trusting a
+client-provided total, so the payable amount is computed server-side from the current price and
+**written onto the order** — an employer owes what they were quoted even if the price changes
+while their checkout is open. The response repeats it as `order.amountUzs` and
+`checkout.amountUzs` for display.
+
+`400 payments.coins_out_of_range` carries the `min` and `max`; `409
+payments.provider_unavailable` means the provider list was stale.
+
+### **Do not credit anything on the redirect back**
+
+This is the one rule in §6.7 stated as a prohibition: *"A client-side success redirect is not
+sufficient to credit Coins."* Open `checkout.url`, then **poll `GET /payments/orders/{orderId}`
+(or reopen the wallet) until the status settles**. `paid` is the only status that means the
+Coins are in the wallet, and it is reached from a verified provider callback that may arrive
+before, after, or instead of the user returning to the app.
+
+An app that showed a balance because the browser came back with `success` would show Coins that
+do not exist.
+
+### The statuses, and which of them are final
+
+`created` → `pending` → `paid` | `failed` | `cancelled`, and `paid` → `reversed`.
+
+- `created` — the order exists; nobody has paid. An abandoned checkout stays here.
+- `pending` — the provider has opened a transaction against it.
+- `paid` — verified. The Coins are credited.
+- `failed`, `cancelled` — nothing was credited (BR-20). `failureCode` carries the provider's
+  own reason, which §12.6 asks to be shown "with a clear status and retry option".
+- `reversed` — it was paid and the provider took it back.
+
+**Retrying is opening a new order**, not reviving an old one. The old one stays visible in
+`GET /payments/orders`, which is what makes the history §12.6 asks for.
+
+### No `Idempotency-Key` here either
+
+A second tap is a second *intent to pay*, and two open orders are legitimate — only one of them
+can ever reach `paid` per provider transaction, and a duplicate provider callback credits once
+(BR-19, UAT-22). Abandoned orders simply stay `created`.
+
+### Card data never reaches this API
+
+BR-22: payment happens on the provider's own checkout, payment link or SDK flow, and the app
+opens a URL. No PAN, no CVV, and no provider credential is present in any response — the
+checkout URL carries none.
+
 ## 5. Deferred
 
 - **No `visibleIf` / conditional field visibility in v1.** Category-scoped

@@ -40,7 +40,18 @@ afterAll(async () => {
       .where('actor_user_id', '=', id)
       .executeTakeFirst();
 
-    if (acted) {
+    // An employer who has held a wallet cannot be deleted either, by the same kind of
+    // constraint one milestone later: `employer_wallets.user_id` is RESTRICT because §6.7
+    // requires payment records for reconciliation and BR-24 forbids rewriting the ledger.
+    // That is also the guarantee under test, working - `RetentionService` anonymizes these
+    // accounts rather than deleting them.
+    const held = await db
+      .selectFrom('employer_wallets')
+      .select('user_id')
+      .where('user_id', '=', id)
+      .executeTakeFirst();
+
+    if (acted || held) {
       // The administrators these tests created cannot be deleted - which is the
       // guarantee under test, working.
       continue;
@@ -510,5 +521,89 @@ describe('an account with financial history', () => {
         .where('employer_user_id', '=', employerUserId)
         .execute(),
     ).toEqual([expect.objectContaining({ amount_coins: 10 })]);
+  });
+
+  it('is anonymized for holding a wallet at all, not for holding history in it', async () => {
+    // **The case that made this a real defect rather than a tidy-up.** The purge used to
+    // decide on the number of `wallet_transactions` rows, but the constraint that refuses the
+    // delete is `employer_wallets.user_id`'s `RESTRICT` - so an employer with a wallet and no
+    // transactions was classified `purge` and then failed. Reachable whenever
+    // `EMPLOYER_REGISTRATION_BONUS_COINS` is 0, which the environment schema deliberately
+    // allows as a pricing decision; under the default bonus every wallet has a row and the
+    // two questions happen to agree, which is why it would have stayed hidden.
+    const adminUserId = await newUser('admin');
+    const employerUserId = await newUser('employer');
+
+    await db
+      .insertInto('employer_wallets')
+      .values({ user_id: employerUserId, balance_coins: 0 })
+      .execute();
+
+    await requestDeletion(employerUserId);
+
+    const planned = (await retention.due()).accounts.find(
+      (account) => account.userId === employerUserId,
+    );
+    // Anonymize, with nothing in the ledger to point at.
+    expect(planned).toMatchObject({
+      action: 'anonymize',
+      walletRows: 0,
+      paymentOrders: 0,
+    });
+
+    const outcome = await retention.purge(adminUserId);
+    expect(outcome.anonymized).toContain(employerUserId);
+    expect(outcome.failed).toEqual([]);
+
+    const after = await db
+      .selectFrom('users')
+      .select(['phone', 'purged_at'])
+      .where('id', '=', employerUserId)
+      .executeTakeFirstOrThrow();
+    expect(after.phone).toBeNull();
+    expect(after.purged_at).toBeInstanceOf(Date);
+  });
+
+  it('counts the Payment Orders it is keeping (§6.7, M13)', async () => {
+    const adminUserId = await newUser('admin');
+    const employerUserId = await newUser('employer');
+
+    await db
+      .insertInto('employer_wallets')
+      .values({ user_id: employerUserId, balance_coins: 0 })
+      .execute();
+    await db
+      .insertInto('payment_orders')
+      .values({
+        employer_user_id: employerUserId,
+        provider: 'payme',
+        coins: 10,
+        coin_price_uzs: '10000',
+        amount_uzs: '100000',
+      })
+      .execute();
+
+    await requestDeletion(employerUserId);
+
+    const planned = (await retention.due()).accounts.find(
+      (account) => account.userId === employerUserId,
+    );
+    // Reported so an administrator can see how much financial history is behind the
+    // decision. The order does not change it - an order can only exist against a wallet, so
+    // the wallet already settled it.
+    expect(planned).toMatchObject({ action: 'anonymize', paymentOrders: 1 });
+
+    const outcome = await retention.purge(adminUserId);
+    expect(outcome.anonymized).toContain(employerUserId);
+    expect(outcome.failed).toEqual([]);
+
+    // §6.7 keeps the payment record for reconciliation, attached to an id nobody can resolve.
+    expect(
+      await db
+        .selectFrom('payment_orders')
+        .select('coins')
+        .where('employer_user_id', '=', employerUserId)
+        .execute(),
+    ).toEqual([{ coins: 10 }]);
   });
 });

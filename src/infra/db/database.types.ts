@@ -100,6 +100,18 @@ export type OtpPurpose =
   | 'phone_change'
   | 'registration';
 
+export type PaymentEventResult = 'rejected' | 'verified';
+
+export type PaymentOrderStatus =
+  | 'cancelled'
+  | 'created'
+  | 'failed'
+  | 'paid'
+  | 'pending'
+  | 'reversed';
+
+export type PaymentProvider = 'click' | 'payme';
+
 export type ProfileVisibility = 'hidden' | 'searchable' | 'visible_after_apply';
 
 export type SchemaTarget = 'candidate_profile' | 'vacancy';
@@ -521,6 +533,37 @@ export interface OtpCodes {
   requested_ip: string | null;
 }
 
+export interface PaymentEvents {
+  amount_uzs: Numeric | null;
+  created_at: Generated<Timestamp>;
+  detail: string | null;
+  id: Generated<string>;
+  method: string;
+  order_id: string | null;
+  payload: Generated<Json>;
+  provider: PaymentProvider;
+  provider_transaction_id: string | null;
+  result: PaymentEventResult;
+  status_after: PaymentOrderStatus | null;
+  status_before: PaymentOrderStatus | null;
+}
+
+export interface PaymentOrders {
+  amount_uzs: Numeric;
+  coin_price_uzs: Numeric;
+  coins: number;
+  created_at: Generated<Timestamp>;
+  employer_user_id: string;
+  failure_code: string | null;
+  id: Generated<string>;
+  paid_at: Timestamp | null;
+  provider: PaymentProvider;
+  provider_metadata: Generated<Json>;
+  provider_transaction_id: string | null;
+  status: Generated<PaymentOrderStatus>;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface RateLimitCounters {
   bucket: string;
   hits: Generated<number>;
@@ -732,6 +775,8 @@ export interface DB {
   notification_preferences: NotificationPreferences;
   notifications: Notifications;
   otp_codes: OtpCodes;
+  payment_events: PaymentEvents;
+  payment_orders: PaymentOrders;
   rate_limit_counters: RateLimitCounters;
   saved_candidates: SavedCandidates;
   saved_vacancies: SavedVacancies;

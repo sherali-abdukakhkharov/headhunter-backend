@@ -4,16 +4,24 @@
 scenarios". This is that, plus the command that reproduces it - a result nobody can re-run
 is a screenshot.
 
-**As of 2026-08-10, on schema version 18: 847 tests, all passing.**
+**As of 2026-08-18, on schema version 21: 953 tests, all passing.**
 
 | Suite | Command | Suites | Tests | Needs Postgres |
 |---|---|---|---|---|
-| Unit / functional | `pnpm test` | 24 | 439 | no |
-| Integration | `pnpm test:int` | 19 | 408 | yes |
-| **Acceptance (UAT-01..15 of 24)** | `pnpm test:int -- --testPathPattern uat` | 1 | 16 | yes |
+| Unit / functional | `pnpm test` | 26 | 479 | no |
+| Integration | `pnpm test:int` | 21 | 474 | yes |
+| **Acceptance (UAT-01..23 of 24)** | `pnpm test:int -- --testRegex uat` | 1 | 24 | yes |
 
-The acceptance suite is a subset of the integration one; 847 is the sum of the first two
+The acceptance suite is a subset of the integration one; 953 is the sum of the first two
 rows, counted once.
+
+> **Three integration suites were failing in `afterAll` before M13**, and every test inside
+> them passed - which is exactly how that goes unnoticed. M12 made
+> `employer_wallets.user_id` `ON DELETE RESTRICT`, and the wallet, retention and UAT suites
+> all tried to delete users it protects (as does `wallet_transactions.actor_user_id`, for the
+> administrators who made an adjustment). They now check what the constraint protects and skip
+> it, saying why - the pattern `admin.int.spec.ts` set for the audit log. Read a run's
+> **suite** count, not only its test count.
 
 ```
 pnpm test        # database-free, runs anywhere
@@ -34,15 +42,20 @@ exception rather than the side effect the exception rolled back.
 Integration fixtures go in through the production write path - the seeder, the service -
 so a test cannot set up a state the application could not produce.
 
-## Acceptance: fifteen of the twenty-four agreed scenarios
+## Acceptance: twenty-three of the twenty-four agreed scenarios
 
-> **The 2026-08-10 specification revision raised §13.1 from 15 scenarios to 24.**
-> UAT-16..UAT-23 are the wallet, Candidate Unlock and Payme/CLICK scenarios and are
-> **not covered** - they belong to M12 and M13, which are not built. UAT-24 is a
-> restatement of UAT-13 and is covered by it. The fifteen below are the original set and
-> all pass; three of them (UAT-03's CV access through an application, UAT-07's invitation,
-> UAT-09's interview) assert the **pre-revision** BR-09 contract and will change with
-> M12's retrofit - see [SPEC_CHANGELOG.md](SPEC_CHANGELOG.md).
+> **The 2026-08-10 specification revision raised §13.1 from 15 scenarios to 24**, and
+> UAT-16..UAT-23 - the wallet, Candidate Unlock and Payme/CLICK rows - are now covered by
+> M12 and M13. UAT-24 is a restatement of UAT-13 and is covered by it.
+>
+> **Two caveats, both stated in the suite itself rather than hidden here.** UAT-17 is
+> *half-asserted*: its Coin arithmetic passes, and its further claim that "chat and
+> interview/contact actions become available" belongs to M12's BR-09 retrofit, which is
+> waiting on one client answer. And three of the original fifteen (UAT-03's CV access through
+> an application, UAT-07's invitation, UAT-09's interview) assert the **pre-revision** BR-09
+> contract and will change deliberately with that retrofit - see
+> [SPEC_CHANGELOG.md](SPEC_CHANGELOG.md) and the question at the top of
+> [../TODO.md](../TODO.md).
 
 `src/uat/uat.int.spec.ts` is one `describe` per row of §13.1's table, titled with the
 scenario and asserting that row's own stated expected result. Both moderation flags are
@@ -65,16 +78,38 @@ scenario and asserting that row's own stated expected result. Both moderation fl
 | UAT-13 | Switches through all four interface variants | Four distinct dictionary labels and four distinct notification texts; the candidate's own name and the employer's message are untouched |
 | UAT-14 | Temporarily blocks a user | Mutations refused with a localized reason, an `account_status_history` row and an audit row; lifting it writes its own |
 | UAT-15 | A vacancy deadline expires | New applications refused, gone from both discovery feeds, still visible to its owner |
+| UAT-16 | First employer registration | Wallet created and exactly ten Coins credited - then three further attempts credit nothing, which is §6.6's logout/reinstall/device-change/role-switch clause as one index |
+| UAT-17 | Unlocks a new candidate with 10 Coins | Two Coins debited, balance 8, entitlement held. **The chat/contact half is not asserted** - it is the retrofit's, and the test says so rather than omitting it silently |
+| UAT-18 | Revisits an already-unlocked candidate | Nothing charged, `charged: false`, balance still 8, entitlement intact (BR-16) |
+| UAT-19 | Attempts an unlock holding fewer than 2 Coins | Refused with `wallet.insufficient_coins`, no entitlement written, and the wallet reports what an unlock costs and which providers can take a top-up |
+| UAT-20 | Buys 10 Coins through Payme at the initial price | UZS 100,000 order, then Payme's own `CheckPerformTransaction` → `CreateTransaction` → `PerformTransaction` in tiyin with a real Basic credential; order `paid`, exactly 10 Coins credited |
+| UAT-21 | Buys Coins through CLICK | `Prepare` then `Complete`, both MD5-signed, the completion signed over the `merchant_prepare_id` the preparation handed out; order `paid`, Coins credited once |
+| UAT-22 | The same successful callback delivered twice | Second delivery still answers success - telling a provider otherwise makes it retry forever - and the ledger holds exactly one `top_up` row. A second test does it **concurrently** |
+| UAT-23 | A Payme/CLICK payment fails or is cancelled | Both providers: no Coins credited, both orders `cancelled` with the provider's reason visible in the Wallet list, and a retry opens a new order |
 
 Two things are simulated, and both say so at the line where they happen: the SMS that
 would carry an OTP (no provider is connected - `OTP_ECHO_IN_RESPONSE` returns the code
 instead), and the passage of time in UAT-15, which is one raw `UPDATE` because the write
 path correctly refuses a deadline in the past.
 
+**Nothing about the payment providers is simulated except the providers themselves.** The
+callbacks go in through the real entry point with real Basic credentials and real MD5
+signatures, computed in the test from CLICK's documented field order rather than borrowed from
+the adapter - a signature check verified against its own implementation verifies nothing. What
+is absent is Payme's and CLICK's servers, which is what a sandbox account is for (§12.6, and
+[PAYMENTS.md](PAYMENTS.md)).
+
 **These tests found no defect on their first run.** Every failure was the test naming
 something the code does not - `draft` for `not_submitted`, `employer_verified` for
 `verification_decided` - which is the expected shape for a file written from the
 specification rather than from the source.
+
+The M13 additions did find one, and not from the UAT rows: `payments.int.spec.ts` reused a
+constant provider transaction id, which collided with a row an earlier run had left behind
+(the trail is append-only, so the suite cannot tidy up). That surfaced a real bug - a
+`CreateTransaction` naming another order's transaction id threw a raw database error out of the
+transaction, rolling back the event row that explained it and answering the provider with a 500
+instead of `-31008`.
 
 ## What else the suites hold
 
@@ -106,3 +141,12 @@ Beyond those fifteen scenarios, the parts worth naming to a reviewer:
 - **The Telegram file service is stubbed in tests** that are about *who may read a file*
   rather than about Telegram. `files.int.spec.ts` covers the real client.
 - **No test drives the Flutter client**; this is the backend's evidence only.
+- **No payment provider has ever answered one of these calls.** Both protocols are exercised
+  with real signatures in both directions, but §12.6 requires testing in the *provider's* test
+  environment before production credentials are activated, and that needs an account. Until
+  then the gap is theirs-against-ours, not ours ([PAYMENTS.md](PAYMENTS.md)).
+- **The integration suites accumulate rows in the dev database on purpose.** Employers who
+  hold a wallet, administrators who have acted, and every payment event are all protected by
+  `RESTRICT` or an append-only trigger, so no suite can delete them - which is the guarantee
+  under test, working. The fixtures therefore ask the unique index for a free phone number
+  rather than assuming a random one is free.

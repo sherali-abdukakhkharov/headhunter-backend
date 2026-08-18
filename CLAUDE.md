@@ -19,6 +19,7 @@ Code session rooted there can edit this repo too (see that repo's
 | [README.md](README.md) | Stack, commands, structure, environment gotchas. |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The Cloudflare tunnel at hh.qitmir.uz, and what changes when the API is public. |
 | [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: what OTP delivery will need, and what to ask on purchase. |
+| [docs/PAYMENTS.md](docs/PAYMENTS.md) | Payme and CLICK: both protocols, what to ask on purchase, and the three questions only the client can answer. |
 | [docs/BACKUP.md](docs/BACKUP.md) | The daily dump, and the **rehearsed** restore with its real output. |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | §12.4 measured at 200k profiles, and the volume that would break it. |
 | [docs/RETENTION.md](docs/RETENTION.md) | BR-14 as data: what is purged, when, and what the client still owes. |
@@ -104,6 +105,22 @@ re-derivable from the text.
   than the side effect.
 - **Never hard-delete a dictionary item** — deactivate, and use `merged_into_id`
   for merges, so historical references still resolve.
+- **Every guarantee about money is a database constraint, not service code** (§12.3.1, M12
+  and M13). The ledger is append-only by trigger, BR-16 is a primary key, BR-15 is a partial
+  unique index, and BR-19 — one credit per payment order however many times a provider
+  retries — is *four* things in four places: a row lock, a conditional
+  `UPDATE ... WHERE status = 'pending'`, a unique index on the ledger's `reference_id`, and
+  one on `(provider, provider_transaction_id)`. Each catches what the others cannot; do not
+  simplify one away. A rule about money that lives only in application code holds until the
+  second caller. ARCHITECTURE.md §10b has the reasoning.
+- **Coins are credited from a verified provider callback and nowhere else** (§6.7: "a
+  client-side success redirect is not sufficient"). One method does it. No route an
+  employer's own client can reach is on that path, which is why the callbacks live in their
+  own controller — the first public **mutating** routes in the product, listed in
+  `api-surface.spec.ts` with the argument written out. A provider adapter translates the wire
+  format in both directions and **never touches the database**; the state machine is the
+  service's. Provider responses carry the provider's own error vocabulary and are never
+  localized: a provider is not a person.
 - **Retention periods are declared, never inlined.** `infra/retention/retention-policy.ts`
   is the one table, each rule tagged with where its number came from. Never hard-code a
   cut-off at a call site — and never delete a user with a plain `DELETE`: three tables
