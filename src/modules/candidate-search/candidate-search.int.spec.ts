@@ -1089,7 +1089,7 @@ describe('§7.3’s "View profile" and BR-09', () => {
 
     expect(view.phone).toBeNull();
     expect(view.canViewFiles).toBe(false);
-    expect(view.exposureReason).toBe('no_interaction');
+    expect(view.exposureReason).toBe('unlock_required');
   });
 
   it('reveals contact details once the candidate has applied', async () => {

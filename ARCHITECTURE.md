@@ -52,6 +52,7 @@ src/
     chat/                    conversations, messages, read state
     notifications/           in-app records, push dispatch, preferences
     wallet/                  employer Coin wallet, the append-only ledger, Candidate Unlock
+    privacy/ (in infra)      BR-09's rule and the one "what entitles this employer" query
     payments/                Payment Orders and the Payme/CLICK provider seam
     admin/                   dashboard, verification, moderation, users, dictionaries, audit
 ```
@@ -481,6 +482,28 @@ but "may this user, acting as role R, do this to resource X".
     than injecting that module, because the invitations module imports *it* for the
     invitation-scoped download route; a module cycle for one `SELECT` would be a worse
     trade.
+  - **Three entitlements now, and the third is bought rather than earned** (M12, §11.1's
+    "successful Candidate Unlock"). The same one-line addition, for the same reason - but two
+    things about it are not obvious:
+
+    **`hasUnlock` has to be part of the *no-entitlement* condition, not just the granting
+    branch.** Leave it out and an employer who paid, whose candidate then hides their profile,
+    is refused with `hidden_by_candidate`: contact that was paid for, denied, with a log line
+    as the only symptom. An unlock is a purchase, not a request a candidate can take back by
+    leaving search - and §5.3's `hidden` already does not silence a candidate who applied.
+
+    **`not_verified_employer` short-circuits before any of it, and must keep doing so.** §7
+    makes verification a precondition, so an employer must not be able to *buy* past BR-03.
+    That is the one path by which this change could have leaked a phone number, and the test
+    that guards it enumerates every entitlement rather than only the unlock.
+
+    Precedence is application, then accepted invitation, then unlock. All three grant
+    identically, so it decides only what the log and the client are told - and an employer who
+    holds an application should not be shown a purchase as the reason they are allowed.
+  - **`no_interaction` became `unlock_required` with M12.** The reason codes are a contract the
+    client renders copy from, and the old name described a world where the only remedy was
+    waiting for the candidate to act. It is a coordinated breaking change, recorded in
+    API_CONTRACTS.md §4a.
 
 ### Auth flow
 
@@ -923,14 +946,23 @@ Answers change the schema, so raise them before the affected milestone:
    list, and the occupation set is a starting point rather than a classifier. See
    `src/modules/dictionaries/seed/` - each type states its provenance.
 5. **Does a candidate's own application still reveal their contact details?** *(2026-08-10
-   revision, and the only one of these that changes behaviour already delivered)* §11.1 now
+   revision. **Answered by the team on 2026-08-19 and shipped; still wants sign-off.**)* §11.1
    gates contact and CV on "a successful Candidate Unlock **or another explicitly approved
-   entitlement**", and §9.1 says an application is not one. Read literally, M6's delivered
-   BR-09 behaviour is superseded. Worth asking rather than assuming, because a candidate who
-   applies has volunteered their interest in that employer - the reading every other
-   recruitment product takes, and one §11.1's own escape hatch allows. **Answering "yes, an
-   application is an approved entitlement" leaves M6, M8's chat and their tests intact and
-   reduces the retrofit to new code only.** Blocks nothing else.
+   entitlement**", and §9.1 read strictly says an application is not one - which would supersede
+   M6's delivered BR-09 behaviour.
+
+   **The answer taken: an application is an approved entitlement**, and so is an accepted
+   invitation. A candidate who applies has volunteered their interest in that employer - the
+   reading every other recruitment product takes, and one §11.1's own escape hatch allows - so
+   the unlock is for candidates who have **not** applied, and M6, M7, M8 and their tests are
+   untouched. It was decided rather than waited on because the client's unlock UI was blocked on
+   it, and because the strict reading is a superset that can still be built later.
+
+   **What it would cost to reverse:** two reason codes invert meaning - `application` stops
+   granting, and `unlock_required` starts appearing where an application exists - and every
+   BR-09 assertion in M6, M7 and M8 changes. Nothing about the purchase, the ledger or the
+   entitlement itself is affected, which is what makes the small reading the safe one to ship
+   first.
 6. ~~**Fiscal receipt attributes** (§6.7)~~ - **not blocking a payment, only a receipt.**
    §6.7 assigns the service/product code, VAT and merchant configuration to the client's
    accounting function. Declared as data in `modules/payments/payment-fiscal.ts` with a

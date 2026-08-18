@@ -4,11 +4,13 @@ import { sql } from 'kysely';
 
 import {
   ConflictError,
+  NotFoundError,
   PaymentRequiredError,
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { DB, WalletTransactionKind } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
+import { EmployersService } from '@modules/employers/employers.service';
 import type { Transaction } from 'kysely';
 
 /** What the client needs to render the wallet screen and price an unlock (§6.2, §6.6). */
@@ -82,6 +84,7 @@ export class WalletService {
 
   constructor(
     @Inject(KYSELY) private readonly db: Database,
+    private readonly employers: EmployersService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.coinPriceUzs = config.get('COIN_PRICE_UZS', { infer: true });
@@ -227,6 +230,28 @@ export class WalletService {
     employerUserId: string,
     candidateUserId: string,
   ): Promise<UnlockView> {
+    // First, and before anything touches the database: a multi-role account holds both roles
+    // (§2.3), and unlocking yourself is not a meaningful purchase - it would also put a
+    // self-reference in the ledger. It is checked ahead of the two gates below because it is
+    // the more specific answer to a request that is wrong whatever else is true of it.
+    if (employerUserId === candidateUserId) {
+      throw new ConflictError('wallet.cannot_unlock_self');
+    }
+
+    // **Both checks happen before any money moves, and both were missing.**
+    //
+    // §7 lets only a *verified* employer see candidates at all, and `@RequireRole('employer')`
+    // does not check verification - so an employer could be charged two Coins for access
+    // `expose()` would then refuse. Harmless while nothing read the entitlement; a way to
+    // take somebody's money for nothing the moment something did. The existing refusal is
+    // reused rather than given a new code, because it is the one every §7-gated route already
+    // returns and the client already routes on it.
+    await this.employers.assertVerified(employerUserId);
+
+    // And `candidate_unlocks.candidate_user_id` references `users.id`, so a well-formed but
+    // unknown id used to surface as a foreign-key violation - a 500 for what is really a 404.
+    await this.assertCandidateExists(candidateUserId);
+
     const outcome = await this.performUnlock(employerUserId, candidateUserId);
 
     // Thrown after the transaction has committed - or rather, after it has *not* written
@@ -245,12 +270,7 @@ export class WalletService {
     employerUserId: string,
     candidateUserId: string,
   ): Promise<UnlockOutcome> {
-    if (employerUserId === candidateUserId) {
-      // A multi-role account holds both roles (§2.3). Unlocking yourself is not a
-      // meaningful purchase, and it would put a self-reference in the ledger.
-      throw new ConflictError('wallet.cannot_unlock_self');
-    }
-
+    // The self-unlock refusal is `unlock`'s, not this method's - see the comment there.
     return this.db.transaction().execute<UnlockOutcome>(async (trx) => {
       // The row lock is what serializes the arithmetic: two unlocks of *different*
       // candidates by the same employer would otherwise both read the same balance and
@@ -618,6 +638,25 @@ export class WalletService {
     );
 
     return outcome.row;
+  }
+
+  /**
+   * That there is a candidate here to unlock.
+   *
+   * The profile rather than the user: an unlock buys access to a candidate's contact details
+   * and files, and a user with no candidate profile has neither - so `candidate_profiles` is
+   * the table that answers the question the error code asks.
+   */
+  private async assertCandidateExists(candidateUserId: string): Promise<void> {
+    const profile = await this.db
+      .selectFrom('candidate_profiles')
+      .select('user_id')
+      .where('user_id', '=', candidateUserId)
+      .executeTakeFirst();
+
+    if (!profile) {
+      throw new NotFoundError('candidate.profile_not_found');
+    }
   }
 
   /** The wallet row, locked, creating it first if this employer has never had one. */

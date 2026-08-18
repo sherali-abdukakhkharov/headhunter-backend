@@ -10,7 +10,14 @@ import { type Database, KYSELY } from '@infra/db/database.module';
  * every request rather than trusted from a path the client is holding.
  */
 export interface HiringInteraction {
-  kind: 'applications' | 'invitations';
+  kind: 'applications' | 'invitations' | 'unlocks';
+  /**
+   * What the route serving this entitlement is scoped to.
+   *
+   * An application or invitation id for those two. For an unlock it is the
+   * **candidate's user id**: `candidate_unlocks` has no surrogate key, because the pair is
+   * its primary key - which is what makes BR-16 true without a check.
+   */
   id: string;
 }
 
@@ -44,10 +51,20 @@ export interface HiringInteraction {
  * - An **accepted** invitation. Not a sent one: §8.2 says acceptance "enables the
  *   corresponding communication flow", and being invited is not something the candidate
  *   agreed to.
+ * - A **Candidate Unlock** (§6.6, BR-17). M12, and the odd one out: the other two are things
+ *   the *candidate* did, and this is something the employer bought. There is no status to
+ *   check because there is no way to undo it - BR-16 makes the pair permanent, and BR-24
+ *   makes the debit behind it unrewritable. It is deliberately last, so an employer who
+ *   already holds an application is never told they are relying on a purchase.
  *
- * An application outranks an invitation when both exist, for no deeper reason than that
- * it is the stronger claim - the candidate initiated it - and the two routes serve
- * identical bytes.
+ * **Precedence: application, then accepted invitation, then unlock.** For no deeper reason
+ * than that each is a stronger claim than the next - the candidate initiated the first - and
+ * all three routes serve identical bytes. "Do I hold an entitlement I paid for" is a
+ * different question, and `GET /wallet/unlocks/:candidateUserId` is what answers it.
+ *
+ * The unlock is read from `candidate_unlocks` directly rather than through `WalletService`,
+ * for the reason stated above: this file has no module dependencies, and three modules must
+ * all be able to import it.
  */
 @Injectable()
 export class HiringInteractionService {
@@ -80,6 +97,19 @@ export class HiringInteractionService {
       .orderBy('responded_at', 'desc')
       .executeTakeFirst();
 
-    return invitation ? { kind: 'invitations', id: invitation.id } : null;
+    if (invitation) {
+      return { kind: 'invitations', id: invitation.id };
+    }
+
+    // Last, and by the primary key: there is nothing to order by and no status to filter on,
+    // because an unlock is one row that either exists or does not (BR-16).
+    const unlock = await this.db
+      .selectFrom('candidate_unlocks')
+      .select('candidate_user_id')
+      .where('employer_user_id', '=', employerUserId)
+      .where('candidate_user_id', '=', candidateUserId)
+      .executeTakeFirst();
+
+    return unlock ? { kind: 'unlocks', id: unlock.candidate_user_id } : null;
   }
 }

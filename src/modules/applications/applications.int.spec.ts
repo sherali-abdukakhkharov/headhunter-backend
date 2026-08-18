@@ -613,11 +613,13 @@ describe('the employer’s view of an applicant (§6.5, BR-09)', () => {
     );
 
     // A withdrawal takes back the request to be contacted, so BR-09's interaction half
-    // stops holding.
+    // stops holding. **Still a rule after M12, now one of three** - and the reason code says
+    // what changed: the employer is not permanently refused, they are told that what used to
+    // be free is now a purchase. This assertion moved from `no_interaction` deliberately.
     expect(view.phone).toBeNull();
     expect(view.canViewFiles).toBe(false);
     expect(view.files).toEqual([]);
-    expect(view.exposureReason).toBe('no_interaction');
+    expect(view.exposureReason).toBe('unlock_required');
   });
 
   it('keeps internal notes out of every candidate-facing read (§6.5)', async () => {

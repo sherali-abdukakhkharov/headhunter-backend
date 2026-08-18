@@ -703,7 +703,7 @@ describe('BR-09’s second interaction', () => {
     // the same answer a stranger gets.
     expect(view.phone).toBeNull();
     expect(view.canViewFiles).toBe(false);
-    expect(view.exposureReason).toBe('no_interaction');
+    expect(view.exposureReason).toBe('unlock_required');
   });
 
   it('reveals contact details and files once the candidate accepts', async () => {
@@ -739,7 +739,7 @@ describe('BR-09’s second interaction', () => {
       candidateView.forCandidate(employerUserId, candidateUserId),
     ).resolves.toMatchObject({
       phone: null,
-      exposureReason: 'no_interaction',
+      exposureReason: 'unlock_required',
     });
   });
 

@@ -30,6 +30,57 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-19 (M12, late) - The unlock became an entitlement, on the small reading
+
+M12 built the purchase and nothing read it: `candidate_unlocks` appeared only inside the wallet
+module, so an employer could pay two Coins and see exactly what they saw before. The client had
+shipped the wallet screen and deliberately stopped before the unlock button rather than ship a
+control that charges for nothing.
+
+**The open question was answered rather than waited on, and that is worth remembering as a
+decision with a cost.** §11.1 gates contact on "a successful Candidate Unlock **or another
+explicitly approved entitlement**"; §9.1 read strictly says an application is not one. We took
+the reading that it *is* - a candidate who applied to you volunteered contact with you - so the
+unlock is for candidates who have **not** applied, and M6, M7, M8 and their tests were not
+touched. The strict reading is a superset that can still be built; the reverse would not have
+been true, which is why the small one shipped first. **It still wants the client's sign-off**,
+and it is recorded as an open question in three places rather than as settled fact.
+
+Four things about the change are worth keeping.
+
+**The flag had to go in the *denying* condition, not just the granting branch.** `expose()`
+decided "no interaction" from `!hasApplication && !hasAcceptedInvitation`; adding `hasUnlock`
+only to the grant would have left an employer who paid, whose candidate then hid their profile,
+refused with `hidden_by_candidate` - contact that was paid for, denied, with a log line as the
+only symptom. Nothing would have failed loudly. The frontend's task named this trap before we
+started, which is the second time a well-written brief has been worth more than the code in it.
+
+**`not_verified_employer` short-circuiting first is now load-bearing in a new way.** §7 makes
+verification a precondition, and once an entitlement can be *bought*, that short-circuit is what
+stops an employer buying past BR-03. It was already correct; what changed is that the test
+guarding it now has to enumerate the unlock too, because that is the one path by which this
+change could have leaked a phone number.
+
+**Two ways to take money for nothing existed and were harmless until they weren't.**
+`POST /wallet/unlocks` checked the employer's *role* but not their verification, so an employer
+could be charged for access `expose()` would then refuse - invisible while nothing read the
+entitlement, a real bug the moment something did. And an unknown candidate id hit a foreign-key
+violation instead of a 404. Both refuse before any Coins move now. The general lesson: a purchase
+route needs the same preconditions as the thing it sells access to, and "nothing reads it yet" is
+a reason a bug is *latent*, not a reason it is absent.
+
+**Renaming a reason code is a client contract change.** `no_interaction` became
+`unlock_required` because the old name described a world where the only remedy was waiting; the
+remedy is now a purchase, and the client renders a sentence from the code. Coordinated with the
+app rather than done unilaterally - the client maps all seven exhaustively, so an unknown one
+degrades to a generic line instead of breaking.
+
+*And a collateral finding:* two int suites' fixtures were creating employers with no `employers`
+row at all, which passed for as long as nothing checked §7's gate. Making the purchase realistic
+made the fixtures realistic, and `employers_verified_at_present` - a check refusing a verified
+employer with no `verified_at` - is a good example of the schema declining to represent a
+half-finished decision.
+
 ### 2026-08-18 (M13) - Payme and CLICK: what the seam bought, and what nearly went wrong
 
 Top-up is built and both merchant accounts are unbought, which is the third time this product
@@ -1080,19 +1131,16 @@ ones most likely to bite again:
 
 Tracked as `[?]` items at the top of [TODO.md](TODO.md).
 
-**One question blocks work again, and it is the first time an answer would change behaviour
-that is already delivered.** The 2026-08-10 revision rewrote §11.1 and §9.1 so that contact
-details and a CV need a Candidate Unlock "or another explicitly approved entitlement" - and
-§9.1 says an application is not one. Read literally, M6's BR-09 behaviour is superseded and
-M12 owes a retrofit through `contact-exposure.ts`, the candidate view, four file routes, chat
-and invitations, plus every existing BR-09 test. **Answering "an application *is* an approved
-entitlement" leaves all of that intact and reduces the work to new code only**, and it is the
-reading every other recruitment product takes: a candidate who applies has volunteered their
-interest in that employer. Guessing either way is worse than asking - one direction rewrites
-delivered behaviour for nothing, the other ships a gate the client did not ask for.
+**Nothing is blocking.** One question was answered *by us* rather than by the client, on
+2026-08-19, and it is the only one on this list where a reversal would change behaviour that is
+already delivered: whether a candidate's own application still reveals their contact details.
+We took "yes, an application is an approved entitlement" (§11.1's escape hatch), which left M6,
+M7 and M8 untouched and unblocked the client's unlock UI. **It wants sign-off, and the reversal
+cost is written down** in ARCHITECTURE.md §13 and at the top of TODO.md rather than left to be
+rediscovered - two reason codes invert, and every BR-09 assertion in three milestones changes.
 
 Everything else that was blocking came off the list as data with a provenance tag. The
-retention periods (BR-14) were the last, on 2026-08-08.
+retention periods (BR-14) were the last of those, on 2026-08-08.
 
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).

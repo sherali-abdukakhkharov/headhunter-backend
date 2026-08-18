@@ -36,22 +36,27 @@ a profile contract.
 | M10 | Admin module + audit | - | **done**; both MVP flags now on |
 | M9 | Notifications + push | - | **done**; FCM configured and verified end to end |
 | M11 | Hardening: performance, security, offline, acceptance | release | **done** — §12.4 measured, §12.5 reviewed, restore rehearsed, UAT-01..15 executable, BR-14 answered |
-| M12 | Employer wallet, Coins, Candidate Unlock | M13 | **built, one part open** — the wallet, the ledger and the unlock are done; the BR-09 retrofit waits on one client answer |
+| M12 | Employer wallet, Coins, Candidate Unlock | M13 | **done** — and the BR-09 retrofit landed with it, on the reading that an application is an approved entitlement |
 | M13 | Payme and CLICK top-up | release | **done** — both providers, callbacks verified, crediting exactly once; needs merchant accounts to be switched on |
 
-**Every milestone is now built**, M12's BR-09 retrofit excepted — and that one is waiting on
-an answer, not on time. What stands between this and a release is still not code: the SMS
+**Every milestone is now built.** What stands between this and a release is not code: the SMS
 provider (M1), the two payment merchant accounts (M13), a first administrator account on the
 deployed instance, the client sign-offs listed at the top of [TODO.md](TODO.md), and a CI
 workflow.
 
 The 2026-08-10 revision added M12 and M13, and they were not small: money, an append-only
-ledger, two payment providers and a change to a privacy rule that is already live. Nothing in
-M0-M11 was invalidated — but M6's BR-09 behaviour is **superseded**, and that work belongs to
-M12 rather than being left to be discovered. **It is the one piece deliberately not built**:
-§11.1 and §9.1 can be read two ways, one of which leaves M6, M8 and their tests intact, and
-guessing would mean either rewriting delivered behaviour for nothing or shipping a gate the
-client did not ask for. The question is the first item in [TODO.md](TODO.md).
+ledger, two payment providers and a change to a privacy rule that was already live. Nothing in
+M0-M11 was invalidated, and **M6's BR-09 behaviour was not rewritten either** — because the
+retrofit was built on the reading that an application *is* one of §11.1's "explicitly approved
+entitlements". A candidate who applied to an employer volunteered contact with them, which is
+what §11.1's own escape hatch allows, so the unlock is for candidates who have **not** applied.
+
+That reading is the team's, taken 2026-08-19 to unblock the client's unlock UI, and it is the
+one that leaves M6, M7, M8 and their tests as delivered. **It still wants the client's
+sign-off**, and it is recorded as an open question in [TODO.md](TODO.md) and
+[ARCHITECTURE.md](ARCHITECTURE.md) §13 rather than treated as settled. §9.1 read strictly says
+the opposite; if the client insists on that, it inverts two reason codes and reaches into M6,
+M7 and M8 — a much larger change than the one that shipped.
 
 ---
 

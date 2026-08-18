@@ -186,9 +186,30 @@ export class CandidateForEmployerDto {
   }[];
 
   @ApiProperty({
+    enum: [
+      'admin',
+      'application',
+      'accepted_invitation',
+      'candidate_unlock',
+      'not_verified_employer',
+      'unlock_required',
+      'hidden_by_candidate',
+    ],
     description:
       'Why the decision went the way it did — a stable code, logged with the access ' +
-      '(§11.1) and useful when a candidate asks why an employer could not call them.',
+      '(§11.1) and useful when a candidate asks why an employer could not call them.\n\n' +
+      '**Four grant and three deny**, and the difference matters to the client because each ' +
+      'denial has a different remedy:\n\n' +
+      '- `application` / `accepted_invitation` — the candidate engaged first (§8.1, §8.2).\n' +
+      '- `candidate_unlock` — this employer bought access (§6.6, BR-17).\n' +
+      '- `admin` — moderation access, logged rather than blocked (§10.4).\n' +
+      '- `unlock_required` — **offer the unlock.** Nothing entitles this employer yet, and ' +
+      'two Coins would. This code was named `no_interaction` before M12, when waiting was ' +
+      'the only remedy.\n' +
+      '- `hidden_by_candidate` — the candidate left search (§5.3). An unlock is *not* ' +
+      'offered: there is nobody here who wants to be found.\n' +
+      '- `not_verified_employer` — §7 comes first, and cannot be bought past. Route to ' +
+      'verification.',
   })
   exposureReason!: string;
 }

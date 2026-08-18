@@ -7,6 +7,7 @@ import type { Database } from '@infra/db/database.module';
 import type { PaymentOrderStatus } from '@infra/db/database.types';
 import { createIntTestDb } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
+import { EmployersService } from '@modules/employers/employers.service';
 import { WalletService } from '@modules/wallet/wallet.service';
 
 import { PaymentOrdersService } from './payment-orders.service';
@@ -73,7 +74,7 @@ const config = {
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
-  wallet = new WalletService(db, config);
+  wallet = new WalletService(db, new EmployersService(db), config);
   payme = new PaymeProvider(config);
   click = new ClickProvider(config);
   orders = new PaymentOrdersService(
@@ -147,6 +148,28 @@ async function newEmployer(): Promise<string> {
       .values({ user_id: row.id, role: 'employer' })
       .execute();
     users.push(row.id);
+
+    // A verified, complete employer profile and a candidate profile on the same row.
+    //
+    // The reversal test spends its Coins through real `unlock` calls, and since M12's retrofit
+    // that requires §7's gate to pass (an employer who cannot see candidates must not be
+    // charged for access to one) and the target to have a profile. Inserted directly because
+    // this suite constructs the payment stack, not the profile stack - the gate itself is
+    // covered through the real services in `applications/unlock-gating.int.spec.ts`.
+    await db
+      .insertInto('employers')
+      .values({
+        user_id: row.id,
+        type: 'company',
+        verification_status: 'verified',
+        verified_at: sql`now()`,
+        is_complete: true,
+      })
+      .execute();
+    await db
+      .insertInto('candidate_profiles')
+      .values({ user_id: row.id })
+      .execute();
 
     return row.id;
   }
@@ -312,7 +335,7 @@ describe('opening a Payment Order (§6.7, §12.3.1)', () => {
     const repriced = new PaymentOrdersService(
       db,
       new PaymentProviderRegistry(payme, click),
-      new WalletService(db, {
+      new WalletService(db, new EmployersService(db), {
         get: (key: string) => (key === 'COIN_PRICE_UZS' ? 20_000 : ENV[key]),
       } as unknown as ConfigService<AppEnv, true>),
       config,

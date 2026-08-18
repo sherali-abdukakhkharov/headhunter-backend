@@ -149,8 +149,9 @@ export class CandidateViewService {
       {
         hasApplication: interaction?.kind === 'applications',
         // M7's invitations, and adding them was one line here and no change to the rule -
-        // which is what passing both flags explicitly was for.
+        // which is what passing the flags explicitly was for. M12's unlock was one more.
         hasAcceptedInvitation: interaction?.kind === 'invitations',
+        hasUnlock: interaction?.kind === 'unlocks',
       },
     );
 
@@ -253,6 +254,54 @@ export class CandidateViewService {
     );
 
     return this.files.readAsAuthorized(view.candidateUserId, fileId);
+  }
+
+  /**
+   * Streams a file to an employer whose entitlement came from a **Candidate Unlock**
+   * (§6.6, §11.1, BR-17).
+   *
+   * The third of these, and the third for the same reason: `downloadPath` is scoped to
+   * whatever granted the entitlement, so a third kind of entitlement needs a third route.
+   * It is keyed on the candidate rather than on an interaction id because the unlock *is*
+   * the pair - `candidate_unlocks` has no surrogate key (BR-16).
+   *
+   * The unlock is checked first, and its absence is the same `file.not_found` as an unknown
+   * file. That is deliberate: an employer holding an application downloads through
+   * `/applications/...`, so reaching here without an unlock says nothing about whether the
+   * candidate or the file exists, and we do not owe that (§11.1).
+   *
+   * Re-evaluated per download, like the other two. An unlock cannot be revoked - which makes
+   * this the one entitlement where re-checking will not change its mind - but the *file* can
+   * be deleted or replaced, and `read()` is what notices.
+   */
+  async downloadForUnlock(
+    employerUserId: string,
+    candidateUserId: string,
+    fileId: string,
+  ): Promise<{ file: StoredFile; bytes: Buffer }> {
+    const unlock = await this.db
+      .selectFrom('candidate_unlocks')
+      .select('candidate_user_id')
+      .where('employer_user_id', '=', employerUserId)
+      .where('candidate_user_id', '=', candidateUserId)
+      .executeTakeFirst();
+
+    if (!unlock) {
+      throw new NotFoundError('file.not_found');
+    }
+
+    const view = await this.read(employerUserId, candidateUserId);
+
+    if (!view.canViewFiles || !view.files.some((file) => file.id === fileId)) {
+      throw new NotFoundError('file.not_found');
+    }
+
+    this.logger.log(
+      `Employer ${employerUserId} downloaded file ${fileId} of candidate ` +
+        `${candidateUserId} via a Candidate Unlock`,
+    );
+
+    return this.files.readAsAuthorized(candidateUserId, fileId);
   }
 
   /**

@@ -22,6 +22,7 @@ import { ApplicationsService } from '@modules/applications/applications.service'
 import { CandidateViewService } from '@modules/applications/candidate-view.service';
 import { CandidateSearchService } from '@modules/candidate-search/candidate-search.service';
 import { CandidatesService } from '@modules/candidates/candidates.service';
+import { ChatService } from '@modules/chat/chat.service';
 import { HistoryService } from '@modules/candidates/history.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { DiscoveryService } from '@modules/discovery/discovery.service';
@@ -45,15 +46,14 @@ import { WalletService } from '@modules/wallet/wallet.service';
 /**
  * The client's acceptance scenarios, walked end to end (§13.2, UAT-01..UAT-23).
  *
- * **§13.1 has twenty-four scenarios since the 2026-08-10 revision**, and twenty-two of them
- * are here. UAT-24 is a restatement of UAT-13, and **UAT-17 is present but half-asserted**:
- * its Coin arithmetic holds today, while the sentence about chat and contact actions becoming
- * available depends on the open question at the top of TODO.md and lands with M12's retrofit.
- * That is written into the test rather than left as a silently missing assertion.
+ * **§13.1 has twenty-four scenarios since the 2026-08-10 revision**, and twenty-three of them
+ * are here - UAT-24 is a restatement of UAT-13 and is covered by it.
  *
- * Several of the original fifteen assert the *pre-revision* BR-09 contract, where a hiring
- * interaction reveals contact details. That is what the retrofit changes, deliberately,
- * rather than by deletion.
+ * The original fifteen still assert that a hiring interaction reveals contact details, and that
+ * is still true: M12's retrofit was built on the reading that an application is one of §11.1's
+ * "explicitly approved entitlements", so nothing here had to be rewritten. What changed is the
+ * *reason code* for a refusal - `no_interaction` became `unlock_required`, because the remedy is
+ * now a purchase rather than waiting.
  *
  * Every other suite in this repository tests a module. This one tests the *product*: each
  * `describe` is one row of §13's table, and its title is that row's scenario. The test
@@ -86,6 +86,7 @@ let search: CandidateSearchService;
 let invitations: InvitationsService;
 let applications: ApplicationsService;
 let interviews: InterviewsService;
+let chat: ChatService;
 let candidateView: CandidateViewService;
 let discovery: DiscoveryService;
 let notifications: NotificationsService;
@@ -240,11 +241,20 @@ beforeAll(() => {
   );
   adminUsers = new AdminUsersService(db, audit, notifications);
   guard = new AccountStatusGuard(db);
+  // §9.1's chat gate reads the same shared entitlement BR-09 does, which is what lets UAT-17
+  // assert its "chat becomes available" clause without chat knowing an unlock exists.
+  chat = new ChatService(
+    db,
+    new HiringInteractionService(db),
+    filesStub,
+    idempotency,
+    notifications,
+  );
 
   // M12 and M13. Both payment providers are configured here with test credentials, because
   // UAT-20..23 are about *verified* callbacks: a scenario that ran against an unconfigured
   // provider would assert a refusal and prove nothing about crediting.
-  wallet = new WalletService(db, config);
+  wallet = new WalletService(db, employers, config);
   payme = new PaymeProvider(config);
   click = new ClickProvider(config);
   payments = new PaymentOrdersService(
@@ -1373,9 +1383,18 @@ describe('UAT-16 - a user completes first employer registration', () => {
 });
 
 describe('UAT-17 - employer with 10 Coins unlocks a new candidate', () => {
-  it('debits two Coins and leaves a balance of eight', async () => {
+  it('debits two Coins and opens the contact details, the CV and chat', async () => {
     const { employerUserId } = await verifiedEmployer();
     const candidateUserId = await completeCandidate();
+
+    // Before: the locked state the app renders, and the code that says what would fix it.
+    const locked = await candidateView.forCandidate(
+      employerUserId,
+      candidateUserId,
+    );
+    expect(locked.phone).toBeNull();
+    expect(locked.canViewFiles).toBe(false);
+    expect(locked.exposureReason).toBe('unlock_required');
 
     await wallet.read(employerUserId);
     const unlock = await wallet.unlock(employerUserId, candidateUserId);
@@ -1385,13 +1404,21 @@ describe('UAT-17 - employer with 10 Coins unlocks a new candidate', () => {
     // The number the scenario states.
     expect((await wallet.read(employerUserId)).balanceCoins).toBe(8);
 
-    // **The rest of this row is not asserted yet, and that is deliberate.** UAT-17 also says
-    // "protected phone/e-mail, CV, chat, and interview/contact actions become available",
-    // which today they are for a *hiring interaction* rather than for an unlock - M6's
-    // delivered BR-09 contract. Whether an application is also an approved entitlement is
-    // the open question at the top of TODO.md, and M12's retrofit answers it. Asserting
-    // either reading now would bake in a decision the client has not made.
-    expect(await wallet.hasUnlock(employerUserId, candidateUserId)).toBe(true);
+    // "Protected phone/e-mail, CV, chat, and interview/contact actions become available."
+    const unlocked = await candidateView.forCandidate(
+      employerUserId,
+      candidateUserId,
+    );
+    expect(unlocked.phone).toMatch(/^\+998/);
+    expect(unlocked.canViewFiles).toBe(true);
+    expect(unlocked.exposureReason).toBe('candidate_unlock');
+
+    // Chat, without a line of chat code knowing an unlock exists: §9.1's gate asks the same
+    // shared question BR-09 does, which is why the retrofit went there rather than only into
+    // the exposure rule.
+    await expect(
+      chat.open(employerUserId, 'employer', candidateUserId),
+    ).resolves.toMatchObject({ candidateUserId });
   });
 });
 

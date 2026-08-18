@@ -56,18 +56,22 @@ needs them.
       on that list has been seen by a lawyer, which is why every entry is tagged
       `default`.
 - [?] **Does a candidate's own application still reveal their contact details?**
-      *(new, 2026-08-10 revision - blocks M12's retrofit and nothing else)*
-      §11.1 now says contact and CV become available "only after a successful Candidate
-      Unlock **or another explicitly approved entitlement**", and §9.1 says an
-      application is *not* one. Taken literally, M6's delivered BR-09 behaviour is
-      superseded: an employer holding an application would see structured data but no
-      phone number until they pay 2 Coins.
-      **Why it is worth asking rather than assuming:** a candidate who applies has
-      volunteered their interest in that employer, which is the reading every other
-      recruitment product takes, and it is the one the client's own §11.1 escape hatch
-      allows. Answering "an application is an approved entitlement" leaves M6, M8's chat
-      and their tests intact and reduces M12 to new code only. Answering "no" is also
-      fine - it just costs the retrofit in [PLAN.md](PLAN.md) M12.
+      *(2026-08-10 revision. **Answered by the team on 2026-08-19 and shipped**; still wants
+      the client's sign-off, and blocks nothing.)*
+      §11.1 says contact and CV become available "only after a successful Candidate Unlock
+      **or another explicitly approved entitlement**", and §9.1, read strictly, says an
+      application is *not* one - which would supersede M6's delivered BR-09 behaviour.
+      **The answer taken: an application *is* an approved entitlement**, as is an accepted
+      invitation. A candidate who applies has volunteered their interest in that employer,
+      which is the reading every other recruitment product takes and the one §11.1's own
+      escape hatch allows. So the unlock is for candidates who have **not** applied, and
+      M6, M7, M8 and their tests are untouched.
+      It was taken rather than waited on because the client's unlock UI was blocked on it and
+      the alternative reading is strictly larger - it can still be built later. **If the
+      client overrules it**, the cost is real: two reason codes invert meaning
+      (`application` stops granting, `unlock_required` starts appearing where an application
+      exists) and M6, M7 and M8 all need revisiting. Nothing about the purchase, the ledger
+      or the entitlement changes.
 - [?] **Payme and CLICK merchant accounts** *(blocks switching M13 on, and nothing else
       now)* - **the code is finished and verified.** Both adapters, both callback routes,
       exactly-once crediting and 65 tests are in; with no credentials the adapters refuse
@@ -914,7 +918,7 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       used, which is what a walkthrough written against the spec rather than
       against the code is supposed to feel like
 
-## M12 - Employer wallet, Coins, Candidate Unlock *(built; the BR-09 retrofit is open)*
+## M12 - Employer wallet, Coins, Candidate Unlock *(done)*
 
 Wire shapes are in [docs/openapi.json](docs/openapi.json); the design record is
 [ARCHITECTURE.md](ARCHITECTURE.md) §10b.
@@ -955,17 +959,47 @@ Wire shapes are in [docs/openapi.json](docs/openapi.json); the design record is
       rather than throwing** - throwing inside would roll back the write and report
       "insufficient balance" having taken the money
 
-### The BR-09 retrofit *(not built, and waiting on one answer)*
-- [?] §11.1 and §9.1 gate contact details, CV, chat, interviews and invitations on the
-      entitlement; M6/M7/M8 gate them on a live hiring interaction. **Whether an
-      application is also an approved entitlement is the question at the top of this file**,
-      and it halves this work. Nothing else in M12 depends on it.
-      Touches, when answered: `infra/privacy/contact-exposure.ts` (the one place the rule
-      lives), `CandidateViewService`, the four entitlement-bearing file routes, `ChatService`
-      and `InvitationsService.invite` - plus every existing BR-09 test, which asserts the old
-      contract and has to change **deliberately**
-- [x] `wallet.unlock_required` is already in the message catalogue with all four labels, so
-      the retrofit is a code change and not a translation round
+### The BR-09 retrofit *(done 2026-08-19, on the small reading)*
+
+Until this landed, **nothing read the entitlement**: `candidate_unlocks` appeared only inside
+the wallet module, so an employer could pay two Coins and see exactly what they saw before.
+The client had shipped the wallet screen and deliberately stopped before the unlock button for
+that reason.
+
+- [x] **The change went in `HiringInteractionService`, not only in `expose()`**, so §9.1's chat
+      gate and §8.2's interviews inherit it and cannot drift from BR-09. A third `kind`,
+      `unlocks`, whose `id` is the candidate's - `candidate_unlocks` has no surrogate key,
+      because the pair is its primary key. Read directly rather than through `WalletService`:
+      that file has no module dependencies on purpose, and three modules import it
+- [x] `expose()` gained `hasUnlock` and the granting reason `candidate_unlock`.
+      **Precedence: application, then accepted invitation, then unlock** - all three grant
+      identically, so this only decides what the log and the client are told, and an employer
+      holding an application should not be shown a purchase as the reason
+- [x] **`hasUnlock` is in the no-entitlement condition, and leaving it out would have failed
+      silently.** An employer who paid, whose candidate then hid their profile, arrives with no
+      application and no invitation; without it the branch returns `hidden_by_candidate` and
+      refuses contact that was paid for, with a log line as the only symptom
+- [x] `not_verified_employer` still short-circuits **before** any of it (§7): an employer must
+      not be able to buy past BR-03. The test enumerates every entitlement including the
+      unlock, because that is the one way this change could have leaked a phone number
+- [x] **`no_interaction` renamed `unlock_required`** - a coordinated breaking change with the
+      client, who maps all seven codes exhaustively. The old name described a world where the
+      only remedy was waiting; the remedy is now a purchase, and the client turns the code
+      into the sentence that says so
+- [x] A third download route, `GET /unlocks/:candidateUserId/files/:fileId/content`, because
+      `downloadPath` is scoped to whatever granted the entitlement. Beside the other two in the
+      applications module, re-evaluated per download, and one `file.not_found` for "no unlock",
+      "no such file" and "not theirs" alike
+- [x] **Two ways to take money for nothing, closed.** `POST /wallet/unlocks` checked the role
+      but not verification, so an employer could be charged for access §7 would then refuse -
+      harmless while nothing read the entitlement, a real bug the moment something did. And an
+      unknown `candidateUserId` hit a foreign key instead of answering 404. Both are refused
+      before any Coins move
+- [x] `UnlockStateDto` gained `balanceCoins`. §6.6 and UAT-17 need cost, balance **and**
+      remainder on the confirmation sheet, and without the balance every sheet was two requests
+      - which is the thing that route was written to avoid
+- [x] `wallet.unlock_required` was already in the message catalogue in all four variants, so
+      this was a code change and not a translation round
 
 ### Tests *(done - 19 integration, four of them concurrent)*
 - [x] Two concurrent unlocks of the same pair: one debit, one entitlement
@@ -974,10 +1008,13 @@ Wire shapes are in [docs/openapi.json](docs/openapi.json); the design record is
 - [x] The cached balance equals the ledger sum after a mixed sequence
 - [x] `UPDATE` and `DELETE` on `wallet_transactions` are refused by the database, including
       an `UPDATE` that matches nothing
-- [x] UAT-16, UAT-18 and UAT-19 walked in `src/uat/uat.int.spec.ts`. **UAT-17 is
-      half-asserted on purpose**: its Coin arithmetic holds, and the sentence about chat and
-      contact actions becoming available is the retrofit's, so the test says so rather than
-      quietly omitting it
+- [x] UAT-16..UAT-19 walked in `src/uat/uat.int.spec.ts`
+- [x] **The retrofit's own suite**, `applications/unlock-gating.int.spec.ts` (10 tests): the
+      three-way precedence through real applications and invitations, an unlocked candidate's
+      phone and files with the right `downloadPath`, the unlock surviving `hidden`, the new
+      route refusing an employer who has not paid, and the two purchase refusals. The rule
+      itself stays a unit test - `contact-exposure.spec.ts` enumerates every combination,
+      including the two the unlock added
 
 ---
 

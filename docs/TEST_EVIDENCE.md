@@ -4,15 +4,15 @@
 scenarios". This is that, plus the command that reproduces it - a result nobody can re-run
 is a screenshot.
 
-**As of 2026-08-18, on schema version 21: 953 tests, all passing.**
+**As of 2026-08-19, on schema version 21: 970 tests, all passing.**
 
 | Suite | Command | Suites | Tests | Needs Postgres |
 |---|---|---|---|---|
-| Unit / functional | `pnpm test` | 26 | 479 | no |
-| Integration | `pnpm test:int` | 21 | 474 | yes |
+| Unit / functional | `pnpm test` | 26 | 483 | no |
+| Integration | `pnpm test:int` | 22 | 487 | yes |
 | **Acceptance (UAT-01..23 of 24)** | `pnpm test:int -- --testRegex uat` | 1 | 24 | yes |
 
-The acceptance suite is a subset of the integration one; 953 is the sum of the first two
+The acceptance suite is a subset of the integration one; 970 is the sum of the first two
 rows, counted once.
 
 > **Three integration suites were failing in `afterAll` before M13**, and every test inside
@@ -48,14 +48,14 @@ so a test cannot set up a state the application could not produce.
 > UAT-16..UAT-23 - the wallet, Candidate Unlock and Payme/CLICK rows - are now covered by
 > M12 and M13. UAT-24 is a restatement of UAT-13 and is covered by it.
 >
-> **Two caveats, both stated in the suite itself rather than hidden here.** UAT-17 is
-> *half-asserted*: its Coin arithmetic passes, and its further claim that "chat and
-> interview/contact actions become available" belongs to M12's BR-09 retrofit, which is
-> waiting on one client answer. And three of the original fifteen (UAT-03's CV access through
-> an application, UAT-07's invitation, UAT-09's interview) assert the **pre-revision** BR-09
-> contract and will change deliberately with that retrofit - see
-> [SPEC_CHANGELOG.md](SPEC_CHANGELOG.md) and the question at the top of
-> [../TODO.md](../TODO.md).
+> **Nothing is half-asserted any more.** UAT-17's full claim - that "protected phone/e-mail,
+> CV, chat, and interview/contact actions become available" - holds since the BR-09 retrofit
+> landed on 2026-08-19, and the test asserts the contact details, the file access *and* the
+> chat gate. The original fifteen were not rewritten, because the retrofit took the reading
+> that an application is one of §11.1's "explicitly approved entitlements" - see the question
+> at the top of [../TODO.md](../TODO.md), which is answered but **still wants the client's
+> sign-off**. What did change across three suites is one reason code: `no_interaction` became
+> `unlock_required`.
 
 `src/uat/uat.int.spec.ts` is one `describe` per row of §13.1's table, titled with the
 scenario and asserting that row's own stated expected result. Both moderation flags are
@@ -79,7 +79,7 @@ scenario and asserting that row's own stated expected result. Both moderation fl
 | UAT-14 | Temporarily blocks a user | Mutations refused with a localized reason, an `account_status_history` row and an audit row; lifting it writes its own |
 | UAT-15 | A vacancy deadline expires | New applications refused, gone from both discovery feeds, still visible to its owner |
 | UAT-16 | First employer registration | Wallet created and exactly ten Coins credited - then three further attempts credit nothing, which is §6.6's logout/reinstall/device-change/role-switch clause as one index |
-| UAT-17 | Unlocks a new candidate with 10 Coins | Two Coins debited, balance 8, entitlement held. **The chat/contact half is not asserted** - it is the retrofit's, and the test says so rather than omitting it silently |
+| UAT-17 | Unlocks a new candidate with 10 Coins | Two Coins debited, balance 8 - then the whole clause: the phone number and the file list appear with `exposureReason: 'candidate_unlock'`, and §9.1 chat opens. Asserted from the locked state first, so it proves the change rather than the end state |
 | UAT-18 | Revisits an already-unlocked candidate | Nothing charged, `charged: false`, balance still 8, entitlement intact (BR-16) |
 | UAT-19 | Attempts an unlock holding fewer than 2 Coins | Refused with `wallet.insufficient_coins`, no entitlement written, and the wallet reports what an unlock costs and which providers can take a top-up |
 | UAT-20 | Buys 10 Coins through Payme at the initial price | UZS 100,000 order, then Payme's own `CheckPerformTransaction` → `CreateTransaction` → `PerformTransaction` in tiyin with a real Basic credential; order `paid`, exactly 10 Coins credited |
@@ -113,16 +113,25 @@ instead of `-31008`.
 
 ## What else the suites hold
 
-Beyond those fifteen scenarios, the parts worth naming to a reviewer:
+Beyond the scenarios themselves, the parts worth naming to a reviewer:
 
 - **The authorization surface as a whole** (`infra/api/api-surface.spec.ts`): the set of
-  public routes is frozen at eleven, each with a written reason; every `/admin/*` route is
+  public routes is frozen at twelve, each with a written reason - the last two are M13's provider callbacks, the first public **mutating** routes in the product; every `/admin/*` route is
   checked to require the admin role; and the controller list is checked against
   `app.module.ts`, so a module cannot escape the audit by being forgotten.
 - **Injection** (`candidate-search/search-query.spec.ts`): a hostile string pushed through
   twelve filters at once reaches Postgres only as a bound parameter.
 - **Immutability** (`admin.int.spec.ts`): the audit log refuses `UPDATE`, `DELETE` **and**
-  `TRUNCATE` at the database.
+  `TRUNCATE` at the database. `wallet.int.spec.ts` and `payments.int.spec.ts` prove the same
+  for the Coin ledger and the payment event trail, including the `UPDATE` matching no rows
+  that a row-level trigger would let through.
+- **A privacy rule with three inputs** (`infra/privacy/contact-exposure.spec.ts`, 14 tests):
+  every combination of viewer, visibility and entitlement, asserting the **reason** and not
+  only the outcome. Two of them exist because M12 made an entitlement purchasable - that an
+  unlock cannot buy past §7's verification gate, and that it survives the candidate hiding
+  their profile. The plumbing is `applications/unlock-gating.int.spec.ts` (11 tests), which
+  includes the property that made the retrofit cheap: §9.1's chat gate inherited the new
+  entitlement without a line of chat code changing.
 - **Races** (`invitations.int.spec.ts`, `applications.int.spec.ts`): two concurrent
   invitations and two concurrent applications, proving the partial unique indexes rather
   than the service checks.

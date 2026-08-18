@@ -261,18 +261,43 @@ export class ApplicationsController {
       fileId,
     );
 
-    response.setHeader('Content-Type', file.mimeType);
-    response.setHeader('Content-Length', String(bytes.length));
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${file.fileName}"`,
-    );
-    // An uploaded document must never render as a page in the caller's origin.
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    // Private to one hiring interaction, so no intermediary may keep it.
-    response.setHeader('Cache-Control', 'private, no-store');
+    this.streamFile(response, file, bytes);
+  }
 
-    response.end(bytes);
+  @Get('unlocks/:candidateUserId/files/:fileId/content')
+  @RequireRole('employer')
+  @ApiOperation({
+    summary: 'Download a file through a Candidate Unlock (§6.6, §11.1)',
+    description:
+      'The unlock’s counterpart to `/applications/:id/files/...`, and it exists for the ' +
+      'same reason: a file’s `downloadPath` is scoped to whatever entitled the employer to ' +
+      'it, so a third kind of entitlement needs a third route. Keyed on the **candidate**, ' +
+      'because an unlock has no id of its own — the pair is its primary key (BR-16).\n\n' +
+      '**Use the `downloadPath` the candidate view gave you rather than building this.** An ' +
+      'employer who also holds an application is served through that instead, which is the ' +
+      'stronger claim; both work, but only one is the path they were handed.\n\n' +
+      'The entitlement is re-evaluated here, like the other two.',
+  })
+  @ApiProduces('application/octet-stream')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  @ApiNotFoundResponse({
+    description:
+      '`file.not_found` — no unlock for this candidate, no such file, or not theirs. One ' +
+      'code for all of them: which it was is not information we owe (§11.1).',
+  })
+  async downloadUnlockedFile(
+    @ActiveUser() user: CurrentUser,
+    @Param('candidateUserId', ParseUUIDPipe) candidateUserId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const { file, bytes } = await this.candidateView.downloadForUnlock(
+      user.id,
+      candidateUserId,
+      fileId,
+    );
+
+    this.streamFile(response, file, bytes);
   }
 
   @Post('applications/:id/notes')
@@ -372,5 +397,35 @@ export class ApplicationsController {
       createdAt: formatWithOffset(application.createdAt, this.timeZone),
       updatedAt: formatWithOffset(application.updatedAt, this.timeZone),
     };
+  }
+
+  /**
+   * The response for a candidate's file, whichever entitlement served it.
+   *
+   * Extracted when the unlock made this the third copy in the product - the threshold
+   * CLAUDE.md names. `InvitationsController` keeps its own, because moving it there would
+   * mean one controller importing another's helper for six header lines; if a fourth
+   * entitlement ever appears, this belongs in `infra/files` instead.
+   *
+   * Two of the headers are the security-relevant ones and are easy to drop by accident:
+   * `nosniff`, so an uploaded document cannot render as a page in the caller's origin, and
+   * `no-store`, because these bytes are private to one entitlement and no intermediary may
+   * keep them.
+   */
+  private streamFile(
+    response: Response,
+    file: { mimeType: string; fileName: string },
+    bytes: Buffer,
+  ): void {
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader('Content-Length', String(bytes.length));
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName}"`,
+    );
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'private, no-store');
+
+    response.end(bytes);
   }
 }

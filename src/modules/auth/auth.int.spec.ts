@@ -11,6 +11,7 @@ import type { Database } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
 
+import { EmployersService } from '@modules/employers/employers.service';
 import { UsersService } from '@modules/users/users.service';
 
 import { AuthService } from './auth.service';
@@ -102,7 +103,7 @@ function services(overrides: Partial<AppEnv> = {}, sender?: SmsSender) {
     db,
     sessions,
     tokens,
-    new WalletService(db, config),
+    new WalletService(db, new EmployersService(db), config),
   );
   const users = new UsersService(db);
 

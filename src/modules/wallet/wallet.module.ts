@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { EmployersModule } from '@modules/employers/employers.module';
+
 import { WalletController } from './wallet.controller';
 import { WalletService } from './wallet.service';
 
@@ -20,7 +22,11 @@ import { WalletService } from './wallet.service';
  * has to stay provider-agnostic so a store build can substitute Apple or Google billing
  * without touching Candidate Unlock.
  */
+// `EmployersModule` for §7's verification gate on the purchase: an employer must not be able
+// to buy access that `expose()` will then refuse. The dependency is safe in this direction -
+// `EmployersModule` imports only `NotificationsModule`, so there is no path back here.
 @Module({
+  imports: [EmployersModule],
   controllers: [WalletController],
   providers: [WalletService],
   exports: [WalletService],

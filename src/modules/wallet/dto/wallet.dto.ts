@@ -134,6 +134,16 @@ export class UnlockStateDto {
 
   @ApiProperty({ type: WalletPricingDto })
   pricing!: WalletPricingDto;
+
+  @ApiProperty({
+    example: 10,
+    description:
+      'The employer’s current balance — the third of the three numbers §6.6 and UAT-17 ' +
+      'require the confirmation sheet to show, alongside the cost and what would be left. ' +
+      'It is here so that sheet is **one** request, which is the whole reason this route ' +
+      'exists rather than the client asking about the unlock and the wallet separately.',
+  })
+  balanceCoins!: number;
 }
 
 export class UnlockRequestDto {

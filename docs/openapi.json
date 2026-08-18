@@ -360,7 +360,7 @@
     },
     "/wallet": {
       "get": {
-        "description": "The Coin balance, its UZS value at today’s price, and the prices themselves. **The client must read the prices from here rather than hard-coding them** - §6.6 makes them server-side configuration, and §10.5 allows changing them.\n\nA wallet is created on first read, so an employer who registered before the wallet existed sees a zero balance rather than an error. That read never grants the registration bonus: the bonus belongs to the role being granted (BR-15).",
+        "description": "The Coin balance, its UZS value at today’s price, and the prices themselves. **The client must read the prices from here rather than hard-coding them** - §6.6 makes them server-side configuration, and §10.5 allows changing them.\n\nA wallet is created on first read, so an employer who registered before the wallet existed sees a balance rather than an error — **and that read grants BR-15’s one-time bonus if it is still owed**, which is how an employer who registered before the wallet shipped receives it. It cannot grant a second: the bonus is a unique index, so logging out, reinstalling, changing device or switching roles all reach the same single row.",
         "operationId": "WalletController_read",
         "parameters": [],
         "responses": {
@@ -436,7 +436,7 @@
     },
     "/wallet/unlocks/{candidateUserId}": {
       "get": {
-        "description": "What the client needs to render either “Unlock contact — 2 Coins” or the unlocked state, without guessing and without attempting a purchase to find out. Returns the current pricing alongside, so the confirmation sheet §6.6 describes can be built from one request.",
+        "description": "What the client needs to render either “Unlock contact — 2 Coins” or the unlocked state, without guessing and without attempting a purchase to find out. Returns the cost **and the current balance**, so the confirmation sheet §6.6 describes — cost, balance, and what would be left — can be built from one request.",
         "operationId": "WalletController_unlockState",
         "parameters": [
           {
@@ -473,7 +473,7 @@
     },
     "/wallet/unlocks": {
       "post": {
-        "description": "Debits the Coins and creates the entitlement **atomically** (BR-18): charging without access, or access without charging, are both worse than failing.\n\n**Calling twice is free.** One employer-candidate pair is charged once (BR-16), enforced by that pair being a primary key rather than by a check - so a double tap, a retry, or a revisit next month all return the original entitlement with `charged: false`. No `Idempotency-Key` is needed, because the pair *is* the key.\n\nAnswers **402** when the balance is too low, which is the status the client routes to top-up on (§6.6).",
+        "description": "Debits the Coins and creates the entitlement **atomically** (BR-18): charging without access, or access without charging, are both worse than failing.\n\n**Calling twice is free.** One employer-candidate pair is charged once (BR-16), enforced by that pair being a primary key rather than by a check - so a double tap, a retry, or a revisit next month all return the original entitlement with `charged: false`. No `Idempotency-Key` is needed, because the pair *is* the key.\n\nAnswers **402** when the balance is too low, which is the status the client routes to top-up on (§6.6).\n\n**A verified employer only** (§7). An unverified one is refused *before* any Coins move, with `employer.not_verified` or `employer.profile_incomplete` — the same codes every other §7-gated route returns, so route them to verification rather than to top-up. Buying access that `expose()` would then refuse is taking money for nothing.",
         "operationId": "WalletController_unlock",
         "parameters": [],
         "requestBody": {
@@ -500,6 +500,12 @@
           "402": {
             "description": "Fewer Coins than an unlock costs. The body carries `required` and `balance`."
           },
+          "403": {
+            "description": "`employer.not_verified` or `employer.profile_incomplete` — §7 requires verification before an employer may see any candidate, so it is required before buying access to one. Nothing was charged."
+          },
+          "404": {
+            "description": "`candidate.profile_not_found` — no candidate profile with that id. Nothing was charged."
+          },
           "409": {
             "description": "A multi-role account tried to unlock its own candidate profile."
           }
@@ -512,6 +518,413 @@
         "summary": "Buy a Candidate Unlock (§6.6, BR-16, BR-18)",
         "tags": [
           "wallet"
+        ]
+      }
+    },
+    "/employers/me": {
+      "get": {
+        "description": "A 404 before the first `PUT`, unlike the candidate profile: `type` decides which fields exist, so there is no neutral empty employer to render.",
+        "operationId": "EmployersController_profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfileDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`employer.profile_not_found` - nothing created yet."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The caller’s employer profile",
+        "tags": [
+          "employers"
+        ]
+      },
+      "put": {
+        "description": "A full replacement rather than a patch: the form is one screen per §6.1 and submits whole. `type` is fixed after creation. Completeness is recomputed in the same transaction, because BR-03 reads it on every vacancy submission.",
+        "operationId": "EmployersController_upsert",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertEmployerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfileDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`employer.type_immutable`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create or replace the employer profile",
+        "tags": [
+          "employers"
+        ]
+      }
+    },
+    "/employers/me/verification": {
+      "get": {
+        "description": "`requiredEvidence` is served rather than hardcoded: which documents each employer type must provide is still an open client decision (§6.1, \"if required by policy\"), so the answer arrives as data.",
+        "operationId": "EmployersController_verificationState",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verification state and past attempts",
+        "tags": [
+          "employers"
+        ]
+      },
+      "post": {
+        "description": "Requires a complete profile and every document `requiredEvidence` marks required, each owned by the caller. Writes a BR-08 history row. **While the admin module is out of scope, `EMPLOYER_VERIFICATION_ENABLED` is off and this approves immediately** - recorded with a null actor and an `auto_verified_no_reviewer` reason, so the history never claims a person reviewed it.",
+        "operationId": "EmployersController_submit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationStateDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`employer.profile_incomplete` or `employer.verification_evidence_missing`."
+          },
+          "409": {
+            "description": "`employer.verification_not_submittable`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit for verification",
+        "tags": [
+          "employers"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "description": "Each item’s `text` is rendered in this request’s language, so switching language reads the whole history in the new one. Branch on `event` and follow `targetType`/`targetId` rather than parsing the sentence.",
+        "operationId": "NotificationsController_list",
+        "parameters": [
+          {
+            "name": "unreadOnly",
+            "required": false,
+            "in": "query",
+            "description": "Only what has not been read yet.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The caller’s notifications, newest first (§9.2)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "description": "One indexed count over a partial index, because this is polled far more often than the list is opened.",
+        "operationId": "NotificationsController_unreadCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The badge (§9.2)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/{id}/read": {
+      "put": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "`notification.not_found` — including somebody else’s."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark one as read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/read": {
+      "put": {
+        "operationId": "NotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkedReadDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark everything as read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/preferences": {
+      "get": {
+        "description": "Every category, including the one that cannot be switched off — flagged with `canDisable: false` so the screen can grey it out. A user who cannot find \"account notices\" in the list will assume they are off.",
+        "operationId": "NotificationsController_preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferencesDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Which categories are on (§9.2)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/preferences/{category}": {
+      "put": {
+        "description": "A disabled category stores nothing at all — not a hidden row — so the badge cannot count notifications the user asked not to receive. `account` is refused: §9.2 keeps security and account notices enabled, and a CHECK constraint refuses the row too.",
+        "operationId": "NotificationsController_setPreference",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "`notification.category_not_disableable`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Switch a category on or off (§9.2)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/devices": {
+      "post": {
+        "description": "Idempotent, and re-registering a token that belonged to another account **moves** it: a token identifies an app installation, not a person, and phones in this market are handed on. Call it after every SDK token refresh.",
+        "operationId": "NotificationsController_registerDevice",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register this device for push (§9.2)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/devices/{token}": {
+      "delete": {
+        "description": "Sign-out for one device. Deleted rather than kept: it is a decision.",
+        "operationId": "NotificationsController_unregisterDevice",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Stop pushing to this device",
+        "tags": [
+          "notifications"
         ]
       }
     },
@@ -1489,413 +1902,6 @@
         "summary": "Delete a profile file",
         "tags": [
           "candidates"
-        ]
-      }
-    },
-    "/employers/me": {
-      "get": {
-        "description": "A 404 before the first `PUT`, unlike the candidate profile: `type` decides which fields exist, so there is no neutral empty employer to render.",
-        "operationId": "EmployersController_profile",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmployerProfileDto"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`employer.profile_not_found` - nothing created yet."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "The caller’s employer profile",
-        "tags": [
-          "employers"
-        ]
-      },
-      "put": {
-        "description": "A full replacement rather than a patch: the form is one screen per §6.1 and submits whole. `type` is fixed after creation. Completeness is recomputed in the same transaction, because BR-03 reads it on every vacancy submission.",
-        "operationId": "EmployersController_upsert",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertEmployerDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmployerProfileDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`employer.type_immutable`."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Create or replace the employer profile",
-        "tags": [
-          "employers"
-        ]
-      }
-    },
-    "/employers/me/verification": {
-      "get": {
-        "description": "`requiredEvidence` is served rather than hardcoded: which documents each employer type must provide is still an open client decision (§6.1, \"if required by policy\"), so the answer arrives as data.",
-        "operationId": "EmployersController_verificationState",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VerificationStateDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Verification state and past attempts",
-        "tags": [
-          "employers"
-        ]
-      },
-      "post": {
-        "description": "Requires a complete profile and every document `requiredEvidence` marks required, each owned by the caller. Writes a BR-08 history row. **While the admin module is out of scope, `EMPLOYER_VERIFICATION_ENABLED` is off and this approves immediately** - recorded with a null actor and an `auto_verified_no_reviewer` reason, so the history never claims a person reviewed it.",
-        "operationId": "EmployersController_submit",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubmitVerificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VerificationStateDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`employer.profile_incomplete` or `employer.verification_evidence_missing`."
-          },
-          "409": {
-            "description": "`employer.verification_not_submittable`."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Submit for verification",
-        "tags": [
-          "employers"
-        ]
-      }
-    },
-    "/notifications": {
-      "get": {
-        "description": "Each item’s `text` is rendered in this request’s language, so switching language reads the whole history in the new one. Branch on `event` and follow `targetType`/`targetId` rather than parsing the sentence.",
-        "operationId": "NotificationsController_list",
-        "parameters": [
-          {
-            "name": "unreadOnly",
-            "required": false,
-            "in": "query",
-            "description": "Only what has not been read yet.",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "maximum": 100,
-              "default": 20,
-              "type": "number"
-            }
-          },
-          {
-            "name": "offset",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 0,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationListDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "The caller’s notifications, newest first (§9.2)",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/unread-count": {
-      "get": {
-        "description": "One indexed count over a partial index, because this is polled far more often than the list is opened.",
-        "operationId": "NotificationsController_unreadCount",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnreadCountDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "The badge (§9.2)",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/{id}/read": {
-      "put": {
-        "operationId": "NotificationsController_markRead",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "404": {
-            "description": "`notification.not_found` — including somebody else’s."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Mark one as read",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/read": {
-      "put": {
-        "operationId": "NotificationsController_markAllRead",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkedReadDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Mark everything as read",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/preferences": {
-      "get": {
-        "description": "Every category, including the one that cannot be switched off — flagged with `canDisable: false` so the screen can grey it out. A user who cannot find \"account notices\" in the list will assume they are off.",
-        "operationId": "NotificationsController_preferences",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationPreferencesDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Which categories are on (§9.2)",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/preferences/{category}": {
-      "put": {
-        "description": "A disabled category stores nothing at all — not a hidden row — so the badge cannot count notifications the user asked not to receive. `account` is refused: §9.2 keeps security and account notices enabled, and a CHECK constraint refuses the row too.",
-        "operationId": "NotificationsController_setPreference",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPreferenceDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "403": {
-            "description": "`notification.category_not_disableable`."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Switch a category on or off (§9.2)",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/devices": {
-      "post": {
-        "description": "Idempotent, and re-registering a token that belonged to another account **moves** it: a token identifies an app installation, not a person, and phones in this market are handed on. Call it after every SDK token refresh.",
-        "operationId": "NotificationsController_registerDevice",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterDeviceDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Register this device for push (§9.2)",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/notifications/devices/{token}": {
-      "delete": {
-        "description": "Sign-out for one device. Deleted rather than kept: it is a decision.",
-        "operationId": "NotificationsController_unregisterDevice",
-        "parameters": [
-          {
-            "name": "token",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Stop pushing to this device",
-        "tags": [
-          "notifications"
         ]
       }
     },
@@ -3135,6 +3141,55 @@
           }
         ],
         "summary": "Download an applicant’s file (§6.5, §5.4)",
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/unlocks/{candidateUserId}/files/{fileId}/content": {
+      "get": {
+        "description": "The unlock’s counterpart to `/applications/:id/files/...`, and it exists for the same reason: a file’s `downloadPath` is scoped to whatever entitled the employer to it, so a third kind of entitlement needs a third route. Keyed on the **candidate**, because an unlock has no id of its own — the pair is its primary key (BR-16).\n\n**Use the `downloadPath` the candidate view gave you rather than building this.** An employer who also holds an application is served through that instead, which is the stronger claim; both work, but only one is the path they were handed.\n\nThe entitlement is re-evaluated here, like the other two.",
+        "operationId": "ApplicationsController_downloadUnlockedFile",
+        "parameters": [
+          {
+            "name": "candidateUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`file.not_found` — no unlock for this candidate, no such file, or not theirs. One code for all of them: which it was is not information we owe (§11.1)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download a file through a Candidate Unlock (§6.6, §11.1)",
         "tags": [
           "applications"
         ]
@@ -6720,11 +6775,17 @@
           },
           "pricing": {
             "$ref": "#/components/schemas/WalletPricingDto"
+          },
+          "balanceCoins": {
+            "type": "number",
+            "example": 10,
+            "description": "The employer’s current balance — the third of the three numbers §6.6 and UAT-17 require the confirmation sheet to show, alongside the cost and what would be left. It is here so that sheet is **one** request, which is the whole reason this route exists rather than the client asking about the unlock and the wallet separately."
           }
         },
         "required": [
           "unlocked",
-          "pricing"
+          "pricing",
+          "balanceCoins"
         ]
       },
       "UnlockRequestDto": {
@@ -6737,6 +6798,458 @@
         },
         "required": [
           "candidateUserId"
+        ]
+      },
+      "MissingEmployerFieldDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Response field name, so the client can focus it."
+          }
+        },
+        "required": [
+          "field"
+        ]
+      },
+      "EmployerProfileDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "individual"
+            ]
+          },
+          "contactPhone": {
+            "type": "object",
+            "nullable": true
+          },
+          "regionId": {
+            "type": "object",
+            "nullable": true
+          },
+          "districtId": {
+            "type": "object",
+            "nullable": true
+          },
+          "address": {
+            "type": "object",
+            "nullable": true
+          },
+          "description": {
+            "type": "object",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "object",
+            "nullable": true
+          },
+          "legalName": {
+            "type": "object",
+            "nullable": true
+          },
+          "publicName": {
+            "type": "object",
+            "nullable": true
+          },
+          "industryId": {
+            "type": "object",
+            "nullable": true
+          },
+          "contactPersonName": {
+            "type": "object",
+            "nullable": true
+          },
+          "logoFileId": {
+            "type": "object",
+            "nullable": true
+          },
+          "verificationStatus": {
+            "type": "string",
+            "enum": [
+              "not_submitted",
+              "under_review",
+              "verified",
+              "rejected",
+              "changes_required"
+            ],
+            "description": "The five states of §6.1, shown to the employer as-is."
+          },
+          "verificationReason": {
+            "type": "object",
+            "nullable": true,
+            "description": "The administrator’s reason for a rejection or a correction request. Human text, already in the language it was written in - not a translatable key."
+          },
+          "verifiedAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "completenessPercent": {
+            "type": "number",
+            "description": "Over the fields §6.1 requires for this employer type."
+          },
+          "isComplete": {
+            "type": "boolean",
+            "description": "BR-03’s condition: an employer may not submit a vacancy or send an invitation until this is true."
+          },
+          "canPublish": {
+            "type": "boolean",
+            "description": "Both BR-03 conditions together: complete **and** verified. §7 requires this for candidate search."
+          },
+          "missingFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingEmployerFieldDto"
+            }
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "verificationStatus",
+          "completenessPercent",
+          "isComplete",
+          "canPublish",
+          "missingFields",
+          "updatedAt"
+        ]
+      },
+      "UpsertEmployerDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "individual"
+            ],
+            "description": "Chosen once. It decides which fields apply (§6.1) and what verification asks for, so a later change would strand the other type’s answers and the evidence verification was granted against - `employer.type_immutable`."
+          },
+          "contactPhone": {
+            "type": "string",
+            "description": "The number a candidate should call. Deliberately separate from the login phone: the verified identity (BR-01) must not be overwritten by a business contact detail."
+          },
+          "regionId": {
+            "type": "string",
+            "description": "`region` dictionary id."
+          },
+          "districtId": {
+            "type": "string",
+            "description": "`region` dictionary id under `regionId`."
+          },
+          "address": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "A company description, or for an individual employer the \"short description of the requested work\" of §6.1."
+          },
+          "fullName": {
+            "type": "string",
+            "description": "Individual employers."
+          },
+          "legalName": {
+            "type": "string",
+            "description": "Companies: the registered name."
+          },
+          "publicName": {
+            "type": "string",
+            "description": "Companies: the name shown on a vacancy card, which often differs."
+          },
+          "industryId": {
+            "type": "string",
+            "description": "Companies: `industry` dictionary id."
+          },
+          "contactPersonName": {
+            "type": "string",
+            "description": "Companies: §6.1’s contact person."
+          },
+          "logoFileId": {
+            "type": "string",
+            "description": "Companies: a stored file of purpose `logo`, uploaded via `/files`."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "RequiredEvidenceDto": {
+        "type": "object",
+        "properties": {
+          "purposeCode": {
+            "type": "string",
+            "example": "company_registration"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether a submission is refused without it. What each type must provide is still an open client decision (§6.1 \"if required by policy\"), so read this rather than hardcoding a list."
+          }
+        },
+        "required": [
+          "purposeCode",
+          "required"
+        ]
+      },
+      "VerificationSubmissionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_submitted",
+              "under_review",
+              "verified",
+              "rejected",
+              "changes_required"
+            ]
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true
+          },
+          "fileIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "submittedAt",
+          "fileIds"
+        ]
+      },
+      "VerificationStateDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_submitted",
+              "under_review",
+              "verified",
+              "rejected",
+              "changes_required"
+            ]
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true
+          },
+          "verifiedAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "requiredEvidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequiredEvidenceDto"
+            }
+          },
+          "submissions": {
+            "description": "Newest first. Past attempts and why they were refused.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerificationSubmissionDto"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "requiredEvidence",
+          "submissions"
+        ]
+      },
+      "SubmitVerificationDto": {
+        "type": "object",
+        "properties": {
+          "fileIds": {
+            "description": "Stored file ids, uploaded through `POST /files` with the purpose the verification state lists as required. Must belong to the caller.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotificationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "event": {
+            "type": "object",
+            "description": "The §9.2 event, as a stable code. Branch on this rather than on the text."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "applications",
+              "invitations",
+              "messages",
+              "interviews",
+              "account"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Rendered **now**, in the language of this request (`x-lang`). The row stores a message key and its parameters rather than text, so a user who switches language sees their whole history in the new one (§3.2)."
+          },
+          "targetType": {
+            "type": "object",
+            "nullable": true,
+            "description": "What tapping it should open — `vacancy`, `application`, `conversation`…"
+          },
+          "targetId": {
+            "type": "object",
+            "nullable": true
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "category",
+          "text",
+          "isRead",
+          "createdAt"
+        ]
+      },
+      "NotificationListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "UnreadCountDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "description": "What the badge shows."
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "MarkedReadDto": {
+        "type": "object",
+        "properties": {
+          "marked": {
+            "type": "number",
+            "description": "How many were still unread."
+          }
+        },
+        "required": [
+          "marked"
+        ]
+      },
+      "NotificationPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "applications",
+              "invitations",
+              "messages",
+              "interviews",
+              "account"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "canDisable": {
+            "type": "boolean",
+            "description": "False for `account`. §9.2: \"security and account notices remain enabled\" — it is listed so the settings screen can show it greyed out rather than omitting it, because a user who cannot find it will assume it is off."
+          }
+        },
+        "required": [
+          "category",
+          "enabled",
+          "canDisable"
+        ]
+      },
+      "NotificationPreferencesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationPreferenceDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "SetPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "False switches the category off. Refused for `account` with `notification.category_not_disableable`, and a CHECK constraint refuses the row underneath."
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "RegisterDeviceDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The FCM registration token. Re-register it whenever the SDK rotates it — a token is unique across users, so registering one that belonged to another account moves it, which is what a shared or resold phone needs."
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android",
+              "ios"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "description": "For support, when a bug is version-specific."
+          }
+        },
+        "required": [
+          "token",
+          "platform"
         ]
       },
       "UserProfileResponseDto": {
@@ -7932,458 +8445,6 @@
           "file"
         ]
       },
-      "MissingEmployerFieldDto": {
-        "type": "object",
-        "properties": {
-          "field": {
-            "type": "string",
-            "description": "Response field name, so the client can focus it."
-          }
-        },
-        "required": [
-          "field"
-        ]
-      },
-      "EmployerProfileDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "company",
-              "individual"
-            ]
-          },
-          "contactPhone": {
-            "type": "object",
-            "nullable": true
-          },
-          "regionId": {
-            "type": "object",
-            "nullable": true
-          },
-          "districtId": {
-            "type": "object",
-            "nullable": true
-          },
-          "address": {
-            "type": "object",
-            "nullable": true
-          },
-          "description": {
-            "type": "object",
-            "nullable": true
-          },
-          "fullName": {
-            "type": "object",
-            "nullable": true
-          },
-          "legalName": {
-            "type": "object",
-            "nullable": true
-          },
-          "publicName": {
-            "type": "object",
-            "nullable": true
-          },
-          "industryId": {
-            "type": "object",
-            "nullable": true
-          },
-          "contactPersonName": {
-            "type": "object",
-            "nullable": true
-          },
-          "logoFileId": {
-            "type": "object",
-            "nullable": true
-          },
-          "verificationStatus": {
-            "type": "string",
-            "enum": [
-              "not_submitted",
-              "under_review",
-              "verified",
-              "rejected",
-              "changes_required"
-            ],
-            "description": "The five states of §6.1, shown to the employer as-is."
-          },
-          "verificationReason": {
-            "type": "object",
-            "nullable": true,
-            "description": "The administrator’s reason for a rejection or a correction request. Human text, already in the language it was written in - not a translatable key."
-          },
-          "verifiedAt": {
-            "type": "object",
-            "nullable": true
-          },
-          "completenessPercent": {
-            "type": "number",
-            "description": "Over the fields §6.1 requires for this employer type."
-          },
-          "isComplete": {
-            "type": "boolean",
-            "description": "BR-03’s condition: an employer may not submit a vacancy or send an invitation until this is true."
-          },
-          "canPublish": {
-            "type": "boolean",
-            "description": "Both BR-03 conditions together: complete **and** verified. §7 requires this for candidate search."
-          },
-          "missingFields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MissingEmployerFieldDto"
-            }
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "verificationStatus",
-          "completenessPercent",
-          "isComplete",
-          "canPublish",
-          "missingFields",
-          "updatedAt"
-        ]
-      },
-      "UpsertEmployerDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "company",
-              "individual"
-            ],
-            "description": "Chosen once. It decides which fields apply (§6.1) and what verification asks for, so a later change would strand the other type’s answers and the evidence verification was granted against - `employer.type_immutable`."
-          },
-          "contactPhone": {
-            "type": "string",
-            "description": "The number a candidate should call. Deliberately separate from the login phone: the verified identity (BR-01) must not be overwritten by a business contact detail."
-          },
-          "regionId": {
-            "type": "string",
-            "description": "`region` dictionary id."
-          },
-          "districtId": {
-            "type": "string",
-            "description": "`region` dictionary id under `regionId`."
-          },
-          "address": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string",
-            "description": "A company description, or for an individual employer the \"short description of the requested work\" of §6.1."
-          },
-          "fullName": {
-            "type": "string",
-            "description": "Individual employers."
-          },
-          "legalName": {
-            "type": "string",
-            "description": "Companies: the registered name."
-          },
-          "publicName": {
-            "type": "string",
-            "description": "Companies: the name shown on a vacancy card, which often differs."
-          },
-          "industryId": {
-            "type": "string",
-            "description": "Companies: `industry` dictionary id."
-          },
-          "contactPersonName": {
-            "type": "string",
-            "description": "Companies: §6.1’s contact person."
-          },
-          "logoFileId": {
-            "type": "string",
-            "description": "Companies: a stored file of purpose `logo`, uploaded via `/files`."
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      "RequiredEvidenceDto": {
-        "type": "object",
-        "properties": {
-          "purposeCode": {
-            "type": "string",
-            "example": "company_registration"
-          },
-          "required": {
-            "type": "boolean",
-            "description": "Whether a submission is refused without it. What each type must provide is still an open client decision (§6.1 \"if required by policy\"), so read this rather than hardcoding a list."
-          }
-        },
-        "required": [
-          "purposeCode",
-          "required"
-        ]
-      },
-      "VerificationSubmissionDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "not_submitted",
-              "under_review",
-              "verified",
-              "rejected",
-              "changes_required"
-            ]
-          },
-          "submittedAt": {
-            "type": "string"
-          },
-          "decidedAt": {
-            "type": "object",
-            "nullable": true
-          },
-          "reason": {
-            "type": "object",
-            "nullable": true
-          },
-          "fileIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "status",
-          "submittedAt",
-          "fileIds"
-        ]
-      },
-      "VerificationStateDto": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "not_submitted",
-              "under_review",
-              "verified",
-              "rejected",
-              "changes_required"
-            ]
-          },
-          "reason": {
-            "type": "object",
-            "nullable": true
-          },
-          "verifiedAt": {
-            "type": "object",
-            "nullable": true
-          },
-          "requiredEvidence": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RequiredEvidenceDto"
-            }
-          },
-          "submissions": {
-            "description": "Newest first. Past attempts and why they were refused.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VerificationSubmissionDto"
-            }
-          }
-        },
-        "required": [
-          "status",
-          "requiredEvidence",
-          "submissions"
-        ]
-      },
-      "SubmitVerificationDto": {
-        "type": "object",
-        "properties": {
-          "fileIds": {
-            "description": "Stored file ids, uploaded through `POST /files` with the purpose the verification state lists as required. Must belong to the caller.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "NotificationDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "event": {
-            "type": "object",
-            "description": "The §9.2 event, as a stable code. Branch on this rather than on the text."
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "applications",
-              "invitations",
-              "messages",
-              "interviews",
-              "account"
-            ]
-          },
-          "text": {
-            "type": "string",
-            "description": "Rendered **now**, in the language of this request (`x-lang`). The row stores a message key and its parameters rather than text, so a user who switches language sees their whole history in the new one (§3.2)."
-          },
-          "targetType": {
-            "type": "object",
-            "nullable": true,
-            "description": "What tapping it should open — `vacancy`, `application`, `conversation`…"
-          },
-          "targetId": {
-            "type": "object",
-            "nullable": true
-          },
-          "isRead": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "event",
-          "category",
-          "text",
-          "isRead",
-          "createdAt"
-        ]
-      },
-      "NotificationListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NotificationDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "UnreadCountDto": {
-        "type": "object",
-        "properties": {
-          "count": {
-            "type": "number",
-            "description": "What the badge shows."
-          }
-        },
-        "required": [
-          "count"
-        ]
-      },
-      "MarkedReadDto": {
-        "type": "object",
-        "properties": {
-          "marked": {
-            "type": "number",
-            "description": "How many were still unread."
-          }
-        },
-        "required": [
-          "marked"
-        ]
-      },
-      "NotificationPreferenceDto": {
-        "type": "object",
-        "properties": {
-          "category": {
-            "type": "string",
-            "enum": [
-              "applications",
-              "invitations",
-              "messages",
-              "interviews",
-              "account"
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "canDisable": {
-            "type": "boolean",
-            "description": "False for `account`. §9.2: \"security and account notices remain enabled\" — it is listed so the settings screen can show it greyed out rather than omitting it, because a user who cannot find it will assume it is off."
-          }
-        },
-        "required": [
-          "category",
-          "enabled",
-          "canDisable"
-        ]
-      },
-      "NotificationPreferencesDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NotificationPreferenceDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "SetPreferenceDto": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "description": "False switches the category off. Refused for `account` with `notification.category_not_disableable`, and a CHECK constraint refuses the row underneath."
-          }
-        },
-        "required": [
-          "enabled"
-        ]
-      },
-      "RegisterDeviceDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "description": "The FCM registration token. Re-register it whenever the SDK rotates it — a token is unique across users, so registering one that belonged to another account moves it, which is what a shared or resold phone needs."
-          },
-          "platform": {
-            "type": "string",
-            "enum": [
-              "android",
-              "ios"
-            ]
-          },
-          "appVersion": {
-            "type": "string",
-            "description": "For support, when a bug is version-specific."
-          }
-        },
-        "required": [
-          "token",
-          "platform"
-        ]
-      },
       "VacancyDto": {
         "type": "object",
         "properties": {
@@ -8901,7 +8962,16 @@
           },
           "exposureReason": {
             "type": "string",
-            "description": "Why the decision went the way it did — a stable code, logged with the access (§11.1) and useful when a candidate asks why an employer could not call them."
+            "enum": [
+              "admin",
+              "application",
+              "accepted_invitation",
+              "candidate_unlock",
+              "not_verified_employer",
+              "unlock_required",
+              "hidden_by_candidate"
+            ],
+            "description": "Why the decision went the way it did — a stable code, logged with the access (§11.1) and useful when a candidate asks why an employer could not call them.\n\n**Four grant and three deny**, and the difference matters to the client because each denial has a different remedy:\n\n- `application` / `accepted_invitation` — the candidate engaged first (§8.1, §8.2).\n- `candidate_unlock` — this employer bought access (§6.6, BR-17).\n- `admin` — moderation access, logged rather than blocked (§10.4).\n- `unlock_required` — **offer the unlock.** Nothing entitles this employer yet, and two Coins would. This code was named `no_interaction` before M12, when waiting was the only remedy.\n- `hidden_by_candidate` — the candidate left search (§5.3). An unlock is *not* offered: there is nobody here who wants to be found.\n- `not_verified_employer` — §7 comes first, and cannot be bought past. Route to verification."
           }
         },
         "required": [

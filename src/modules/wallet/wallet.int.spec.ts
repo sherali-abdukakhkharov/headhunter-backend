@@ -4,6 +4,7 @@ import { sql } from 'kysely';
 import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
+import { EmployersService } from '@modules/employers/employers.service';
 
 import { WalletService } from './wallet.service';
 
@@ -38,7 +39,7 @@ const config = {
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
-  wallet = new WalletService(db, config);
+  wallet = new WalletService(db, new EmployersService(db), config);
 });
 
 afterAll(async () => {
@@ -118,6 +119,41 @@ async function newUser(
       .values({ user_id: row.id, role })
       .execute();
     users.push(row.id);
+
+    // **The two preconditions `unlock` checks, inserted directly.**
+    //
+    // Since M12's retrofit, buying an unlock requires a *verified* employer (§7 - an employer
+    // who cannot see candidates must not be charged for access to one) and a candidate who
+    // actually has a profile. Both are written here rather than through `EmployersService` and
+    // `CandidatesService`, because this suite deliberately constructs one service: what it
+    // tests is the **ledger** - triggers, indexes, row locks - and wiring the schema stack in
+    // would obscure that. The gate itself is covered through the real services in
+    // `applications/unlock-gating.int.spec.ts`, including its refusing side.
+    if (role === 'employer') {
+      await db
+        .insertInto('employers')
+        .values({
+          user_id: row.id,
+          type: 'company',
+          verification_status: 'verified',
+          // `employers_verified_at_present` refuses a verified employer with no timestamp,
+          // which is the schema declining to represent a half-finished decision.
+          verified_at: sql`now()`,
+          // BR-03's stored completeness. `assertVerified` requires it as well, because §7's
+          // gate is "may this employer see candidates at all", and the unlock now asks the
+          // same question before charging - so the fixture has to satisfy the same gate a
+          // real employer would.
+          is_complete: true,
+        })
+        .execute();
+    }
+
+    if (role === 'candidate') {
+      await db
+        .insertInto('candidate_profiles')
+        .values({ user_id: row.id })
+        .execute();
+    }
 
     return row.id;
   }

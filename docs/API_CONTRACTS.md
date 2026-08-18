@@ -694,10 +694,21 @@ without locking the profile out of search.
   ownership check (§11.1, ARCHITECTURE.md §9).
 - Deletes are soft. BR-14's retention period is still open.
 
-**Employer access to a candidate's CV (BR-09) is not built yet.** A CV is currently
-readable only by its owner — stricter than BR-09 requires, so nothing is exposed. It
-arrives with M4's verified employer and M7's candidate serializer, where "an allowed
-hiring interaction" can actually be evaluated.
+**Employer access to a candidate's CV (BR-09) is served through the entitlement, never
+through `/files/{id}/content`**, which stays owner-only. There are three entitlement-scoped
+routes, one per way of being entitled, and a file's `downloadPath` always names the right one:
+
+```
+GET /applications/{id}/files/{fileId}/content      the candidate applied (§8.1)
+GET /invitations/{id}/files/{fileId}/content       they accepted an invitation (§8.2)
+GET /unlocks/{candidateUserId}/files/{fileId}/content   this employer paid (§6.6)
+```
+
+**Use the `downloadPath` you were given rather than building one.** The unlock route is keyed
+on the candidate because an unlock has no id of its own — the pair is its primary key (BR-16).
+All three re-evaluate the entitlement on every request, so a path held from a moment when it
+existed stops working, and all three answer a single `404 file.not_found` for "no entitlement",
+"no such file" and "not this candidate's" alike.
 
 ## 4b. The employer profile and verification
 
@@ -961,12 +972,35 @@ up to an accepted offer, which `hired` being terminal expresses.
   `/applications/{id}/files/{fileId}/content`. Not `/files/{id}/content`, which stays
   owner-only: the entitlement comes from the application, so the route that serves it is
   the one that can see it.
-- **`exposureReason`** — a stable code (`application`, `no_interaction`,
-  `hidden_by_candidate`, `not_verified_employer`, `accepted_invitation`, `admin`)
-  saying which rule decided. Every call is logged (§11.1).
+- **`exposureReason`** — a stable code saying which rule decided. Every call is logged
+  (§11.1). **Four grant and three deny**, and the client should branch on them, because each
+  denial has a different remedy:
+
+  | Code | Meaning | What the client offers |
+  |---|---|---|
+  | `application` | The candidate applied (§8.1) | — |
+  | `accepted_invitation` | They accepted an invitation (§8.2) | — |
+  | `candidate_unlock` | This employer bought access (§6.6, BR-17) | — |
+  | `admin` | Moderation access, logged not blocked (§10.4) | — |
+  | `unlock_required` | Nothing entitles this employer yet | **Offer the unlock** |
+  | `hidden_by_candidate` | The candidate left search (§5.3) | Nothing — no unlock offer |
+  | `not_verified_employer` | §7 comes first | Route to verification |
+
+  **`unlock_required` was `no_interaction` before M12.** The rename is deliberate: the old
+  name described a world where the only remedy was waiting for the candidate to act, and the
+  remedy is now a purchase. It is a **coordinated breaking change** — the Flutter client maps
+  all seven codes exhaustively, so an unmapped one degrades to a generic line rather than
+  breaking.
 
 **A withdrawal revokes the exposure**, including in-flight download paths: BR-09 is
-re-evaluated per download rather than trusted from the listing.
+re-evaluated per download rather than trusted from the listing. After M12 the employer is not
+permanently refused, though — `unlock_required` says the access is purchasable, which is the
+only thing that changed about that rule.
+
+**An unlock is the third entitlement, and the weakest claim.** An employer holding both an
+application and an unlock reports `application`, because the candidate's own action is the
+stronger reason and an employer should not be shown a purchase as the explanation. "Do I hold
+an entitlement I paid for" is a different question: `GET /wallet/unlocks/{candidateUserId}`.
 
 **Internal notes are employer-only** (§6.5). No candidate-facing response contains them,
 and they live in their own table so exposing one would take a deliberate new query.
@@ -1158,8 +1192,10 @@ reason.
 ### Accepting opens BR-09's second interaction
 
 Until the candidate accepts, an employer who invited them sees exactly what a stranger
-sees: `phone: null`, `canViewFiles: false`, `exposureReason: 'no_interaction'`. Inviting
-somebody is not an interaction they agreed to. On acceptance the reason becomes
+sees: `phone: null`, `canViewFiles: false`, `exposureReason: 'unlock_required'` — the same
+answer, and since M12 it also says what would fix it. Inviting somebody is not an interaction
+they agreed to, but an employer impatient for a phone number can buy one. On acceptance the
+reason becomes
 `accepted_invitation` and the files arrive with `downloadPath` pointing at
 `/invitations/{id}/files/{fileId}/content` — the invitation's counterpart to the
 application-scoped download, for the same reason: the entitlement comes from the
@@ -1571,10 +1607,43 @@ the response to route on — not a generic failure toast. No ledger row is writt
 
 `409 wallet.cannot_unlock_self` exists because a multi-role account holds both roles (§2.3).
 
+**Three refusals happen before any Coins move**, and each has a different remedy:
+
+| Status | Code | Remedy |
+|---|---|---|
+| 402 | `wallet.insufficient_coins` | Top up (§6.7) |
+| 403 | `employer.not_verified`, `employer.profile_incomplete` | Finish verification (§7) |
+| 404 | `candidate.profile_not_found` | Nothing — the candidate does not exist |
+| 409 | `wallet.cannot_unlock_self` | Nothing — a multi-role account bought itself |
+
+The 403 matters more than it looks: §7 lets only a verified employer see candidates at all, so
+charging an unverified one would be selling access that BR-09 then refuses. **Route it to
+verification, not to top-up.**
+
 ### Reading a locked candidate
 
 `GET /wallet/unlocks/{candidateUserId}` exists so the client can render the unlocked state
 without guessing or provoking a 402. Ask it before showing a contact block.
+
+It returns the unlock's cost **and the employer's current balance**, which is the whole
+confirmation sheet §6.6 and UAT-17 describe — cost, balance, and what would remain — from one
+request. That is the reason the route exists rather than the client asking about the unlock and
+the wallet separately.
+
+### What an unlock actually opens
+
+Once bought, the candidate view reports `exposureReason: 'candidate_unlock'` and serves the
+phone number and the file list, with each `downloadPath` pointing at
+`/unlocks/{candidateUserId}/files/{fileId}/content` (§4a has all three download routes).
+
+Three properties are worth relying on:
+
+- **It cannot be revoked.** BR-16 makes the pair permanent and BR-24 makes the debit behind it
+  unrewritable, so unlike an application there is no withdrawal that takes it back.
+- **It survives the candidate hiding their profile.** §5.3's `hidden` removes a profile from
+  *search*; it does not refund a purchase. The candidate stays readable to that employer.
+- **It is the weakest of the three claims.** An employer who also holds an application sees
+  `application` as the reason, and is served through the application's download path.
 
 ---
 

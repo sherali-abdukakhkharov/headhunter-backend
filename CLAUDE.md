@@ -46,7 +46,12 @@ re-derivable from the text.
   Status update without history is a bug.
 - **Blocked accounts are refused every mutation** (BR-10) — enforced by a guard on
   all mutating routes, not per module.
-- **Contact details go through the one BR-09 helper.** Never inline the rule.
+- **Contact details go through the one BR-09 helper.** Never inline the rule. Since M12 it has
+  **three** granting inputs — an application, an accepted invitation, and a bought Candidate
+  Unlock — and two properties that are load-bearing rather than incidental: `hasUnlock` must be
+  part of the *denying* condition too (or an employer who paid loses access when the candidate
+  hides their profile, silently), and `not_verified_employer` must keep short-circuiting first,
+  because §7 is a precondition nobody may **buy** past. ARCHITECTURE.md §8 has both arguments.
 - **User-facing text is never written at a throw site.** Add a key to
   `src/infra/i18n/messages.ts` with all four labels and throw a
   `LocalizedException` subclass carrying it; only `ApiExceptionFilter` knows the

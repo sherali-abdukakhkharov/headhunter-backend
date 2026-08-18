@@ -13,6 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -69,8 +71,11 @@ export class WalletController {
       '**The client must read the prices from here rather than hard-coding them** - §6.6 ' +
       'makes them server-side configuration, and §10.5 allows changing them.\n\n' +
       'A wallet is created on first read, so an employer who registered before the ' +
-      'wallet existed sees a zero balance rather than an error. That read never grants ' +
-      'the registration bonus: the bonus belongs to the role being granted (BR-15).',
+      'wallet existed sees a balance rather than an error — **and that read grants BR-15’s ' +
+      'one-time bonus if it is still owed**, which is how an employer who registered before ' +
+      'the wallet shipped receives it. It cannot grant a second: the bonus is a unique ' +
+      'index, so logging out, reinstalling, changing device or switching roles all reach the ' +
+      'same single row.',
   })
   @ApiOkResponse({ type: WalletDto })
   async read(@ActiveUser() user: CurrentUser): Promise<WalletDto> {
@@ -114,8 +119,8 @@ export class WalletController {
     description:
       'What the client needs to render either “Unlock contact — 2 Coins” or the ' +
       'unlocked state, without guessing and without attempting a purchase to find out. ' +
-      'Returns the current pricing alongside, so the confirmation sheet §6.6 describes ' +
-      'can be built from one request.',
+      'Returns the cost **and the current balance**, so the confirmation sheet §6.6 ' +
+      'describes — cost, balance, and what would be left — can be built from one request.',
   })
   @ApiOkResponse({ type: UnlockStateDto })
   async unlockState(
@@ -123,11 +128,16 @@ export class WalletController {
     @Param('candidateUserId', ParseUUIDPipe) candidateUserId: string,
   ): Promise<UnlockStateDto> {
     const unlock = await this.wallet.unlockFor(user.id, candidateUserId);
+    // The wallet read rather than a bare balance query: it is the one path that creates the
+    // row and settles BR-15 for an employer who has never opened the Wallet screen, and
+    // reaching this route before that one is entirely possible.
+    const wallet = await this.wallet.read(user.id);
 
     return {
       unlocked: unlock !== null,
       unlock: unlock ? this.unlockDto(unlock) : null,
-      pricing: this.wallet.pricing(),
+      pricing: wallet.pricing,
+      balanceCoins: wallet.balanceCoins,
     };
   }
 
@@ -143,7 +153,11 @@ export class WalletController {
       'tap, a retry, or a revisit next month all return the original entitlement with ' +
       '`charged: false`. No `Idempotency-Key` is needed, because the pair *is* the key.\n\n' +
       'Answers **402** when the balance is too low, which is the status the client ' +
-      'routes to top-up on (§6.6).',
+      'routes to top-up on (§6.6).\n\n' +
+      '**A verified employer only** (§7). An unverified one is refused *before* any Coins ' +
+      'move, with `employer.not_verified` or `employer.profile_incomplete` — the same codes ' +
+      'every other §7-gated route returns, so route them to verification rather than to ' +
+      'top-up. Buying access that `expose()` would then refuse is taking money for nothing.',
   })
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({
@@ -154,6 +168,17 @@ export class WalletController {
     status: HttpStatus.PAYMENT_REQUIRED,
     description:
       'Fewer Coins than an unlock costs. The body carries `required` and `balance`.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      '`employer.not_verified` or `employer.profile_incomplete` — §7 requires verification ' +
+      'before an employer may see any candidate, so it is required before buying access to ' +
+      'one. Nothing was charged.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      '`candidate.profile_not_found` — no candidate profile with that id. Nothing was ' +
+      'charged.',
   })
   @ApiConflictResponse({
     description:
