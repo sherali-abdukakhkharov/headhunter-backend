@@ -152,10 +152,10 @@ describe('the OTP SMS fits one segment in every language', () => {
     );
 
     expect(headroom).toEqual({
-      'uz-Latn': '94/160',
-      'uz-Cyrl': '69/70',
-      ru: '66/70',
-      en: '74/160',
+      'uz-Latn': '66/160',
+      'uz-Cyrl': '64/70',
+      ru: '62/70',
+      en: '62/160',
     });
   });
 });
@@ -165,7 +165,7 @@ describe('what Eskiz moderation requires of a code message', () => {
     // Eskiz refuses a template that does not identify the resource the code is for. The brand
     // is the resource here, and it is spelled the same in all four variants on purpose - a
     // moderator has to recognise it, and so does the person reading the SMS.
-    expect(rendered(locale)).toContain('Universal HeadHunter');
+    expect(rendered(locale)).toContain('JobBridge');
   });
 
   it.each(CANONICAL_LOCALES)('states what the code is for in %s', (locale) => {

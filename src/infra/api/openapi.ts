@@ -17,8 +17,11 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   return SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
-      .setTitle('Headhunter API')
-      .setDescription('Job search and recruitment backend')
+      .setTitle('JobBridge API')
+      .setDescription(
+        'Job search and recruitment backend for JobBridge, a mobile-only ' +
+          'recruitment platform for Uzbekistan.',
+      )
       .setVersion('0.0.1')
       .addBearerAuth()
       .build(),

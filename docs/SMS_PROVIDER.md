@@ -60,21 +60,26 @@ own. The moderator applies the mask to the variable part.
 
 | Locale | Text | Billed |
 |---|---|---|
-| `uz-Latn` | `Universal HeadHunter ilovasiga kirish uchun tasdiqlash kodi: 123456. Kodni hech kimga bermang.` | 94/160, 1 SMS |
-| `uz-Cyrl` | `Universal HeadHunter иловасига кириш коди: 123456. Ҳеч кимга берманг.` | 69/70, 1 SMS |
-| `ru` | `Universal HeadHunter: код входа в приложение 123456. Не сообщайте.` | 66/70, 1 SMS |
-| `en` | `Universal HeadHunter app login confirmation code: 123456. Do not share it.` | 74/160, 1 SMS |
+| `uz-Latn` | `JobBridge ilovasiga kirish kodi: 123456. Kodni hech kimga bermang.` | 66/160, 1 SMS |
+| `uz-Cyrl` | `JobBridge иловасига кириш коди: 123456. Кодни ҳеч кимга берманг.` | 64/70, 1 SMS |
+| `ru` | `JobBridge: код входа в приложение 123456. Никому не сообщайте.` | 62/70, 1 SMS |
+| `en` | `JobBridge app login code: 123456. Do not share it with anyone.` | 62/160, 1 SMS |
 
 Two moderation rules shaped the wording, both from Eskiz's own form:
 
 - **A message carrying a confirmation code must name the resource *and* the purpose.**
-  `Universal HeadHunter: kirish kodi` names the brand but not what kind of resource it is;
-  `Universal HeadHunter ilovasiga kirish uchun` names both, which is the shape Eskiz's
-  approved examples take. The earlier wording would probably have been rejected.
+  `JobBridge: kirish kodi` names the brand but not what kind of resource it is;
+  `JobBridge ilovasiga kirish kodi` names both — the app, and what the code is for.
 - **The text is submitted in its final form, not as a template.** A real example code, no
-  `{code}` and no `(NAME)`-style masks.
+  `{code}` and no `(NAME)`-style masks; the moderator applies the mask themselves.
 
-### Why the Uzbek text uses `o'` and not `oʻ`
+The product was renamed from *Universal HeadHunter* to **JobBridge** on 2026-08-19, before any
+template was submitted. That shortened the brand by eleven characters, which is more than
+cosmetic here: Cyrillic is capped at 70, so at the old length the `uz-Cyrl` text had to be
+terser than the `uz-Latn` one just to fit one segment, and the same person saw different wording
+depending on which script they had selected. Both are now transliterations of each other.
+
+### Write `o'`, never `oʻ`
 
 Billing is per segment, and the segment size depends on the characters:
 **160 if every character is in Eskiz's Latin set, and 70 the moment one is not**
@@ -87,6 +92,11 @@ The correct Uzbek letters `oʻ` and `gʻ` use U+02BB, which is **not** in that s
 anywhere in the message halves the limit and doubles the cost of every login on the platform,
 with nothing failing and no log line to show for it. Client direction 2026-08-19: the ASCII
 apostrophe is acceptable for these letters, so the Latin text stays on the 160 tariff.
+
+The four texts above happen to need no apostrophe at all, so this is a rule for the *next* edit
+rather than something the current wording depends on. It applies only to the SMS body — the app's
+own messages in `messages.ts` keep the correct `oʻ`/`gʻ`, because nobody bills us per character
+for text rendered on a screen.
 
 The same trap catches `’` (U+2019, which editors substitute for `'` automatically), `—`, `…`,
 `№`, `` ` ``, `~`, `|` and any emoji.

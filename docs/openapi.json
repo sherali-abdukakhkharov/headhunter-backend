@@ -6259,8 +6259,8 @@
     }
   },
   "info": {
-    "title": "Headhunter API",
-    "description": "Job search and recruitment backend",
+    "title": "JobBridge API",
+    "description": "Job search and recruitment backend for JobBridge, a mobile-only recruitment platform for Uzbekistan.",
     "version": "0.0.1",
     "contact": {}
   },

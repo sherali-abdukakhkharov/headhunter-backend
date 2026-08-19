@@ -1,6 +1,6 @@
 # headhunter-backend — working notes
 
-NestJS API for **Universal HeadHunter**, a mobile-only recruitment platform for
+NestJS API for **JobBridge**, a mobile-only recruitment platform for
 Uzbekistan. The Flutter client lives at `d:\Dev\tgbots\headhunter-app`; a Claude
 Code session rooted there can edit this repo too (see that repo's
 `.claude/settings.json`).

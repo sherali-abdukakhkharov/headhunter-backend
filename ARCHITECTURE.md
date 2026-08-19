@@ -1,6 +1,6 @@
 # headhunter-backend - Architecture
 
-Design decisions for the Universal HeadHunter API, derived from
+Design decisions for the JobBridge API, derived from
 [docs/SPEC.md](docs/SPEC.md). Read this before adding a module; it explains the
 few decisions that everything else depends on.
 

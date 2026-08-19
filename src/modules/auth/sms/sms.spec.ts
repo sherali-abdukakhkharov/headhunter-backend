@@ -20,7 +20,7 @@ import type { SmsMessage } from './sms-sender';
 
 const message: SmsMessage = {
   phone: '+998901234567',
-  text: 'Universal HeadHunter: kirish kodi 123456.',
+  text: 'JobBridge ilovasiga kirish kodi: 123456. Kodni hech kimga bermang.',
   locale: 'uz-Latn',
 };
 

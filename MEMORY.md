@@ -12,10 +12,19 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Project facts
 
-- **Product**: Universal HeadHunter - a mobile-only recruitment platform for
+- **Product**: **JobBridge** - a mobile-only recruitment platform for
   Uzbekistan covering professional, service, physical, seasonal/agricultural and
   temporary/shift work. Client specification: [docs/SPEC.md](docs/SPEC.md)
   (converted from the client's approval-version .docx, Tashkent 2026).
+- **Renamed from "Universal HeadHunter" on 2026-08-19** (client direction), before any SMS
+  template reached Eskiz moderation. **Only the user-facing name changed**: the four SMS
+  bodies and the OpenAPI title. Everything that is an *identifier* deliberately still says
+  `headhunter` - the GitHub repository and both working directories, the `headhunter`
+  database, the `headhunter-api` image and container, the compose files, the backup and
+  tunnel scripts, and `package.json`'s name. Renaming those means a new database and a
+  coordinated redeploy for a change no user can see, so it is a separate decision nobody has
+  asked for. **`docs/SPEC.md` keeps its old title too**, because it is a faithful conversion
+  of the client's own document and retitling it would misrepresent the source.
 - **Client repo pair**: this API plus `d:\Dev\tgbots\headhunter-app` (Flutter,
   Android + iOS). Both are separate GitHub repos under
   `sherali-abdukakhkharov`.
