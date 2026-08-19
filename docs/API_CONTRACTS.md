@@ -1170,9 +1170,70 @@ structured version of it is what publishing a vacancy is for.
 - **One open invitation** per employer, candidate and vacancy — a partial unique index,
   BR-07's shape. Answering frees the slot, so an employer may invite again after a decline.
   `invitation.already_invited`.
+- **A daily quota that is not exhausted** — see below. `invitation.daily_limit_reached`.
 
 Send an **`Idempotency-Key`**: a retry with the same key and body returns the original
 invitation rather than that conflict, which is what makes a lost response safe (§12.4).
+
+### Sending is free, and a daily cap is what bounds it
+
+**No Coins are charged for an invitation.** §7.3 lists "Send invitation" beside "View
+profile" and "Save", and §7.4's own worked example fills twenty openings by reviewing
+candidates and inviting them — which takes far more than twenty invitations, so a price per
+invitation would put a hiring campaign beyond the registration bonus many times over. **The
+candidate's acceptance is what opens contact** (BR-09), and that is the gate.
+
+What bounds the volume instead is a cap, because BR-03's verification is an admission gate
+rather than a rate limit: it stops strangers, not a verified employer behaving badly.
+
+```
+GET /invitations/quota   ->  { remaining, limit, resetsAt }
+```
+
+Ask it **before offering the action**, the way the unlock sheet shows cost and balance before
+charging — a refusal after the tap is the same information delivered worse. Four properties
+are worth relying on:
+
+- **`limit` is the effective total**, not a free allowance plus a purchased one. When extra
+  invitations become purchasable this number simply grows: render "12 of 30 left today" and
+  hold no opinion about where the 30 came from. No client release the day that ships.
+- **Never hard-code it.** It is server configuration (`EMPLOYER_DAILY_INVITATION_LIMIT`),
+  §10.5 lets an administrator move it, and a client-side copy would disagree the moment they
+  did — the same argument that made the Coin price server-side (§6.6).
+- **`resetsAt` is the next midnight in the platform time zone**, not a rolling 24 hours. A
+  calendar day is explicable; "another in 7 hours 22 minutes, then two more at 09:41" is not.
+- **Still handle the 409.** The count can move between this call and the tap, exactly as the
+  wallet's 402 can.
+
+A refused send answers **409 `invitation.daily_limit_reached`** — a business rule with a known
+reset, not "you are going too fast", which is what a 429 would say and what proxies would
+retry. It carries the figures in `details` so the screen can refresh its counter without a
+second request:
+
+```json
+{
+  "statusCode": 409,
+  "code": "invitation.daily_limit_reached",
+  "message": "Bugun uchun 30 taklifning barchasi ishlatilgan. …",
+  "details": { "limit": 30, "resetsAt": "2026-08-20T00:00:00+05:00" }
+}
+```
+
+**`details` is nested rather than spread at the top level**, so it cannot collide with
+`statusCode`, `code` or `message`, and it appears **only** on errors whose throw site opted in
+— every other error body in the product is unchanged. Render `message` directly; it is already
+localized by `x-lang`, and rebuilding the sentence in Dart is how two spellings of one rule
+drift apart.
+
+Three counting rules, all of which follow from the quota being a **count of rows** rather than
+a stored counter:
+
+- **A sent invitation is never refunded.** Declining, expiring, or the vacancy closing do not
+  return the slot: the cost was the notification the candidate already received.
+- **Re-inviting after a decline counts.** It is a second notification to the same person.
+- **An idempotent replay does not consume a slot.** A retry with the same `Idempotency-Key`
+  returns the original invitation and writes no row, so there is nothing to count. A dropped
+  response cannot quietly eat an employer's quota.
 
 ### Statuses
 

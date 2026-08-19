@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { sql } from 'kysely';
+import { type Transaction, sql } from 'kysely';
 
 import {
   BadRequestError,
@@ -8,16 +8,29 @@ import {
   NotFoundError,
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
-import type { InvitationStatus, UserRole } from '@infra/db/database.types';
+import type { DB, InvitationStatus, UserRole } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
-import { formatDateOnly } from '@infra/time/format';
+import {
+  dayBoundsInZone,
+  formatDateOnly,
+  formatWithOffset,
+} from '@infra/time/format';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { EmployersService } from '@modules/employers/employers.service';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { isOpenForApplications } from '@modules/vacancies/vacancy-status';
 
 import { canRespond, isTerminal } from './invitation-status';
+
+/** §8.2's daily send allowance, as the send screen needs it before offering the action. */
+export interface InvitationQuota {
+  remaining: number;
+  /** The **effective** limit - free and, in future, purchased combined. */
+  limit: number;
+  /** When `remaining` returns to `limit`: the next midnight in the platform zone. */
+  resetsAt: Date;
+}
 
 export interface InvitationInput {
   candidateUserId: string;
@@ -100,6 +113,7 @@ interface InvitationRow {
 @Injectable()
 export class InvitationsService {
   private readonly timeZone: string;
+  private readonly dailyLimit: number;
 
   constructor(
     @Inject(KYSELY) private readonly db: Database,
@@ -110,6 +124,9 @@ export class InvitationsService {
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
+    this.dailyLimit = config.get('EMPLOYER_DAILY_INVITATION_LIMIT', {
+      infer: true,
+    });
   }
 
   /**
@@ -153,6 +170,62 @@ export class InvitationsService {
   }
 
   /**
+   * How many invitations this employer may still send today (§8.2).
+   *
+   * The send screen asks **before** offering the action, the way the unlock sheet shows the
+   * cost and the balance before charging - a refusal after the tap is a worse version of the
+   * same information.
+   *
+   * `limit` is the **effective** total, not a free allowance plus a purchased one. When extra
+   * invitations become purchasable, this number grows and no client changes: the client
+   * renders "12 of 30 left today" and has no opinion about where the 30 came from. Reporting
+   * two tiers would make every client model a distinction only this service needs.
+   */
+  async quota(employerUserId: string): Promise<InvitationQuota> {
+    const { start, end } = dayBoundsInZone(new Date(), this.timeZone);
+    const used = await this.sentSince(this.db, employerUserId, start);
+
+    return {
+      remaining: Math.max(0, this.dailyLimit - used),
+      limit: this.dailyLimit,
+      resetsAt: end,
+    };
+  }
+
+  /**
+   * How many invitations this employer has sent since `since`.
+   *
+   * **A count of rows, not a stored counter**, and that decides three of §8.2's rules at once
+   * rather than needing a policy for each:
+   *
+   * - *A sent invitation is never refunded.* There is no status filter here, so declining,
+   *   expiring, or the vacancy closing cannot return the slot. The cost to the platform was
+   *   the notification the candidate already received, and a decline does not un-send it.
+   * - *Re-inviting after a decline counts.* It is a second row because it is a second
+   *   notification to the same person.
+   * - *An idempotent replay does not consume a slot.* `IdempotencyService.run` returns the
+   *   recorded id **without calling `insert`**, so no row is written and there is nothing to
+   *   count. That is the property the mobile team asked for, and it holds by construction
+   *   rather than by remembering where to put a decrement - a stored counter would need the
+   *   decrement placed correctly, and getting it wrong is invisible until an employer says the
+   *   app ate their quota.
+   */
+  private async sentSince(
+    db: Database | Transaction<DB>,
+    employerUserId: string,
+    since: Date,
+  ): Promise<number> {
+    const row = await db
+      .selectFrom('invitations')
+      .select((eb) => eb.fn.countAll<string>().as('count'))
+      .where('employer_user_id', '=', employerUserId)
+      .where('created_at', '>=', since)
+      .executeTakeFirst();
+
+    return Number(row?.count ?? 0);
+  }
+
+  /**
    * The insert and its BR-08 history row, in one transaction.
    *
    * The friendly "already invited" check is inside it, but the partial unique index is
@@ -165,6 +238,29 @@ export class InvitationsService {
     input: InvitationInput,
   ): Promise<string> {
     const outcome = await this.db.transaction().execute(async (trx) => {
+      // §8.2's daily cap, **inside the transaction and behind a row lock**. A count-then-insert
+      // that is not serialized lets two sends at the boundary both read 29 and both write, so
+      // the employer gets 31. There is no unique index that can express "at most 30 per day",
+      // so this is one of the few rules the repository enforces with a lock rather than a
+      // constraint - and the row locked is the employer's own, which serializes only their own
+      // concurrent sends.
+      await trx
+        .selectFrom('employers')
+        .select('user_id')
+        .where('user_id', '=', employerUserId)
+        .forUpdate()
+        .executeTakeFirst();
+
+      const { start, end } = dayBoundsInZone(new Date(), this.timeZone);
+      const used = await this.sentSince(trx, employerUserId, start);
+
+      if (used >= this.dailyLimit) {
+        return {
+          error: 'invitation.daily_limit_reached',
+          resetsAt: end,
+        } as const;
+      }
+
       const open = await trx
         .selectFrom('invitations')
         .select('id')
@@ -216,7 +312,23 @@ export class InvitationsService {
       return { id: created.id } as const;
     });
 
+    // Thrown after the transaction, never inside it: a throw from within rolls back the write
+    // and leaves only the exception, which is the M1 trap MEMORY.md records twice.
     if ('error' in outcome) {
+      if (outcome.error === 'invitation.daily_limit_reached') {
+        throw new ConflictError(
+          'invitation.daily_limit_reached',
+          // Interpolated into the sentence the client renders...
+          { limit: this.dailyLimit },
+          // ...and repeated as machine-readable facts, so the screen can refresh its counter
+          // without a second request or a regular expression over localized prose.
+          {
+            limit: this.dailyLimit,
+            resetsAt: formatWithOffset(outcome.resetsAt, this.timeZone),
+          },
+        );
+      }
+
       throw new ConflictError('invitation.already_invited');
     }
 

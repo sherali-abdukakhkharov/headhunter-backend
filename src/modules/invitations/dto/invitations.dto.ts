@@ -174,6 +174,41 @@ export class InvitationListDto {
   items!: InvitationDto[];
 }
 
+/**
+ * §8.2's daily send allowance.
+ *
+ * Deliberately three numbers and no tiers. The client renders "12 of 30 left today" and never
+ * needs to know whether the 30 is a free allowance, a purchased one, or a sum of both - so when
+ * extra invitations become purchasable, `limit` grows and no client changes.
+ */
+export class InvitationQuotaDto {
+  @ApiProperty({
+    example: 12,
+    description:
+      'Invitations this employer may still send today. Zero means the next send is refused ' +
+      'with `409 invitation.daily_limit_reached`.',
+  })
+  remaining!: number;
+
+  @ApiProperty({
+    example: 30,
+    description:
+      'The **effective** daily limit — free and, in future, purchased combined. Server ' +
+      'configuration (`EMPLOYER_DAILY_INVITATION_LIMIT`), so never hard-code it: §10.5 lets an ' +
+      'administrator move it, and a client-side copy would disagree the moment they did.',
+  })
+  limit!: number;
+
+  @ApiProperty({
+    example: '2026-08-20T00:00:00+05:00',
+    description:
+      'When `remaining` returns to `limit`: **the next midnight in the platform time zone**, ' +
+      'not a rolling twenty-four hours. A calendar day is explicable — "12 left today, resets ' +
+      'at midnight" — where a rolling window would have the client render a moving target.',
+  })
+  resetsAt!: string;
+}
+
 export class InvitationHistoryEntryDto {
   @ApiPropertyOptional({ enum: INVITATION_STATUSES, nullable: true })
   fromStatus!: InvitationStatus | null;

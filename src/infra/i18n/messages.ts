@@ -547,6 +547,17 @@ export const MESSAGES = {
     ru: 'Этот кандидат уже приглашён, ответ ещё не получен.',
     en: 'This candidate already has an invitation awaiting a reply.',
   },
+  // §8.2's daily cap. The client renders this sentence directly rather than rebuilding it in
+  // Dart - that is how two spellings of the same rule drift apart - and reads `details` for
+  // the figures it needs to refresh its counter.
+  'invitation.daily_limit_reached': {
+    'uz-Latn':
+      'Bugun uchun {limit} taklifning barchasi ishlatilgan. Yarim kechadan keyin yana yuborishingiz mumkin.',
+    'uz-Cyrl':
+      'Бугун учун {limit} таклифнинг барчаси ишлатилган. Ярим кечадан кейин яна юборишингиз мумкин.',
+    ru: 'Все {limit} приглашений на сегодня использованы. Отправить ещё можно после полуночи.',
+    en: 'You have used all {limit} invitations for today. You can send more after midnight.',
+  },
   'invitation.final': {
     'uz-Latn': 'Taklifga allaqachon javob berilgan.',
     'uz-Cyrl': 'Таклифга аллақачон жавоб берилган.',

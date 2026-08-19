@@ -41,6 +41,7 @@ import {
   InvitationDto,
   InvitationHistoryDto,
   InvitationListDto,
+  InvitationQuotaDto,
   RespondToInvitationDto,
 } from './dto/invitations.dto';
 import { type Invitation, InvitationsService } from './invitations.service';
@@ -130,6 +131,36 @@ export class InvitationsController {
     });
 
     return { items: items.map((item) => this.toDto(item)) };
+  }
+
+  // Declared ahead of `@Get(':id')`: Nest matches in declaration order, so after it this
+  // would be an `:id` of "quota" and fail its UUID pipe instead of answering.
+  @Get('quota')
+  @RequireRole('employer')
+  @ApiOperation({
+    summary: 'Invitations left today (§8.2)',
+    description:
+      '**Sending an invitation is free** — §7.3 lists it beside "View profile" and "Save", ' +
+      'and the candidate’s *acceptance* is what opens contact (BR-09). What bounds it instead ' +
+      'is a daily cap, and this is where the client reads it.\n\n' +
+      'Ask before offering the action, the way the unlock sheet shows cost and balance before ' +
+      'charging: a refusal after the tap is the same information delivered worse. The `409` on ' +
+      '`POST /invitations` still has to be handled, because the count can move between this ' +
+      'call and the tap.\n\n' +
+      '`limit` is the **effective** total, not a free allowance plus a purchased one. When ' +
+      'extra invitations become purchasable this number simply grows — render "12 of 30 left ' +
+      'today" and hold no opinion about where the 30 came from, and no client release is ' +
+      'needed the day that ships.',
+  })
+  @ApiOkResponse({ type: InvitationQuotaDto })
+  async quota(@ActiveUser() user: CurrentUser): Promise<InvitationQuotaDto> {
+    const quota = await this.invitations.quota(user.id);
+
+    return {
+      remaining: quota.remaining,
+      limit: quota.limit,
+      resetsAt: formatWithOffset(quota.resetsAt, this.timeZone),
+    };
   }
 
   @Get('counts/:vacancyId')

@@ -14,6 +14,10 @@ import type { MessageKey, MessageParams } from '@infra/i18n/messages';
  *
  * The key doubles as the response's machine-readable `code`, so a client can
  * branch on the cause without matching translated prose.
+ *
+ * **`params` interpolate the message and are not in the response body.** If a client needs a
+ * number rather than a sentence containing it, pass `details` as well - see below. Reading a
+ * figure back out of localized prose is the thing `details` exists to prevent.
  */
 export class LocalizedException extends HttpException {
   constructor(
@@ -22,6 +26,21 @@ export class LocalizedException extends HttpException {
     readonly params?: MessageParams,
     /** Seconds the caller must wait; rendered as `Retry-After` (§12.5). */
     readonly retryAfterSeconds?: number,
+    /**
+     * Machine-readable facts about *this* refusal, rendered as a `details` object beside
+     * `code` and `message`.
+     *
+     * Opt-in per throw site rather than a blanket spread of `params`, for two reasons: a
+     * parameter is written to read well in a sentence and is not always a fact worth exposing,
+     * and spreading arbitrary keys at the top level of an error body would eventually collide
+     * with `statusCode`, `code` or `message`.
+     *
+     * Use it when a client would otherwise have to parse the message or make a second request
+     * - a quota's reset time, a balance a screen needs to refresh. Not for anything the caller
+     * is not already entitled to see: this is an error body, so it is the least reviewed
+     * response shape in the product.
+     */
+    readonly details?: Readonly<Record<string, string | number | boolean>>,
   ) {
     // The key is the fallback body for anything that bypasses the filter - a
     // log line, or a test asserting on the raw exception.
@@ -65,8 +84,12 @@ export class NotFoundError extends LocalizedException {
  * true of a 403.
  */
 export class ConflictError extends LocalizedException {
-  constructor(key: MessageKey, params?: MessageParams) {
-    super(HttpStatus.CONFLICT, key, params);
+  constructor(
+    key: MessageKey,
+    params?: MessageParams,
+    details?: Readonly<Record<string, string | number | boolean>>,
+  ) {
+    super(HttpStatus.CONFLICT, key, params, undefined, details);
   }
 }
 
@@ -98,12 +121,21 @@ export class TooManyRequestsError extends LocalizedException {
  *
  * A status of its own rather than a 409, because the client's response to it is specific:
  * §6.6 says the user "is routed to wallet top-up", and routing on a status code is more
- * robust than matching a message key. The params carry what is needed and what is held,
- * so the screen can say "2 needed, 1 left" without a second request.
+ * robust than matching a message key.
+ *
+ * The caller passes what is needed and what is held **twice**, and deliberately: as `params`
+ * so the message reads "2 needed, 1 left" in the user's language, and as `details` so the
+ * screen can refresh its own counter without parsing that sentence or making a second
+ * request. This docstring used to claim `params` alone achieved the second, which was wrong
+ * and had been read as a promise - `params` never reach the body.
  */
 export class PaymentRequiredError extends LocalizedException {
-  constructor(key: MessageKey, params?: MessageParams) {
-    super(HttpStatus.PAYMENT_REQUIRED, key, params);
+  constructor(
+    key: MessageKey,
+    params?: MessageParams,
+    details?: Readonly<Record<string, string | number | boolean>>,
+  ) {
+    super(HttpStatus.PAYMENT_REQUIRED, key, params, undefined, details);
   }
 }
 

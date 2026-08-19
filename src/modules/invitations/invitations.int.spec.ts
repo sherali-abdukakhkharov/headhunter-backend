@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { ConfigService } from '@nestjs/config';
+import { sql } from 'kysely';
 
 import {
   BadRequestError,
@@ -13,6 +14,7 @@ import { createIntTestDb } from '@infra/db/testing/int-db';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
+import { formatWithOffset } from '@infra/time/format';
 import { CandidateViewService } from '@modules/applications/candidate-view.service';
 import { CandidatesService } from '@modules/candidates/candidates.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
@@ -45,6 +47,8 @@ let candidates: CandidatesService;
 let vacancies: VacanciesService;
 let invitations: InvitationsService;
 let candidateView: CandidateViewService;
+/** Module-scoped so the quota tests can build a second service with a smaller cap. */
+let dictionaries: DictionariesService;
 
 /**
  * The real notifications service over a no-op sender.
@@ -56,17 +60,19 @@ let notifications: NotificationsService;
 
 const users: string[] = [];
 
+const ENV: Record<string, string | number | boolean> = {
+  PLATFORM_TIME_ZONE: 'Asia/Tashkent',
+  MODERATION_ENABLED: false,
+  EMPLOYER_VERIFICATION_ENABLED: false,
+  FILE_MAX_SIZE_BYTES: 10_485_760,
+  SEARCH_COUNT_CAP: 200,
+  // §8.2's production default. The cap tests build their own service with a smaller one, so
+  // that reaching the limit costs three candidates rather than thirty-one.
+  EMPLOYER_DAILY_INVITATION_LIMIT: 30,
+};
+
 const config = {
-  get: (key: string) =>
-    key === 'PLATFORM_TIME_ZONE'
-      ? 'Asia/Tashkent'
-      : key === 'MODERATION_ENABLED' || key === 'EMPLOYER_VERIFICATION_ENABLED'
-        ? false
-        : key === 'FILE_MAX_SIZE_BYTES'
-          ? 10_485_760
-          : key === 'SEARCH_COUNT_CAP'
-            ? 200
-            : undefined,
+  get: (key: string) => ENV[key],
 } as unknown as ConfigService<AppEnv, true>;
 
 /** Files are stubbed: what these tests cover is who may read, not Telegram. */
@@ -93,7 +99,7 @@ beforeAll(() => {
     new PushDispatcher(db, new NoopPushSender()),
   );
 
-  const dictionaries = new DictionariesService(db);
+  dictionaries = new DictionariesService(db);
   const schemas = new SchemasService(db, dictionaries, config);
   const validator = new FieldValidatorService(dictionaries, config);
 
@@ -822,3 +828,230 @@ async function candidateFile(ownerUserId: string): Promise<string> {
 
   return row.id;
 }
+
+/**
+ * Â§8.2's daily invitation cap.
+ *
+ * Sending is free (Â§7.3 lists it beside "View profile" and "Save", and Â§7.4's own example
+ * fills twenty openings by inviting people), so a volume cap is what stands in for a price.
+ * BR-03's verification is an admission gate, not a rate limit.
+ *
+ * These use a service with a **limit of three** rather than the configured thirty, so
+ * reaching the cap costs four candidates instead of thirty-one. The number under test is the
+ * rule, not the default.
+ */
+describe('the daily invitation quota (Â§8.2)', () => {
+  /** The same service with a smaller cap. Everything else is the production wiring. */
+  function limitedTo(limit: number): InvitationsService {
+    return new InvitationsService(
+      db,
+      employers,
+      dictionaries,
+      new IdempotencyService(db),
+      notifications,
+      {
+        get: (key: string) =>
+          key === 'EMPLOYER_DAILY_INVITATION_LIMIT' ? limit : ENV[key],
+      } as unknown as ConfigService<AppEnv, true>,
+    );
+  }
+
+  it('starts full, and reports the next platform-zone midnight', async () => {
+    const employerUserId = await newEmployer();
+    const quota = await invitations.quota(employerUserId);
+
+    expect(quota).toMatchObject({ remaining: 30, limit: 30 });
+
+    // The boundary is Tashkent midnight, which is 19:00 UTC - and this assertion is the reason
+    // the test exists: every machine on this project sits at UTC+5, so a counter keyed on the
+    // UTC date is indistinguishable from a correct one in local development for nineteen hours
+    // out of twenty-four.
+    expect(quota.resetsAt.getUTCHours()).toBe(19);
+    expect(formatWithOffset(quota.resetsAt, 'Asia/Tashkent')).toMatch(
+      /T00:00:00\+05:00$/,
+    );
+    expect(quota.resetsAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('counts down as invitations are sent', async () => {
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    await invitations.invite(employerUserId, {
+      candidateUserId: await newCandidate(),
+      vacancyId,
+      message: 'First.',
+    });
+
+    expect((await invitations.quota(employerUserId)).remaining).toBe(29);
+  });
+
+  it('allows the last one and refuses the next, with the figures to render it', async () => {
+    const capped = limitedTo(3);
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    for (let sent = 0; sent < 3; sent += 1) {
+      await capped.invite(employerUserId, {
+        candidateUserId: await newCandidate(),
+        vacancyId,
+        message: `Invitation ${sent + 1}.`,
+      });
+    }
+
+    expect(await capped.quota(employerUserId)).toMatchObject({
+      remaining: 0,
+      limit: 3,
+    });
+
+    // 409 rather than 429: this is a business rule with a known reset time, not "you are going
+    // too fast". A 429 invites interceptors and proxies to retry it.
+    await expect(
+      capped.invite(employerUserId, {
+        candidateUserId: await newCandidate(),
+        vacancyId,
+        message: 'One too many.',
+      }),
+    ).rejects.toMatchObject({
+      messageKey: 'invitation.daily_limit_reached',
+      // The structured half: the screen refreshes its counter without a second request and
+      // without a regular expression over localized prose.
+      details: {
+        limit: 3,
+        resetsAt: expect.stringMatching(/T00:00:00\+05:00$/),
+      },
+    });
+  });
+
+  it('does not consume a slot when an idempotent send is replayed', async () => {
+    // **The failure a user experiences as "the app ate my quota".** The client persists an
+    // `Idempotency-Key` before the request and clears it only on an answer, precisely so a
+    // dropped response replays rather than duplicates. If the replay consumed a slot, a flaky
+    // connection would quietly bill an employer for invitations nobody received.
+    //
+    // It holds by construction rather than by placing a decrement carefully: the quota is a
+    // count of rows, and `IdempotencyService.run` returns the recorded id without calling the
+    // insert at all - so there is no second row to count.
+    const capped = limitedTo(3);
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+    const candidateUserId = await newCandidate();
+    const key = randomUUID();
+
+    const first = await capped.invite(
+      employerUserId,
+      { candidateUserId, vacancyId, message: 'Sent once.' },
+      key,
+    );
+
+    expect((await capped.quota(employerUserId)).remaining).toBe(2);
+
+    const replay = await capped.invite(
+      employerUserId,
+      { candidateUserId, vacancyId, message: 'Sent once.' },
+      key,
+    );
+
+    expect(replay.id).toBe(first.id);
+    expect((await capped.quota(employerUserId)).remaining).toBe(2);
+  });
+
+  it('does not return the slot when the candidate declines', async () => {
+    // Â§8.2: the cost to the platform is the notification the candidate already received, and a
+    // decline does not un-send it. The quota counts rows with no status filter, so this is a
+    // property of the query rather than a rule somebody has to remember not to break.
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+    const candidateUserId = await newCandidate();
+
+    const invitation = await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId,
+      message: 'Please consider us.',
+    });
+
+    expect((await invitations.quota(employerUserId)).remaining).toBe(29);
+
+    await invitations.respond(candidateUserId, invitation.id, 'declined', null);
+
+    expect((await invitations.quota(employerUserId)).remaining).toBe(29);
+  });
+
+  it('counts a re-invitation after a decline as a second send', async () => {
+    // The one case the mobile team flagged as arguable. It counts: a second row is a second
+    // notification to the same person, and the platform paid for both.
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+    const candidateUserId = await newCandidate();
+
+    const first = await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId,
+      message: 'First ask.',
+    });
+    await invitations.respond(candidateUserId, first.id, 'declined', null);
+    await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId,
+      message: 'Asking again.',
+    });
+
+    expect((await invitations.quota(employerUserId)).remaining).toBe(28);
+  });
+
+  it('ignores invitations sent before today', async () => {
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    // Dated by a raw insert, the way UAT-15 ages a vacancy deadline: the write path stamps
+    // `created_at` itself, and the alternative is a test that waits until tomorrow.
+    await db
+      .insertInto('invitations')
+      .values({
+        employer_user_id: employerUserId,
+        candidate_user_id: await newCandidate(),
+        vacancy_id: vacancyId,
+        status: 'sent',
+        created_at: sql`now() - interval '2 days'`,
+      })
+      .execute();
+
+    expect((await invitations.quota(employerUserId)).remaining).toBe(30);
+  });
+
+  it('refuses at the cap even when two sends race', async () => {
+    // There is no unique index that can say "at most three per day", so the rule is a count
+    // inside the transaction behind a lock on the employer's own row. Without the lock both
+    // transactions read two and both write, and the employer gets four.
+    const capped = limitedTo(3);
+    const employerUserId = await newEmployer();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    for (let sent = 0; sent < 2; sent += 1) {
+      await capped.invite(employerUserId, {
+        candidateUserId: await newCandidate(),
+        vacancyId,
+        message: `Warm-up ${sent + 1}.`,
+      });
+    }
+
+    const results = await Promise.allSettled([
+      capped.invite(employerUserId, {
+        candidateUserId: await newCandidate(),
+        vacancyId,
+        message: 'Racer one.',
+      }),
+      capped.invite(employerUserId, {
+        candidateUserId: await newCandidate(),
+        vacancyId,
+        message: 'Racer two.',
+      }),
+    ]);
+
+    // One of the two may lose, but the total must never exceed the cap.
+    expect(
+      results.filter((r) => r.status === 'fulfilled').length,
+    ).toBeLessThanOrEqual(1);
+    expect((await capped.quota(employerUserId)).remaining).toBe(0);
+  });
+});

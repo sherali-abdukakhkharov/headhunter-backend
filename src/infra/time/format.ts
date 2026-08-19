@@ -121,3 +121,68 @@ export function formatWithOffset(date: Date, timeZone: string): string {
     `${sign}${offsetHours}:${offsetMins}`
   );
 }
+
+/**
+ * The instants that bound the calendar day `date` falls in, at `timeZone`.
+ *
+ * `start` is that day's midnight and `end` is the next one - so a "today" window is
+ * `created_at >= start`, and `end` is when a daily counter resets.
+ *
+ * **A calendar day, not a rolling 24 hours**, and that is a product decision rather than an
+ * implementation convenience: "12 left today, resets at midnight" is a sentence an employer
+ * can plan around, and "another in 7 hours 22 minutes, then two more at 09:41" is not.
+ *
+ * Every machine on this project sits at UTC+5, which makes this the most dangerous kind of
+ * helper: `new Date().setUTCHours(0, 0, 0, 0)` agrees with it locally and is wrong for the
+ * five hours a day when Tashkent and UTC are on different dates. That is the same trap
+ * `formatDateOnly` exists for.
+ *
+ * The offset is read **at the boundary being computed**, not at `date`, so a day that
+ * contains a DST transition still starts and ends at its own wall-clock midnight. Uzbekistan
+ * has no DST today; the correction costs one extra `offsetMinutes` call and means this does
+ * not quietly become wrong if that changes or if the zone is ever configured to somewhere
+ * that does.
+ */
+export function dayBoundsInZone(
+  date: Date,
+  timeZone: string,
+): { start: Date; end: Date } {
+  return {
+    start: midnightInZone(formatDateOnly(date, timeZone), timeZone),
+    end: midnightInZone(
+      nextCalendarDate(formatDateOnly(date, timeZone)),
+      timeZone,
+    ),
+  };
+}
+
+/** The instant at which `'YYYY-MM-DD'` begins in `timeZone`. */
+function midnightInZone(day: string, timeZone: string): Date {
+  const [year, month, date] = day.split('-').map(Number);
+  const asIfUtc = Date.UTC(year, month - 1, date);
+
+  // First guess: treat the wall clock as UTC and subtract the offset there. Then re-read the
+  // offset *at the guess* and correct, which matters only across a DST boundary - where the
+  // offset at midnight is not the offset at noon.
+  const guess = asIfUtc - offsetMinutes(new Date(asIfUtc), timeZone) * 60_000;
+
+  return new Date(asIfUtc - offsetMinutes(new Date(guess), timeZone) * 60_000);
+}
+
+/**
+ * The day after `'YYYY-MM-DD'`, as `'YYYY-MM-DD'`.
+ *
+ * Arithmetic on the calendar date rather than on an instant, because "the next day" is a
+ * calendar question: adding 86 400 000 milliseconds to a local midnight lands on 23:00 or
+ * 01:00 on a DST boundary rather than on the next midnight.
+ */
+function nextCalendarDate(day: string): string {
+  const [year, month, date] = day.split('-').map(Number);
+  const next = new Date(Date.UTC(year, month - 1, date + 1));
+
+  return [
+    next.getUTCFullYear(),
+    String(next.getUTCMonth() + 1).padStart(2, '0'),
+    String(next.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}

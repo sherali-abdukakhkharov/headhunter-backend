@@ -1,4 +1,9 @@
-import { formatWithOffset, offsetMinutes } from './format';
+import {
+  dayBoundsInZone,
+  formatDateOnly,
+  formatWithOffset,
+  offsetMinutes,
+} from './format';
 
 describe('formatWithOffset', () => {
   it('renders the platform zone with an explicit offset', () => {
@@ -74,5 +79,70 @@ describe('offsetMinutes', () => {
     expect(offsetMinutes(instant, 'UTC')).toBe(0);
     expect(offsetMinutes(instant, 'Asia/Kolkata')).toBe(330);
     expect(offsetMinutes(instant, 'America/New_York')).toBe(-240);
+  });
+});
+
+describe('dayBoundsInZone', () => {
+  it('bounds the Tashkent calendar day, not the UTC one', () => {
+    // Midday in Tashkent, so both zones agree on the date and the naive answer looks right.
+    const bounds = dayBoundsInZone(
+      new Date('2026-08-19T07:00:00Z'),
+      'Asia/Tashkent',
+    );
+
+    expect(bounds.start.toISOString()).toBe('2026-08-18T19:00:00.000Z');
+    expect(bounds.end.toISOString()).toBe('2026-08-19T19:00:00.000Z');
+  });
+
+  it('is on the right day during the five hours UTC disagrees', () => {
+    // **The case every machine on this project hides.** 21:00 UTC on the 19th is already
+    // 02:00 on the 20th in Tashkent, so a counter keyed on the UTC date would still be
+    // counting the previous day - and a daily quota would reset five hours late.
+    const late = new Date('2026-08-19T21:00:00Z');
+
+    expect(formatDateOnly(late, 'Asia/Tashkent')).toBe('2026-08-20');
+    expect(dayBoundsInZone(late, 'Asia/Tashkent').start.toISOString()).toBe(
+      '2026-08-19T19:00:00.000Z',
+    );
+    // `setUTCHours(0, 0, 0, 0)` would have said this, five hours too early:
+    expect(dayBoundsInZone(late, 'Asia/Tashkent').start.toISOString()).not.toBe(
+      '2026-08-19T00:00:00.000Z',
+    );
+  });
+
+  it('spans exactly 24 hours in a zone without DST', () => {
+    const { start, end } = dayBoundsInZone(
+      new Date('2026-08-19T07:00:00Z'),
+      'Asia/Tashkent',
+    );
+
+    expect(end.getTime() - start.getTime()).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('follows the wall clock across a DST boundary', () => {
+    // Uzbekistan has no DST, so this is about the helper not being quietly wrong if the zone
+    // is ever configured elsewhere. 2026-03-29 is when the EU springs forward, and that day
+    // is 23 hours long - a naive "+86 400 000" would land at 01:00 rather than midnight.
+    const { start, end } = dayBoundsInZone(
+      new Date('2026-03-29T10:00:00Z'),
+      'Europe/Berlin',
+    );
+
+    expect(formatWithOffset(start, 'Europe/Berlin')).toBe(
+      '2026-03-29T00:00:00+01:00',
+    );
+    expect(formatWithOffset(end, 'Europe/Berlin')).toBe(
+      '2026-03-30T00:00:00+02:00',
+    );
+    expect(end.getTime() - start.getTime()).toBe(23 * 60 * 60 * 1000);
+  });
+
+  it('rolls over a month and a year boundary', () => {
+    expect(
+      dayBoundsInZone(
+        new Date('2026-12-31T19:30:00Z'),
+        'Asia/Tashkent',
+      ).end.toISOString(),
+    ).toBe('2027-01-01T19:00:00.000Z');
   });
 });

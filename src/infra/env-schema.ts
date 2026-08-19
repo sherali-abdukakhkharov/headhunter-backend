@@ -253,6 +253,24 @@ export interface AppEnv {
   EMPLOYER_REGISTRATION_BONUS_COINS: number;
 
   /**
+   * How many invitations one employer may send per calendar day (§8.2).
+   *
+   * **Sending an invitation is free** - §7.3 lists it beside "View profile" and "Save", and
+   * §7.4's own worked example fills twenty openings by inviting people, which at 2 Coins each
+   * would cost more than the registration bonus covers five times over. The candidate's
+   * *acceptance* is what opens contact. So this cap is what stands in for a price: BR-03's
+   * verification is an admission gate, not a volume limit, and it stops strangers rather than
+   * a verified employer behaving badly.
+   *
+   * Configuration rather than a constant for the reason the Coin price is (§6.6, §10.5): the
+   * client renders the figure this server sends and holds no number of its own, so raising the
+   * cap is a deployment decision and not an app release. When invitations become purchasable
+   * this stays the *free* allowance and the effective limit becomes a sum - which is why
+   * `GET /invitations/quota` reports one total rather than two tiers.
+   */
+  EMPLOYER_DAILY_INVITATION_LIMIT: number;
+
+  /**
    * How many Coins one order may buy (§6.7, M13).
    *
    * A floor and a ceiling, because the amount an order asks for becomes a real charge at a
@@ -501,6 +519,14 @@ export const envSchema = Joi.object<AppEnv, true>({
   CANDIDATE_UNLOCK_COINS: Joi.number().integer().min(1).default(2),
   // Zero *is* allowed here: an instance that gives no free Coins is a pricing decision.
   EMPLOYER_REGISTRATION_BONUS_COINS: Joi.number().integer().min(0).default(10),
+
+  // §8.2's daily invitation cap. 30 is the mobile team's recommendation and the reasoning is
+  // worth keeping: §7.4's example needs roughly sixty invitations to fill twenty openings, so
+  // 30/day completes it in two days - a normal pace for a hiring campaign. A small employer
+  // sending five or ten a day never meets it, a blast of thousands is stopped, and it leaves a
+  // future paid tier something to sell. `min(1)` because zero would disable invitations
+  // entirely, which is a way to break §8.2 by configuration rather than a pricing decision.
+  EMPLOYER_DAILY_INVITATION_LIMIT: Joi.number().integer().min(1).default(30),
 
   // Top-up bounds (§6.7). One Coin is the smallest purchase that means anything, and the
   // ceiling exists so a malformed client cannot open an order for a sum nobody authorized.

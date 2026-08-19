@@ -90,6 +90,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
           statusCode: exception.getStatus(),
           code: exception.messageKey,
           message: translate(exception.messageKey, locale, exception.params),
+          // Present only where a throw site opted in, so every existing error body is
+          // byte-identical. `params` stay out of the body on purpose - they are written to
+          // read well in a sentence, not to be consumed - and a client that needs the number
+          // rather than the sentence gets it here instead of parsing prose.
+          ...(exception.details ? { details: exception.details } : {}),
         },
         retryAfterSeconds: exception.retryAfterSeconds,
       };

@@ -3905,6 +3905,34 @@
         ]
       }
     },
+    "/invitations/quota": {
+      "get": {
+        "description": "**Sending an invitation is free** — §7.3 lists it beside \"View profile\" and \"Save\", and the candidate’s *acceptance* is what opens contact (BR-09). What bounds it instead is a daily cap, and this is where the client reads it.\n\nAsk before offering the action, the way the unlock sheet shows cost and balance before charging: a refusal after the tap is the same information delivered worse. The `409` on `POST /invitations` still has to be handled, because the count can move between this call and the tap.\n\n`limit` is the **effective** total, not a free allowance plus a purchased one. When extra invitations become purchasable this number simply grows — render \"12 of 30 left today\" and hold no opinion about where the 30 came from, and no client release is needed the day that ships.",
+        "operationId": "InvitationsController_quota",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationQuotaDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitations left today (§8.2)",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
     "/invitations/counts/{vacancyId}": {
       "get": {
         "description": "§7.4 tracks \"invited, accepted, interviewed and hired counts against the target\". The first two are here; the last two are application stages and come from `/vacancies/{id}/applications/counts`.",
@@ -9733,6 +9761,31 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "InvitationQuotaDto": {
+        "type": "object",
+        "properties": {
+          "remaining": {
+            "type": "number",
+            "example": 12,
+            "description": "Invitations this employer may still send today. Zero means the next send is refused with `409 invitation.daily_limit_reached`."
+          },
+          "limit": {
+            "type": "number",
+            "example": 30,
+            "description": "The **effective** daily limit — free and, in future, purchased combined. Server configuration (`EMPLOYER_DAILY_INVITATION_LIMIT`), so never hard-code it: §10.5 lets an administrator move it, and a client-side copy would disagree the moment they did."
+          },
+          "resetsAt": {
+            "type": "string",
+            "example": "2026-08-20T00:00:00+05:00",
+            "description": "When `remaining` returns to `limit`: **the next midnight in the platform time zone**, not a rolling twenty-four hours. A calendar day is explicable — \"12 left today, resets at midnight\" — where a rolling window would have the client render a moving target."
+          }
+        },
+        "required": [
+          "remaining",
+          "limit",
+          "resetsAt"
         ]
       },
       "InvitationCountsDto": {
