@@ -51,6 +51,51 @@ in four interface variants — so the approval request is for **four** templates
 Russian/Uzbek text accepted for all users, which is a client decision, not ours).
 Submit them the day the account is bought; approval is the long pole, not the code.
 
+### The four templates to submit
+
+**Contract signed 2026-08-19.** These are the exact strings in `sms.otp_code`, with the
+`{code}` placeholder filled in with a real six-digit example — Eskiz's moderation form
+requires the text *as the subscriber will receive it*, with no placeholders or masks of our
+own. The moderator applies the mask to the variable part.
+
+| Locale | Text | Billed |
+|---|---|---|
+| `uz-Latn` | `Universal HeadHunter ilovasiga kirish uchun tasdiqlash kodi: 123456. Kodni hech kimga bermang.` | 94/160, 1 SMS |
+| `uz-Cyrl` | `Universal HeadHunter иловасига кириш коди: 123456. Ҳеч кимга берманг.` | 69/70, 1 SMS |
+| `ru` | `Universal HeadHunter: код входа в приложение 123456. Не сообщайте.` | 66/70, 1 SMS |
+| `en` | `Universal HeadHunter app login confirmation code: 123456. Do not share it.` | 74/160, 1 SMS |
+
+Two moderation rules shaped the wording, both from Eskiz's own form:
+
+- **A message carrying a confirmation code must name the resource *and* the purpose.**
+  `Universal HeadHunter: kirish kodi` names the brand but not what kind of resource it is;
+  `Universal HeadHunter ilovasiga kirish uchun` names both, which is the shape Eskiz's
+  approved examples take. The earlier wording would probably have been rejected.
+- **The text is submitted in its final form, not as a template.** A real example code, no
+  `{code}` and no `(NAME)`-style masks.
+
+### Why the Uzbek text uses `o'` and not `oʻ`
+
+Billing is per segment, and the segment size depends on the characters:
+**160 if every character is in Eskiz's Latin set, and 70 the moment one is not**
+([sms-symbols.pdf](https://my.eskiz.uz/assets/data/sms-symbols.pdf), read 2026-08-19). That
+set is narrower than GSM 03.38 — Latin letters, digits, space, newline, and
+`. , ! ? : ; ' " @ # $ % & ( ) * + - / < = > _`, with `{ } [ ] \ ^` allowed but costing two
+slots each.
+
+The correct Uzbek letters `oʻ` and `gʻ` use U+02BB, which is **not** in that set. One of them
+anywhere in the message halves the limit and doubles the cost of every login on the platform,
+with nothing failing and no log line to show for it. Client direction 2026-08-19: the ASCII
+apostrophe is acceptable for these letters, so the Latin text stays on the 160 tariff.
+
+The same trap catches `’` (U+2019, which editors substitute for `'` automatically), `—`, `…`,
+`№`, `` ` ``, `~`, `|` and any emoji.
+
+**`sms-template.spec.ts` asserts all of this** — one segment per language, no non-Latin
+character in the Latin variants, the resource name and purpose present, and that the text
+still fits if `OTP_LENGTH` gains a digit. The Cyrillic variants have one to four characters
+spare, so that suite is the thing to run before touching their wording.
+
 **2. The token is a login, not a secret we are given.** It is obtained with the account
 email and password and has to be refreshed. So `ESKIZ_EMAIL` / `ESKIZ_PASSWORD` are
 boot-validated env vars, the token is held in memory, and a 401 means re-login rather

@@ -660,15 +660,36 @@ export const MESSAGES = {
   },
 
   // --- SMS bodies (§4.1) ---------------------------------------------------
-  // The one message this product sends over SMS. It lives here with everything else
-  // a user reads, but it is **not** free text: Eskiz approves templates, so changing
-  // this wording means re-submitting it for approval in all four variants. Keep it
-  // short - an SMS is billed per 160 characters, and Cyrillic halves that to 70.
+  //
+  // The one message this product sends over SMS, and the only entry here that is **not**
+  // free text. Two separate sets of rules apply, both from Eskiz, and
+  // `sms-template.spec.ts` enforces what can be enforced:
+  //
+  // **Moderation** (docs/SMS_PROVIDER.md). Eskiz approves each template before it may be
+  // sent, and a message carrying a confirmation code must name **the resource** and **the
+  // purpose of the code**. "Universal HeadHunter: kirish kodi" states the brand but not
+  // that it is an app; "Universal HeadHunter ilovasiga kirish uchun" states both, which is
+  // the shape Eskiz's own approved examples take. Changing any of this wording means
+  // re-submitting all four for approval, and a send whose text does not match an approved
+  // template is refused.
+  //
+  // **Billing.** A message is billed per segment, and the segment size depends on the
+  // characters in it: 160 if every character is in Eskiz's Latin set, **70 if a single one
+  // is not**. So the Uzbek Latin text uses the ASCII apostrophe in `o'`/`g'` - the typographic
+  // `oʻ`/`gʻ` (U+02BB) is outside that set, and one of them would halve the limit and double
+  // the bill for every login on the platform. Client direction 2026-08-19 confirms ASCII is
+  // acceptable for these letters.
+  //
+  // Cyrillic is always the 70-character tariff, which is why the `uz-Cyrl` and `ru` texts are
+  // terser than the other two rather than translations of them. Both sit within a few
+  // characters of the limit, so **re-measure before touching them** - the spec does it for you.
   'sms.otp_code': {
-    'uz-Latn': 'Universal HeadHunter: kirish kodi {code}. Hech kimga bermang.',
-    'uz-Cyrl': 'Universal HeadHunter: кириш коди {code}. Ҳеч кимга берманг.',
-    ru: 'Universal HeadHunter: код входа {code}. Никому его не сообщайте.',
-    en: 'Universal HeadHunter: your login code is {code}. Do not share it.',
+    'uz-Latn':
+      'Universal HeadHunter ilovasiga kirish uchun tasdiqlash kodi: {code}. Kodni hech kimga bermang.',
+    'uz-Cyrl':
+      'Universal HeadHunter иловасига кириш коди: {code}. Ҳеч кимга берманг.',
+    ru: 'Universal HeadHunter: код входа в приложение {code}. Не сообщайте.',
+    en: 'Universal HeadHunter app login confirmation code: {code}. Do not share it.',
   },
 
   'notification.invitation_received': {
