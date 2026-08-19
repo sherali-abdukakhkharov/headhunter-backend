@@ -243,8 +243,15 @@ through the same `AuthService`, so an account can hold both credentials. Marked
 - [x] Tests: OTP expiry, attempt lockout, code supersession, refresh reuse
       detection and family revocation, concurrent-rotation single winner, role
       switch to an ungranted role refused, blocked user refused at login
-- [ ] Test: blocked user refused on each *mutation kind* - can only be written
-      once there are mutations beyond auth itself (M3)
+- [x] **Test: blocked user refused on each mutation kind** *(done 2026-08-19)*. Written as a
+      pair, because the interesting property is not per-route: `api-surface.spec.ts` asserts
+      that every mutating method the product **routes** is one `MUTATING_METHODS` recognises -
+      the guard is global, so BR-10 was never at risk from a route that forgot it, only from a
+      method the guard does not count as mutating - and
+      `guards/account-status.guard.int.spec.ts` asserts the behaviour, enumerating the methods
+      from that same set so a fifth is covered without anybody remembering. It also closed two
+      cases nothing covered: a token outliving its account is refused, and an anonymous
+      mutating request passes, which M13's provider callbacks made reachable
 
 ## M2 - Dictionaries
 
@@ -681,6 +688,51 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4e and §4f.
       candidate refused, a paused and an expired vacancy refused, contact details closed
       while only sent and open on acceptance, and the download refused for another employer
 
+### The daily quota *(added 2026-08-20, client direction via mobile)*
+
+**Sending an invitation is free** - §7.3 lists it beside "View profile" and "Save", and §7.4's
+example fills twenty openings by inviting people, which at 2 Coins each would exceed the
+registration bonus many times over. The candidate's **acceptance** is what opens contact
+(BR-09), and §8.2's apparent unlock precondition was resolved that way. So no gate was added;
+what was added is what the free path needs instead, because BR-03's verification is an
+admission gate rather than a volume limit.
+
+- [x] `EMPLOYER_DAILY_INVITATION_LIMIT`, default 30, beside the money knobs. §7.4's example
+      needs ~60 invitations for twenty openings, so 30/day finishes it in two days; a small
+      employer never meets it, a blast of thousands is stopped, and a future paid tier has
+      something to sell
+- [x] `GET /invitations/quota` → `{ remaining, limit, resetsAt }`. **Declared before
+      `@Get(':id')`**, or Nest reads "quota" as an id and fails its UUID pipe. `limit` is the
+      **effective** total, not free-plus-purchased: when extra invitations become purchasable
+      the number grows and no client changes
+- [x] **409 `invitation.daily_limit_reached`**, not 429: a business rule with a known reset,
+      where a 429 says "too fast" and invites proxies to retry
+- [x] **The quota is a count of rows, not a stored counter**, which settles three rules at once
+      rather than one policy each: a sent invitation is never refunded (no status filter, so a
+      decline cannot return the slot), re-inviting after a decline counts (a second row is a
+      second notification), and **an idempotent replay consumes nothing** - `IdempotencyService`
+      returns the recorded id without calling the insert, so there is no row to count. That last
+      one is the "the app ate my quota" failure, and it now holds by construction rather than by
+      placing a decrement correctly
+- [x] Checked **inside the insert transaction behind a lock on the employer's own row**. No
+      unique index can express "at most 30 per day", so this is one of the few rules here
+      enforced by a lock; a test fires two sends at the boundary
+- [x] `dayBoundsInZone` - a **calendar** day in `PLATFORM_TIME_ZONE`, not a rolling window,
+      because "12 left today, resets at midnight" is plannable and "another in 7h 22m" is not.
+      Every machine on this project sits at UTC+5, so `setUTCHours(0, 0, 0, 0)` agrees locally
+      and is wrong for the five hours a day the two zones disagree on the date - the tests cover
+      that window and a Europe/Berlin DST boundary
+- [x] `LocalizedException` gained an opt-in `details` object. **The 402's docstring had claimed
+      its `params` let a screen show "2 needed, 1 left" without a second request, which was
+      false** - params only interpolate the message - and mobile had read it as a promise and
+      shipped against it. Both the 402 and this 409 now carry real structured fields; every
+      other error body is byte-identical
+- [ ] Owed later, and free: **purchasable invitations**. `limit` is already the effective
+      total, so a purchase raises it and no client changes. It will want a ledger kind beside
+      `candidate_unlock` (BR-24) when it is specified
+- [ ] Not asked for: a **per-vacancy** cap. §7.4's "invited counts against the target" hints at
+      one; the client asked for a daily cap per employer, and raising it later is additive
+
 ### Tests *(done - 85 unit, 66 integration across both halves)*
 - [x] Test: search result cards never contain a phone number - asserted twice, once
       mechanically over the compiled SQL (no `users`, no `phone`) and once over a real
@@ -844,9 +896,17 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       changed** - which was the promise M4 and M5 made when they were switched off
 - [x] **A BR-12 restricted vacancy can finally publish.** Unreachable from M5 by design; it
       needed a reviewer, not code
-- [ ] Grant the first administrator on the deployed instance (`INSERT INTO user_roles`), or
-      the flags have to stay off there: an instance with no admin parks every employer in
-      `under_review`. There is deliberately no route that grants the role
+- [x] **The first administrator is granted by the seeder** *(done 2026-08-19)*. There is still
+      deliberately no route that grants the role - a product where administrators can create
+      administrators has no floor - so it comes from outside the API, and `pnpm seed` is where:
+      idempotent by the `(user_id, role)` primary key, creating the account if that number has
+      never registered. `SEED_ADMIN_PHONES` carries the numbers rather than a literal in the
+      file, because a committed administrator is granted in **every** environment the code
+      reaches, including any instance where `OTP_STATIC_CODE` is set - and there, knowing the
+      number would be the whole of the authentication. It grants an entitlement, never a
+      credential: login is still phone + OTP. An instance with no administrator is not merely
+      reduced but **stuck** (every employer parks in `under_review`), so the seeder says so out
+      loud when the variable is unset
 
 ### Tests *(done - 34 integration)*
 - [x] **Test: no update or delete path exists on the audit log** - all three triggers,
