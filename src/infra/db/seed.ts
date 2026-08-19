@@ -19,6 +19,7 @@ import { Pool } from 'pg';
 import { seedDictionaries } from '@modules/dictionaries/seed/dictionary-seed';
 import { seedSchemaVersions } from '@modules/schemas/seed/schema-version-seed';
 
+import { configuredAdminPhones, seedAdministrators } from './admin-seed';
 import type { DB } from './database.types';
 
 dotenv.config();
@@ -49,6 +50,25 @@ async function main(): Promise<void> {
     // schema ETag report the version the code actually serves.
     const schemas = await seedSchemaVersions(db);
     console.log(`  schema versions   ${schemas.versionsUpdated}`);
+
+    // §10's first administrator, which no route grants on purpose. Silent when the instance
+    // has not been told who administers it.
+    const adminPhones = configuredAdminPhones();
+
+    if (adminPhones.length > 0) {
+      const admins = await seedAdministrators(db, adminPhones);
+
+      console.log('Administrators:');
+      console.log(`  accounts created  ${admins.usersCreated}`);
+      console.log(`  roles granted     ${admins.rolesGranted}`);
+      console.log(`  already admin     ${admins.alreadyAdmin}`);
+    } else {
+      // Worth saying, because an instance with no administrator parks every employer in
+      // `under_review` and nothing explains why.
+      console.log(
+        'No SEED_ADMIN_PHONES set: nobody can approve employers or moderate vacancies.',
+      );
+    }
 
     if (
       report.typesCreated +

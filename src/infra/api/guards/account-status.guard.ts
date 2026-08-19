@@ -12,8 +12,15 @@ import { type Database, KYSELY } from '@infra/db/database.module';
 import { ForbiddenError } from '../exceptions/localized.exception';
 import type { AuthenticatedRequest } from '../decorators/current-user.decorator';
 
-/** Methods that change state, and therefore fall under BR-10. */
-const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+/**
+ * Methods that change state, and therefore fall under BR-10.
+ *
+ * Exported so `api-surface.spec.ts` can assert the property that actually matters: **every
+ * mutating route in the product uses a method in this set.** The guard is global, so the risk
+ * was never a route without it - it is a route whose method this set does not recognise, which
+ * would drop out of BR-10 silently.
+ */
+export const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
  * BR-10: a blocked or restricted account is refused every mutation.

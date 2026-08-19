@@ -53,11 +53,29 @@ holding either can serve traffic as `hh.qitmir.uz`.
 ```sh
 pnpm db:up          # Postgres
 pnpm migrate:latest # schema, then content
-pnpm seed
+pnpm seed           # dictionaries, field schemas, and the administrators
 pnpm api:up         # build the image and run the API container
 pnpm tunnel:up      # cloudflared
 pnpm tunnel:logs    # watch it register
 ```
+
+### `pnpm seed` is also what grants the first administrator
+
+§10 is a role inside the mobile app and there is deliberately **no API route that grants it**:
+a product where administrators can create administrators has no floor. So set
+`SEED_ADMIN_PHONES` — comma-separated E.164 numbers — before seeding, and the seeder grants the
+role idempotently, creating the account if that number has never registered.
+
+**Do not skip this on a fresh instance.** Both MVP flags have been on since M10, so an instance
+with no administrator does not merely lack a feature: every employer who registers parks in
+`under_review`, no vacancy can be moderated, and nothing in the logs explains why. `pnpm seed`
+says so out loud when the variable is unset.
+
+It grants an entitlement, never a credential — login is still phone + OTP, so the person still
+has to hold the SIM. The numbers are per-deployment configuration rather than committed, so a
+development instance and production do not share an administrator by default; that matters most
+where `OTP_STATIC_CODE` is set, because there the number would be the whole of the
+authentication.
 
 **The API runs in a container as of 2026-08-05** (`Dockerfile`,
 `docker-compose.api.yml`). The tunnel's origin is `http://api:3001` — the service

@@ -2,6 +2,7 @@ import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 
 import { IS_PUBLIC_KEY } from '@infra/api/decorators/public.decorator';
+import { MUTATING_METHODS } from '@infra/api/guards/account-status.guard';
 import { REQUIRED_ROLES_KEY } from '@infra/api/decorators/require-role.decorator';
 import type { UserRole } from '@infra/db/database.types';
 import { AdminController } from '@modules/admin/admin.controller';
@@ -208,6 +209,41 @@ describe('the public surface (§12.5)', () => {
         .map((route) => route.signature)
         .filter((signature) => PUBLIC_ROUTES.includes(signature)),
     ).toEqual([]);
+  });
+});
+
+describe('BR-10 covers every kind of mutation', () => {
+  it('recognises every mutating method the product actually routes', () => {
+    // **The property, rather than a route-by-route audit.** `AccountStatusGuard` is global, so
+    // BR-10 was never at risk from a route that forgot it - it is at risk from a route whose
+    // *method* the guard does not count as mutating. Add a `PUT` where the set only knew
+    // `POST`, and a blocked account may use it, with nothing failing anywhere.
+    //
+    // This is what TODO.md's "blocked user refused on each mutation kind" is really asking:
+    // the kinds are HTTP methods, and the question is whether the set of them the guard knows
+    // still covers the set the product uses.
+    const routed = new Set(
+      ALL_ROUTES.map((route) => route.signature.split(' ')[0]).filter(
+        (method) => method !== 'GET',
+      ),
+    );
+
+    expect(routed.size).toBeGreaterThan(2);
+
+    for (const method of routed) {
+      expect(MUTATING_METHODS.has(method)).toBe(true);
+    }
+  });
+
+  it('has a mutating route on every module that changes anything', () => {
+    // A weaker companion, and its value is the number: if this drops sharply, a module has
+    // been rewritten to mutate through `GET` - which would be outside BR-10 whatever the
+    // guard's method set says.
+    const mutating = ALL_ROUTES.filter((route) =>
+      MUTATING_METHODS.has(route.signature.split(' ')[0] ?? ''),
+    );
+
+    expect(mutating.length).toBeGreaterThan(40);
   });
 });
 

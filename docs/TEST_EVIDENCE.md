@@ -4,15 +4,15 @@
 scenarios". This is that, plus the command that reproduces it - a result nobody can re-run
 is a screenshot.
 
-**As of 2026-08-19, on schema version 21: 970 tests, all passing.**
+**As of 2026-08-19, on schema version 21: 978 tests, all passing.**
 
 | Suite | Command | Suites | Tests | Needs Postgres |
 |---|---|---|---|---|
-| Unit / functional | `pnpm test` | 26 | 483 | no |
-| Integration | `pnpm test:int` | 22 | 487 | yes |
+| Unit / functional | `pnpm test` | 26 | 485 | no |
+| Integration | `pnpm test:int` | 23 | 493 | yes |
 | **Acceptance (UAT-01..23 of 24)** | `pnpm test:int -- --testRegex uat` | 1 | 24 | yes |
 
-The acceptance suite is a subset of the integration one; 970 is the sum of the first two
+The acceptance suite is a subset of the integration one; 978 is the sum of the first two
 rows, counted once.
 
 > **Three integration suites were failing in `afterAll` before M13**, and every test inside
@@ -121,6 +121,12 @@ Beyond the scenarios themselves, the parts worth naming to a reviewer:
   `app.module.ts`, so a module cannot escape the audit by being forgotten.
 - **Injection** (`candidate-search/search-query.spec.ts`): a hostile string pushed through
   twelve filters at once reaches Postgres only as a bound parameter.
+- **BR-10 as a pair** (`api-surface.spec.ts` + `guards/account-status.guard.int.spec.ts`): the
+  set property — every mutating method the product routes is one the guard recognises, so a
+  route added with a method the guard does not count as mutating fails the suite rather than
+  dropping out of BR-10 silently — and the behaviour, each kind of mutation refused for a
+  blocked and a restricted account, reads left open, and a token outliving its account refused.
+  The methods are enumerated from the guard's own set, so a fifth is covered automatically.
 - **Immutability** (`admin.int.spec.ts`): the audit log refuses `UPDATE`, `DELETE` **and**
   `TRUNCATE` at the database. `wallet.int.spec.ts` and `payments.int.spec.ts` prove the same
   for the Coin ledger and the payment event trail, including the `UPDATE` matching no rows

@@ -436,7 +436,11 @@ counts as one is the question at the top of [TODO.md](TODO.md). One answer leave
 delivered BR-09 behaviour intact; the other requires a retrofit through the privacy helper,
 the candidate view, four file routes, chat and invitations. Guessing costs either way.
 
-Smaller gaps worth knowing: CI, the pruning job for `rate_limit_counters`, and malware
-scanning on uploads (§12.5 asks for it "where infrastructure permits"; Telegram does none
-on a bot upload, and the content checks in `FilesService` are type validation, not
-scanning). The `/health` module remains the wiring proof.
+Smaller gaps worth knowing: malware scanning on uploads (§12.5 asks for it "where
+infrastructure permits"; Telegram does none on a bot upload, and the content checks in
+`FilesService` are type validation, not scanning), and the decision on whether
+`API_DOCS_ENABLED` should stay on now that the hostname is public. **CI is deferred by
+client direction** (2026-08-19) — until then `pnpm format && pnpm lint && pnpm typecheck &&
+pnpm test` before each commit is the whole gate. **iOS is paused**, so the APNs key is not
+outstanding. `rate_limit_counters` is swept by `RetentionService` under a declared two-day
+rule, not by an unwritten job. The `/health` module remains the wiring proof.

@@ -132,12 +132,16 @@ needs them.
       now `http://api:3001`; `pnpm api:up` is the whole redeploy. Migrations stay a
       deliberate host command - a container that migrates at boot races itself the
       moment there are two
-- [ ] CI workflow (lint, typecheck, test, build). The image build is the natural
-      place to hang it: `nest build` inside the Dockerfile already type-checks, so CI
-      is `docker build` plus the two test suites. Two things belong in it that only
-      exist as commands today: `pnpm docs:openapi` with a check that
-      `docs/openapi.json` came back unchanged (a stale committed contract is worse than
-      none), and `pnpm perf` against §12.4's budgets
+- [~] **CI workflow - deferred indefinitely, client direction 2026-08-19.** The owner will
+      set this up himself when the service goes to production; **do not count it as
+      outstanding backend work.** Kept here rather than deleted so the design is not
+      re-derived later: the image build is the natural place to hang it, because
+      `nest build` inside the Dockerfile already type-checks, so CI is `docker build` plus
+      the two test suites. Two things belong in it that exist only as commands today -
+      `pnpm docs:openapi` with a check that `docs/openapi.json` came back **unchanged** (a
+      stale committed contract is worse than none), and `pnpm perf` against §12.4's budgets.
+      Until then `pnpm format && pnpm lint && pnpm typecheck && pnpm test` before every
+      commit is the whole of the gate
 
 ## M1 - Auth, users, roles
 
@@ -778,7 +782,10 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4i.
       2026-08-07** and configured in `.env` (project `headhunter-app-b463f`). Verified
       end to end: a token is obtained and FCM rejects only the fake device token, which
       proves auth, the v1 API and the `invalid` classification at once
-- [ ] Owed later: an APNs `.p8` in that Firebase project, when iOS becomes real
+- [~] APNs `.p8` in that Firebase project - **iOS is paused, client direction 2026-08-19.**
+      No iOS build is planned, so this is not outstanding work; it becomes one line of Firebase
+      configuration whenever iOS is picked up again. Nothing in the push path is
+      platform-specific: `PushDispatcher` sends to whatever device tokens are registered
 
 ### Tests *(done - 42 unit, 18 integration)*
 - [x] **The four translations of every event key interpolate exactly the same
