@@ -296,6 +296,14 @@ describe('purging an account that has acted as an administrator', () => {
     const retiringAdminId = await newUser('admin');
     const targetUserId = await newUser('candidate');
 
+    // As the seeder would have left them: an administrator has no profile, so their name
+    // lives on the account itself and BR-14 has to reach it there.
+    await db
+      .updateTable('users')
+      .set({ full_name: 'Abduqaxxarov Sherali' })
+      .where('id', '=', retiringAdminId)
+      .execute();
+
     // The retiring administrator does something auditable, which is what makes their
     // row undeletable.
     await db.transaction().execute((trx) =>
@@ -320,13 +328,21 @@ describe('purging an account that has acted as an administrator', () => {
 
     const after = await db
       .selectFrom('users')
-      .select(['id', 'phone', 'telegram_user_id', 'purged_at', 'last_login_at'])
+      .select([
+        'id',
+        'phone',
+        'telegram_user_id',
+        'full_name',
+        'purged_at',
+        'last_login_at',
+      ])
       .where('id', '=', retiringAdminId)
       .executeTakeFirstOrThrow();
 
-    // The person is gone: no phone, no Telegram identity, no login history.
+    // The person is gone: no phone, no Telegram identity, no name, no login history.
     expect(after.phone).toBeNull();
     expect(after.telegram_user_id).toBeNull();
+    expect(after.full_name).toBeNull();
     expect(after.last_login_at).toBeNull();
     expect(after.purged_at).toBeInstanceOf(Date);
 

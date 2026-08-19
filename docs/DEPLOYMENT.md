@@ -63,8 +63,18 @@ pnpm tunnel:logs    # watch it register
 
 §10 is a role inside the mobile app and there is deliberately **no API route that grants it**:
 a product where administrators can create administrators has no floor. So set
-`SEED_ADMIN_PHONES` — comma-separated E.164 numbers — before seeding, and the seeder grants the
-role idempotently, creating the account if that number has never registered.
+`SEED_ADMIN_PHONES` — comma-separated `phone[:full name]` entries — before seeding, and the
+seeder grants the role idempotently, creating the account if that number has never registered.
+
+```
+SEED_ADMIN_PHONES=+998901234567:Karimov Anvar Rustam o'g'li,+998901234568
+```
+
+The name is optional and lands in `users.full_name`. It is worth setting: an administrator has
+no candidate profile and no employer row, so without it §10.2's user list shows the account
+nameless and its name filter cannot find it — an administrator could not look up a colleague.
+Re-seeding with a changed name updates it; re-seeding without one leaves it alone, because
+erasing a name is BR-14's job and goes through the purge.
 
 **Do not skip this on a fresh instance.** Both MVP flags have been on since M10, so an instance
 with no administrator does not merely lack a feature: every employer who registers parks in

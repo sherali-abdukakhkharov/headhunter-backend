@@ -698,6 +698,67 @@ describe('§10.4 user management', () => {
     );
   });
 
+  it('finds an administrator by name, who has no profile to hold one', async () => {
+    // The account kind that had no name until `users.full_name` existed: §10 is a role, not
+    // a profile, so the `COALESCE` over `candidate_profiles`, `companies` and `employers`
+    // returned null and the name filter searched three columns none of which applied. An
+    // administrator could not find a colleague in §10.2's own user list.
+    const actorUserId = await newUser('admin');
+    const colleagueUserId = await newUser('admin');
+
+    await db
+      .updateTable('users')
+      .set({ full_name: 'Abduqaxxarov Sherali' })
+      .where('id', '=', colleagueUserId)
+      .execute();
+
+    const found = await adminUsers.search(
+      actorUserId,
+      { name: 'Abduqaxxarov' },
+      50,
+      0,
+    );
+
+    expect(found.map((row) => row.userId)).toContain(colleagueUserId);
+    expect(found.find((row) => row.userId === colleagueUserId)?.name).toBe(
+      'Abduqaxxarov Sherali',
+    );
+
+    // And the detail renders the same name, which is why both queries share one expression.
+    const detail = await adminUsers.detail(actorUserId, colleagueUserId);
+
+    expect(detail.name).toBe('Abduqaxxarov Sherali');
+  });
+
+  it('prefers the profile name over the account name, for a user who has both', async () => {
+    // `users.full_name` is what the deployment was told; a profile name is what the person
+    // maintains. An administrator who is also a candidate must show the latter, or editing
+    // your own profile would appear to do nothing in §10.2.
+    const actorUserId = await newUser('admin');
+    const bothUserId = await newUser('candidate');
+    const { regionId, districtId } = await region();
+
+    await db
+      .updateTable('users')
+      .set({ full_name: 'Seeded Name' })
+      .where('id', '=', bothUserId)
+      .execute();
+    await candidates.patch(bothUserId, {
+      full_name: 'Profile Name',
+      date_of_birth: '1996-04-12',
+      region_id: regionId,
+      district_id: districtId,
+      primary_occupation_id: await seededId(
+        'occupation',
+        'call_centre_operator',
+      ),
+    });
+
+    const detail = await adminUsers.detail(actorUserId, bothUserId);
+
+    expect(detail.name).toBe('Profile Name');
+  });
+
   it('filters by role and status', async () => {
     const adminUserId = await newUser('admin');
     const candidateUserId = await newUser('candidate');

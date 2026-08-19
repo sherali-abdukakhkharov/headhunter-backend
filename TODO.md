@@ -907,6 +907,18 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       credential: login is still phone + OTP. An instance with no administrator is not merely
       reduced but **stuck** (every employer parks in `under_review`), so the seeder says so out
       loud when the variable is unset
+- [x] **An administrator has a name** *(done 2026-08-20)*. The FIO supplied with the first
+      administrator's number had nowhere to live: every name in the product belonged to a
+      profile, and §10 is a role, so `AdminUsersService` rendered a seeded administrator
+      nameless and its name filter — which searched `candidate_profiles`, `employers` and
+      `companies` — could not find one. An administrator could not look a colleague up in
+      §10.2's own user list. `users.full_name` is the fourth branch, written by
+      `SEED_ADMIN_PHONES` (`phone[:full name]`) and by nothing else, `NULL` for every account
+      that registers through the app, and **last** in the display `COALESCE` so a profile name
+      still wins. BR-14 reaches it: the purge clears it in the same statement as the phone and
+      `users_purged_has_no_name` refuses the row that forgets — a second check rather than a
+      clause on the credential one, because "still reachable" and "still named" fail
+      differently
 
 ### Tests *(done - 34 integration)*
 - [x] **Test: no update or delete path exists on the audit log** - all three triggers,

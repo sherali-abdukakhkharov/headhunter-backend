@@ -13,6 +13,18 @@ import { NotificationsService } from '@modules/notifications/notifications.servi
 
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
 
+/**
+ * The name §10.2 shows for an account, in the order the account itself would answer.
+ *
+ * Shared by the list and the detail because they must agree: two copies of this expression
+ * drifting is one user shown under two names depending on which screen you opened.
+ *
+ * `u.full_name` is **last**. A profile name is the one the person maintains and the one
+ * their counterpart sees; `users.full_name` is what the deployment was told through
+ * `SEED_ADMIN_PHONES`, and it exists because an administrator has no profile to ask.
+ */
+const DISPLAY_NAME = sql`COALESCE(cp.full_name, c.public_name, e.full_name, u.full_name)`;
+
 export interface UserSearchFilters {
   /** §10.4's "by phone" - a partial number, because that is how one is remembered. */
   phone?: string;
@@ -87,10 +99,12 @@ export class AdminUsersService {
   /**
    * §10.4's search: "by phone, name, role, status, or registration date".
    *
-   * The name is looked for in all three places a user can have one - a candidate's
-   * profile, an individual employer's own name, a company's public name - because an
-   * administrator searching for "Uzum" should not have to know which kind of account it
-   * is. It is a prefix-insensitive `ILIKE`, and that is acceptable here for the reason it
+   * The name is looked for in every place a user can have one - a candidate's profile, an
+   * individual employer's own name, a company's public and legal name, and the account's own
+   * `full_name` for the administrators who have no profile at all - because an administrator
+   * searching for "Uzum" should not have to know which kind of account it is, and one
+   * searching for a colleague should not come up empty because the colleague never applied
+   * for a job. It is a prefix-insensitive `ILIKE`, and that is acceptable here for the reason it
    * was *not* acceptable for §7.1's specialization filter: this is one administrator
    * looking for one account they already know of, not a matching rule two users have to
    * agree on across four interface variants.
@@ -114,6 +128,7 @@ export class AdminUsersService {
         OR e.full_name ILIKE ${pattern}
         OR c.public_name ILIKE ${pattern}
         OR c.legal_name ILIKE ${pattern}
+        OR u.full_name ILIKE ${pattern}
       )`);
     }
 
@@ -139,7 +154,7 @@ export class AdminUsersService {
 
     const result = await sql<UserRow>`
       SELECT u.id, u.phone, u.status, u.restricted_until, u.created_at, u.last_login_at,
-        COALESCE(cp.full_name, c.public_name, e.full_name) AS name,
+        ${DISPLAY_NAME} AS name,
         (
           SELECT string_agg(ur.role::text, ',' ORDER BY ur.role)
           FROM user_roles ur WHERE ur.user_id = u.id
@@ -166,7 +181,7 @@ export class AdminUsersService {
   async detail(actorUserId: string, userId: string): Promise<AdminUserDetail> {
     const result = await sql<UserRow>`
       SELECT u.id, u.phone, u.status, u.restricted_until, u.created_at, u.last_login_at,
-        COALESCE(cp.full_name, c.public_name, e.full_name) AS name,
+        ${DISPLAY_NAME} AS name,
         (
           SELECT string_agg(ur.role::text, ',' ORDER BY ur.role)
           FROM user_roles ur WHERE ur.user_id = u.id

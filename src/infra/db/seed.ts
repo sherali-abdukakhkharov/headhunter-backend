@@ -19,7 +19,7 @@ import { Pool } from 'pg';
 import { seedDictionaries } from '@modules/dictionaries/seed/dictionary-seed';
 import { seedSchemaVersions } from '@modules/schemas/seed/schema-version-seed';
 
-import { configuredAdminPhones, seedAdministrators } from './admin-seed';
+import { configuredAdministrators, seedAdministrators } from './admin-seed';
 import type { DB } from './database.types';
 
 dotenv.config();
@@ -53,15 +53,16 @@ async function main(): Promise<void> {
 
     // §10's first administrator, which no route grants on purpose. Silent when the instance
     // has not been told who administers it.
-    const adminPhones = configuredAdminPhones();
+    const adminEntries = configuredAdministrators();
 
-    if (adminPhones.length > 0) {
-      const admins = await seedAdministrators(db, adminPhones);
+    if (adminEntries.length > 0) {
+      const admins = await seedAdministrators(db, adminEntries);
 
       console.log('Administrators:');
       console.log(`  accounts created  ${admins.usersCreated}`);
       console.log(`  roles granted     ${admins.rolesGranted}`);
       console.log(`  already admin     ${admins.alreadyAdmin}`);
+      console.log(`  names written     ${admins.namesWritten}`);
     } else {
       // Worth saying, because an instance with no administrator parks every employer in
       // `under_review` and nothing explains why.

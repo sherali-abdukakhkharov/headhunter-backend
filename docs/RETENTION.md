@@ -40,14 +40,17 @@ quietly destroying the trail.
 
 The two duties are reconciled by **erasing the person and keeping the actor**:
 
-- The phone number, Telegram identity and login history are cleared.
+- The phone number, Telegram identity, name and login history are cleared.
 - The row and its id survive, so every past decision still resolves to a *distinct*
   administrator without naming one.
 - The account's own data - profile, employer record, sessions, roles, devices - goes with
   everybody else's.
-- `purged_at` records when, and the `users_purged_has_no_credential` constraint makes
-  "purged but still holding a phone number" impossible to write rather than merely
-  unwritten.
+- `purged_at` records when, and two constraints make the two ways this can go wrong
+  unwritable rather than merely unwritten: `users_purged_has_no_credential` for "purged but
+  still holding a phone number", and `users_purged_has_no_name` for "anonymized but still
+  named". They are separate checks because reachability and identity fail differently.
+  `users.full_name` is the column the second one guards, and it exists only for the seeded
+  administrators - everybody else's name lives on a profile that is deleted outright.
 
 This is the only rule in the table tagged `required`. It is not open to a shorter period,
 because the alternative is losing the record of who approved what.

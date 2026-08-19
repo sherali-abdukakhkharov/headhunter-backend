@@ -8,6 +8,13 @@ export interface AdminSeedReport {
   usersCreated: number;
   rolesGranted: number;
   alreadyAdmin: number;
+  namesWritten: number;
+}
+
+/** One configured administrator: a phone number, and optionally who holds it. */
+export interface AdminSeedEntry {
+  phone: string;
+  fullName: string | null;
 }
 
 /**
@@ -40,26 +47,33 @@ export interface AdminSeedReport {
  * **The account is created if it does not exist yet.** Logging in is still phone + OTP, so
  * this grants an entitlement and never a credential - there is no password here to leak, and
  * the person still has to prove they hold the SIM.
+ *
+ * **The name is written to `users.full_name`, and configuration is its only writer.** An
+ * administrator holds no `candidate_profiles` row and no `employers` row, so §10.2's user list
+ * had nothing to render for one and its name filter could not find one. Re-running with a
+ * changed name updates it; re-running with none leaves whatever is there, so dropping the name
+ * from the variable does not erase it.
  */
 export async function seedAdministrators(
   db: Kysely<DB>,
-  rawPhones: string[],
+  entries: AdminSeedEntry[],
 ): Promise<AdminSeedReport> {
   const report: AdminSeedReport = {
     usersCreated: 0,
     rolesGranted: 0,
     alreadyAdmin: 0,
+    namesWritten: 0,
   };
 
-  for (const raw of rawPhones) {
+  for (const entry of entries) {
     // The same normalization the login path applies, so a number written here with spaces or
     // without its `+` reaches the same row `POST /auth/otp/send` will look up. Getting this
     // wrong would create a second, unreachable account rather than failing loudly.
-    const phone = normalizePhone(raw);
+    const phone = normalizePhone(entry.phone);
 
     const existing = await db
       .selectFrom('users')
-      .select('id')
+      .select(['id', 'full_name'])
       .where('phone', '=', phone)
       .executeTakeFirst();
 
@@ -68,13 +82,29 @@ export async function seedAdministrators(
       (
         await db
           .insertInto('users')
-          .values({ phone })
+          .values({ phone, full_name: entry.fullName })
           .returning('id')
           .executeTakeFirstOrThrow()
       ).id;
 
-    if (!existing) {
+    if (existing) {
+      // Only when it would change something: an unconditional update would touch
+      // `updated_at` on every deploy and make the seeder look like it did work.
+      if (entry.fullName !== null && existing.full_name !== entry.fullName) {
+        await db
+          .updateTable('users')
+          .set({ full_name: entry.fullName })
+          .where('id', '=', userId)
+          .execute();
+
+        report.namesWritten += 1;
+      }
+    } else {
       report.usersCreated += 1;
+
+      if (entry.fullName !== null) {
+        report.namesWritten += 1;
+      }
     }
 
     // `(user_id, role)` is the primary key of `user_roles`, so re-running is a no-op by
@@ -97,16 +127,38 @@ export async function seedAdministrators(
 }
 
 /**
- * The configured administrator phone numbers, comma-separated.
+ * The configured administrators: `phone[:full name]`, comma-separated.
+ *
+ * `+998901234567:Karimov Anvar Rustam o'g'li,+998901234568` is two administrators, one of
+ * them named. The two separators cannot collide with their fields - a phone number in
+ * international form holds no colon, and no name holds a comma - so neither needs quoting.
+ * The name is everything after the *first* colon, which is what makes a name containing one
+ * survive.
  *
  * Empty is a supported state and the default: an instance that has not been told who
  * administers it grants nothing, which is safer than guessing.
  */
-export function configuredAdminPhones(
+export function configuredAdministrators(
   value: string | undefined = process.env.SEED_ADMIN_PHONES,
-): string[] {
+): AdminSeedEntry[] {
   return (value ?? '')
     .split(',')
     .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const separator = entry.indexOf(':');
+
+      if (separator === -1) {
+        return { phone: entry, fullName: null };
+      }
+
+      const fullName = entry.slice(separator + 1).trim();
+
+      return {
+        phone: entry.slice(0, separator).trim(),
+        // A trailing colon with nothing after it is "no name", not an empty one: the
+        // column is nullable precisely so an unnamed administrator stays unnamed.
+        fullName: fullName.length > 0 ? fullName : null,
+      };
+    });
 }

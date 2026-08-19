@@ -40,9 +40,15 @@ a profile contract.
 | M13 | Payme and CLICK top-up | release | **done** — both providers, callbacks verified, crediting exactly once; needs merchant accounts to be switched on |
 
 **Every milestone is now built.** What stands between this and a release is not code: the SMS
-provider (M1), the two payment merchant accounts (M13), a first administrator account on the
-deployed instance, the client sign-offs listed at the top of [TODO.md](TODO.md), and a CI
-workflow.
+templates through Eskiz moderation (M1), the two payment merchant accounts (M13), a stable
+public HTTPS host for the payment callbacks, and the client sign-offs listed at the top of
+[TODO.md](TODO.md).
+
+Two items that used to be on that list are off it, and for different reasons. **The first
+administrator is granted by the seeder** since 2026-08-19 — `SEED_ADMIN_PHONES` carries
+`phone[:full name]`, and no route grants the role on purpose. **The CI workflow is deferred
+indefinitely** on the client's direction of the same date: the owner will wire it up before
+going to production, and it is deliberately not counted as outstanding work here.
 
 The 2026-08-10 revision added M12 and M13, and they were not small: money, an append-only
 ledger, two payment providers and a change to a privacy rule that was already live. Nothing in

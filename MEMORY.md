@@ -193,10 +193,12 @@ is purged *after* its period, never before.
 
 **The collision M10 left open is resolved.** `admin_audit_log.actor_user_id` is `RESTRICT`,
 so an administrator who has acted cannot be deleted. The answer is not to relax the
-constraint but to erase the *person* and keep the *actor*: phone, Telegram identity and
-login history cleared, row and id retained, so every past decision still resolves to a
-distinct administrator without naming one. `users_purged_has_no_credential` makes the
-half-done version of that unrepresentable rather than merely unwritten.
+constraint but to erase the *person* and keep the *actor*: phone, Telegram identity, name
+and login history cleared, row and id retained, so every past decision still resolves to a
+distinct administrator without naming one. `users_purged_has_no_credential` and
+`users_purged_has_no_name` make the half-done versions of that unrepresentable rather than
+merely unwritten - two checks, because "still reachable" and "still named" are different
+failures and only one of them is about a credential.
 
 Two things cost real time and are worth remembering:
 

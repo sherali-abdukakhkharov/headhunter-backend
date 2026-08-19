@@ -713,7 +713,7 @@ and Telegram performs none on a bot upload.
 ## 10a. Administration and the audit log
 
 §10 is a role inside the mobile app, so its routes are ordinary endpoints behind
-`@RequireRole('admin')` (§1). Four decisions from M10 are worth keeping.
+`@RequireRole('admin')` (§1). Five decisions from M10 are worth keeping.
 
 - **The audit log is append-only in the database.** Three *statement-level* triggers refuse
   `UPDATE`, `DELETE` and `TRUNCATE` on `admin_audit_log`. Statement-level because a
@@ -727,10 +727,21 @@ and Telegram performs none on a bot upload.
   cascade would resolve the collision by quietly destroying the trail.
 
   *Resolved in M11, and the constraint got the answer it was holding out for:* the person
-  is erased and the actor is kept. Phone, Telegram identity and login history are cleared,
-  the row and its id stay, and a database check makes "purged but still holding a phone
-  number" unrepresentable. Both duties hold; neither was traded away. `RESTRICT` forced
-  that conversation instead of pre-empting it, which was the whole point of choosing it.
+  is erased and the actor is kept. Phone, Telegram identity, name and login history are
+  cleared, the row and its id stay, and two database checks make "purged but still holding a
+  phone number" and "anonymized but still named" unrepresentable. Both duties hold; neither
+  was traded away. `RESTRICT` forced that conversation instead of pre-empting it, which was
+  the whole point of choosing it.
+- **`users.full_name` exists because a role is not a profile.** Every other name in the
+  product belongs to one - `candidate_profiles.full_name` is a declared schema field,
+  `employers.full_name` is a verification contact, `companies.public_name` is what a
+  candidate sees - and an administrator has none of them. So §10.2's user list rendered a
+  seeded administrator nameless and its name filter, which searched those three columns,
+  could not find one: an administrator could not look a colleague up. The column is written
+  by configuration only (`SEED_ADMIN_PHONES` carries `phone[:full name]`), stays `NULL` for
+  every account that registers through the app, and sits **last** in the display
+  `COALESCE` - a profile name is the one the person maintains, this is the one the
+  deployment was told.
 - **What the log adds, given six BR-08 history tables.** It is the cross-cutting record.
   Where an action also writes a history row, that row is authoritative (same transaction as
   the change) and the audit row is the index over it; where an action has **no** history

@@ -4,15 +4,15 @@
 scenarios". This is that, plus the command that reproduces it - a result nobody can re-run
 is a screenshot.
 
-**As of 2026-08-19, on schema version 21: 978 tests, all passing.**
+**As of 2026-08-20, on schema version 22: 1023 tests, all passing.**
 
 | Suite | Command | Suites | Tests | Needs Postgres |
 |---|---|---|---|---|
-| Unit / functional | `pnpm test` | 26 | 485 | no |
-| Integration | `pnpm test:int` | 23 | 493 | yes |
+| Unit / functional | `pnpm test` | 28 | 513 | no |
+| Integration | `pnpm test:int` | 24 | 510 | yes |
 | **Acceptance (UAT-01..23 of 24)** | `pnpm test:int -- --testRegex uat` | 1 | 24 | yes |
 
-The acceptance suite is a subset of the integration one; 978 is the sum of the first two
+The acceptance suite is a subset of the integration one; 1023 is the sum of the first two
 rows, counted once.
 
 > **Three integration suites were failing in `afterAll` before M13**, and every test inside
@@ -146,13 +146,22 @@ Beyond the scenarios themselves, the parts worth naming to a reviewer:
 - **BR-14's purge** (`retention.int.spec.ts`): an account entangled with a company logo,
   verification evidence and a message attachment, which is the shape a plain
   `DELETE FROM users` fails on.
+- **The seeder that grants the `admin` role** (`infra/db/admin-seed.spec.ts` +
+  `admin-seed.int.spec.ts`): worth its runtime because `pnpm seed` runs against production on
+  every deploy, so the *second* run is the normal case. The parsing is pinned without a
+  database — a name containing a colon, a trailing separator, the whitespace a human leaves in
+  a `.env` file — and the writing is pinned against a real one, because the idempotence is the
+  `(user_id, role)` primary key rather than a check in the loop. `users_purged_has_no_name` is
+  there too: an anonymized administrator cannot be re-named by a re-seed.
 
 ## Known gaps in the evidence
 
 - **No load test in CI.** §12.4's budgets are measured on demand by `pnpm perf`, with the
   numbers in [PERFORMANCE.md](PERFORMANCE.md); nothing re-checks them automatically.
-- **No CI workflow yet.** The suites run locally and before every commit. Wiring them to a
-  pipeline is an open M0 item.
+- **No CI workflow, deferred indefinitely** (client direction, 2026-08-19). The suites run
+  locally and before every commit; the owner will wire the pipeline up before production.
+  Recorded here because it is a gap in the *evidence* — nothing but a person re-runs these —
+  not because it is outstanding work on this side.
 - **The Telegram file service is stubbed in tests** that are about *who may read a file*
   rather than about Telegram. `files.int.spec.ts` covers the real client.
 - **No test drives the Flutter client**; this is the backend's evidence only.

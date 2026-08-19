@@ -1414,9 +1414,17 @@ now a resolved one. The moderation queue marks which items carry a restriction, 
 approving one is the only way it ever goes live.
 
 **Both flags need an administrator to exist.** There is no route that grants the `admin`
-role — `POST /auth/roles` refuses it by design — so the first one is a single `INSERT INTO
-user_roles`. On an instance with no administrator, set both flags to false or every
-employer parks in `under_review` and every vacancy in `under_moderation`.
+role — `POST /auth/roles` refuses it by design — so the first one comes from outside the
+API: `pnpm seed` grants it to the numbers in `SEED_ADMIN_PHONES`
+([DEPLOYMENT.md](DEPLOYMENT.md)). On an instance with no administrator, set both flags to
+false or every employer parks in `under_review` and every vacancy in `under_moderation`.
+
+**`name` on a user row may be null, and it is not one column.** The server answers with the
+first name the account actually has: a candidate's profile name, else a company's public or
+legal name, else an individual employer's name, else the account's own `full_name` — which
+only the seeded administrators have. `name=` searches all of them. An account that has
+registered but filled nothing in has no name yet; render the phone number, not an empty
+string.
 
 ### The audit log is append-only in the database (§10.4)
 

@@ -632,6 +632,7 @@ export interface UserRoles {
 
 export interface Users {
   created_at: Generated<Timestamp>;
+  full_name: string | null;
   id: Generated<string>;
   last_login_at: Timestamp | null;
   locale: Generated<LocaleCode>;

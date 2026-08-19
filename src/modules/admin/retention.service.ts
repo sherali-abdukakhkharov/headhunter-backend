@@ -278,13 +278,16 @@ export class RetentionService {
           .execute();
       } else {
         // The actor survives; the person does not. `users_purged_has_no_credential`
-        // refuses this write if it leaves a credential behind.
+        // refuses this write if it leaves a credential behind, and
+        // `users_purged_has_no_name` if it leaves the name behind - two checks because
+        // reachability and identity are two different failures.
         await trx
           .updateTable('users')
           .set({
             phone: null,
             telegram_user_id: null,
             telegram_username: null,
+            full_name: null,
             last_login_at: null,
             purged_at: now,
             updated_at: now,
