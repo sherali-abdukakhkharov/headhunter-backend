@@ -52,6 +52,20 @@ export interface Invitation {
   id: string;
   employerUserId: string;
   candidateUserId: string;
+  /**
+   * The candidate's name, so a sent list is readable.
+   *
+   * **A name is not protected data here**: §11.1 protects the phone number, e-mail and CV,
+   * §7.3 puts the name on the search card the employer found this candidate through, and
+   * §9.2 row 4 already names them in the notification the employer gets when they respond.
+   * Withholding it on the list the employer *sent* would be inconsistent with all three.
+   *
+   * Null because `candidate_profiles.full_name` is nullable, and never because a rule
+   * withheld it. It is not the BR-14 case: `invitations.candidate_user_id` references
+   * `candidate_profiles.user_id` `ON DELETE CASCADE`, so an erased candidate's invitations
+   * are deleted with their profile rather than left nameless.
+   */
+  candidateName: string | null;
   vacancyId: string | null;
   occupationId: string | null;
   regionId: string | null;
@@ -73,6 +87,7 @@ interface InvitationRow {
   id: string;
   employer_user_id: string;
   candidate_user_id: string;
+  candidate_name: string | null;
   vacancy_id: string | null;
   occupation_id: string | null;
   region_id: string | null;
@@ -442,11 +457,31 @@ export class InvitationsService {
     return row?.full_name ?? '';
   }
 
-  async byId(invitationId: string): Promise<Invitation> {
-    const row = await this.db
+  /**
+   * Every read of an invitation, with the candidate's name attached.
+   *
+   * One helper rather than the same `LEFT JOIN` written three times: the sent list, the
+   * inbox and the single read must not be able to disagree about whether an invitation has
+   * a name on it. `LEFT` because `full_name` is nullable, not because the row can be
+   * missing - the foreign key cascades, so there is no invitation without a profile - and
+   * every column is qualified because `candidate_profiles` also has a `created_at`, which
+   * makes an unqualified `ORDER BY` here an ambiguous-column error rather than a wrong sort.
+   */
+  private readInvitations() {
+    return this.db
       .selectFrom('invitations')
-      .selectAll()
-      .where('id', '=', invitationId)
+      .leftJoin(
+        'candidate_profiles',
+        'candidate_profiles.user_id',
+        'invitations.candidate_user_id',
+      )
+      .selectAll('invitations')
+      .select('candidate_profiles.full_name as candidate_name');
+  }
+
+  async byId(invitationId: string): Promise<Invitation> {
+    const row = await this.readInvitations()
+      .where('invitations.id', '=', invitationId)
       .executeTakeFirst();
 
     if (!row) {
@@ -489,20 +524,23 @@ export class InvitationsService {
   ): Promise<Invitation[]> {
     await this.employers.assertVerified(employerUserId);
 
-    let query = this.db
-      .selectFrom('invitations')
-      .selectAll()
-      .where('employer_user_id', '=', employerUserId);
+    let query = this.readInvitations().where(
+      'invitations.employer_user_id',
+      '=',
+      employerUserId,
+    );
 
     if (filters.vacancyId) {
-      query = query.where('vacancy_id', '=', filters.vacancyId);
+      query = query.where('invitations.vacancy_id', '=', filters.vacancyId);
     }
 
     if (filters.status) {
-      query = query.where('status', '=', filters.status);
+      query = query.where('invitations.status', '=', filters.status);
     }
 
-    const rows = await query.orderBy('created_at', 'desc').execute();
+    const rows = await query
+      .orderBy('invitations.created_at', 'desc')
+      .execute();
 
     return rows.map(toInvitation);
   }
@@ -516,11 +554,9 @@ export class InvitationsService {
    * not have it vanish.
    */
   async listReceived(candidateUserId: string): Promise<Invitation[]> {
-    const rows = await this.db
-      .selectFrom('invitations')
-      .selectAll()
-      .where('candidate_user_id', '=', candidateUserId)
-      .orderBy('created_at', 'desc')
+    const rows = await this.readInvitations()
+      .where('invitations.candidate_user_id', '=', candidateUserId)
+      .orderBy('invitations.created_at', 'desc')
       .execute();
 
     return rows.map(toInvitation);
@@ -714,6 +750,7 @@ function toInvitation(row: InvitationRow): Invitation {
     id: row.id,
     employerUserId: row.employer_user_id,
     candidateUserId: row.candidate_user_id,
+    candidateName: row.candidate_name,
     vacancyId: row.vacancy_id,
     occupationId: row.occupation_id,
     regionId: row.region_id,

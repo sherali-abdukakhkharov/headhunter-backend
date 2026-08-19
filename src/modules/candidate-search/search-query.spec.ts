@@ -75,6 +75,21 @@ describe('the card query and §11.1', () => {
 
     expect(compiled.sql).not.toContain('vacancy_shortlists');
   });
+
+  it('scopes the invitation status to this employer and this vacancy', () => {
+    const compiled = sql`SELECT ${cardColumns('e1', 'v1')}`.compile(db);
+
+    // Both halves matter and for different reasons. Without the employer predicate one
+    // employer would read another's invitation state off a shared candidate, which is
+    // §11.1's kind of leak. Without `IS NOT DISTINCT FROM` the general slot - the one with
+    // a null `vacancy_id` - would be unreachable, because `= NULL` matches nothing, and the
+    // card would report "not invited" for a candidate who cannot be invited again.
+    expect(compiled.sql).toContain('i.employer_user_id =');
+    expect(compiled.sql).toContain('i.vacancy_id IS NOT DISTINCT FROM');
+    // Bound, not interpolated - the same discipline the injection suite asserts wholesale.
+    expect(compiled.sql).not.toContain('v1');
+    expect(compiled.parameters).toContain('v1');
+  });
 });
 
 describe('whereFilters', () => {

@@ -677,6 +677,82 @@ describe('the candidate’s response (§8.2)', () => {
     ).toEqual({ accepted: 1 });
   });
 
+  it('names the candidate on both sides, so a sent list is readable', async () => {
+    // Without this an employer's sent list is thirty rows of "Sent · 14:32 · Night-shift
+    // welder" and the only way to tell them apart is a per-row read of the candidate
+    // route - which is logged protected-data access (§11.1) and is not meant to be
+    // called speculatively. Diluting that log is the harm; the request count is the
+    // lesser problem.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+    const created = await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId,
+    });
+
+    expect(created.candidateName).toBe('Anvar Karimov');
+
+    const [sent] = await invitations.listSent(employerUserId, { vacancyId });
+    expect(sent?.candidateName).toBe('Anvar Karimov');
+
+    // The inbox carries it too, where it is simply the reader's own name. One join and one
+    // mapper, rather than a field that is structurally null on one route and not the other.
+    const [received] = await invitations.listReceived(candidateUserId);
+    expect(received?.candidateName).toBe('Anvar Karimov');
+
+    expect((await invitations.byId(created.id)).candidateName).toBe(
+      'Anvar Karimov',
+    );
+  });
+
+  it('leaves the name null rather than empty when the profile has none', async () => {
+    // `full_name` is nullable on `candidate_profiles`, so the read has to answer null and
+    // not '' - the client renders no name line for null and a blank row for an empty
+    // string. Written directly, because the service will not accept a null name on a
+    // profile that is complete enough to be invited.
+    //
+    // Note what this test is *not*: the BR-14 case. `invitations.candidate_user_id`
+    // references `candidate_profiles.user_id` ON DELETE CASCADE, so an erased candidate's
+    // invitations are deleted with their profile rather than left nameless - which the
+    // first version of this test discovered by asserting the opposite.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+    await invitations.invite(employerUserId, { candidateUserId, vacancyId });
+
+    await db
+      .updateTable('candidate_profiles')
+      .set({ full_name: null })
+      .where('user_id', '=', candidateUserId)
+      .execute();
+
+    const [sent] = await invitations.listSent(employerUserId, { vacancyId });
+
+    expect(sent).toBeDefined();
+    expect(sent?.candidateName).toBeNull();
+  });
+
+  it('deletes the invitation with the profile, so no row outlives its candidate', async () => {
+    // The cascade that made the test above wrong, pinned as a property: BR-14's purge
+    // deletes `candidate_profiles`, and §8.2's rows go with it. An employer's sent list
+    // loses the row entirely rather than showing a nameless one, which is the stronger
+    // erasure of the two and the one the schema already chose.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+    await invitations.invite(employerUserId, { candidateUserId, vacancyId });
+
+    await db
+      .deleteFrom('candidate_profiles')
+      .where('user_id', '=', candidateUserId)
+      .execute();
+
+    expect(await invitations.listSent(employerUserId, { vacancyId })).toEqual(
+      [],
+    );
+  });
+
   it('keeps an invitation readable after its vacancy closes', async () => {
     const employerUserId = await newEmployer();
     const candidateUserId = await newCandidate();

@@ -753,6 +753,44 @@ admission gate rather than a volume limit.
 - [ ] Not asked for: a **per-vacancy** cap. §7.4's "invited counts against the target" hints at
       one; the client asked for a daily cap per employer, and raising it later is additive
 
+### The sent list could say *what*, not *to whom* *(added 2026-08-20, mobile request)*
+
+Two fields, both about letting an employer act without a round trip they should not be making.
+
+- [x] **`candidateName` on every invitation read.** Without it a sent list is thirty rows of
+      "Sent · 14:32 · Night-shift welder", and the only way to tell them apart was a per-row
+      read of `/candidate-search/candidates/{id}` - which is **logged protected-data access**
+      (§11.1) and is not meant to be called speculatively. Diluting that log was the harm; the
+      request count was the lesser problem. A name is not protected data here: §11.1 covers the
+      phone, e-mail and CV, §7.3 already puts the name on the card the employer found them
+      through, and §9.2 row 4 already names them in the response notification. Flat string, not
+      a nested `candidate` object, which would invite a protected field later. Present on the
+      inbox too, where it is the reader's own name - one join, one mapper, no route-dependent
+      nulls
+- [x] **`invitationStatus` on the §7.3 card**, so Invite can be offered exactly when it is
+      valid, the way the candidate's feed uses `applicationStatus`. **Scoped like
+      `isShortlisted`, not like `applicationStatus`**, and that asymmetry is the whole design:
+      BR-07's slot is (employer, candidate, vacancy), so "have I ever invited them" would
+      report `sent` for a candidate the employer may still invite to *this* vacancy - a
+      disabled button the server would have accepted. With no `vacancyId` it reads the
+      **general** slot, reached with `IS NOT DISTINCT FROM`, the query-side twin of the index's
+      `NULLS NOT DISTINCT`; a plain `=` against null matches nothing and the card would say
+      "not invited" about a candidate who cannot be invited again
+- [x] Cheap by construction: the card's relationship fields are evaluated **past the ranked
+      page**, over at most `limit` rows, so a fourth one needed no §12.4 re-measurement
+- [~] **Not built: a `candidateUserId` filter on `/invitations/sent`.** Mobile offered it as the
+      alternative to the card field and it is ~8 lines. Declined because the card field answers
+      the same question without a lookup call - but the reason it might still be wanted is
+      independent of the UI: `/invitations/sent` is **unpaged**, and at 30/day an employer
+      accumulates thousands of rows, so a filter is what would turn an unbounded read into a
+      bounded one. Paging is the better answer if that day comes
+- [x] Answered without a change: **can an employer who arrived from an accepted invitation
+      download the files they can see?** Yes. `filesOf` builds `downloadPath` from the
+      interaction that granted access - `/applications/…`, `/invitations/…` or `/unlocks/…` -
+      all three routes exist and all three are tested end to end, bytes included. A client that
+      constructs an application-scoped URL instead of following `downloadPath` breaks for two
+      of the three cases, which is what mobile had done
+
 ### Tests *(done - 85 unit, 66 integration across both halves)*
 - [x] Test: search result cards never contain a phone number - asserted twice, once
       mechanically over the compiled SQL (no `users`, no `phone`) and once over a real

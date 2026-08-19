@@ -18,6 +18,9 @@ import {
 } from 'class-validator';
 
 import type { DictionaryCategory } from '@infra/db/database.types';
+// The four statuses declared once, the same way `CATEGORIES` is: a second copy here would
+// be a list that can disagree with `POST /invitations` about what it can answer.
+import { INVITATION_STATUSES } from '@modules/invitations/dto/invitations.dto';
 import { CATEGORIES } from '@modules/schemas/dto/schemas.dto';
 
 import type { CandidateSearchSort } from '../search-filters';
@@ -486,6 +489,29 @@ export class CandidateCardDto {
       'The candidate’s stage on any of this employer’s vacancies, or null.',
   })
   applicationStatus!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: INVITATION_STATUSES,
+    description:
+      'The invitation occupying BR-07’s slot for **this** search, or null when the slot is ' +
+      'free — so an employer can be offered Invite exactly when it is valid, the way the ' +
+      'candidate’s feed uses `applicationStatus`.\n\n' +
+      '**Scoped like `isShortlisted`, not like `applicationStatus`.** BR-07’s slot is ' +
+      '(employer, candidate, vacancy): with a `vacancyId` this is the invitation for that ' +
+      'vacancy, and without one it is the *general* invitation, which is what a search ' +
+      'with no vacancy context is about to send. It is deliberately **not** "have I ever ' +
+      'invited them" — an employer who invited this candidate to a different vacancy may ' +
+      'invite them to this one, and a card that said `sent` there would disable a button ' +
+      'the server would have accepted.\n\n' +
+      '**Only `sent` and `details_requested` block.** Those two are the states BR-07’s ' +
+      'partial index covers, so `POST /invitations` answers `409 ' +
+      '`invitation.already_invited`` for them. `accepted` and `declined` free the slot — ' +
+      'render them as history ("invited, accepted") and keep Invite enabled. The `409` ' +
+      'still has to be handled either way: the slot can be taken between this search and ' +
+      'the tap.',
+  })
+  invitationStatus!: string | null;
 
   @ApiProperty({ description: '§7.3’s overall requirement match, 0–100.' })
   matchScore!: number;

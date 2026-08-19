@@ -146,6 +146,26 @@ export class InvitationDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
+      'The candidate’s name, so an employer’s sent list can tell one row from another ' +
+      'without a per-row read of `/candidate-search/candidates/{id}` — which is a logged ' +
+      'protected-data access (§11.1) and is not meant to be called speculatively.\n\n' +
+      '**A name is not protected data here.** §11.1 protects the phone number, e-mail and ' +
+      'CV; §7.3 puts the name on the search card the employer found this candidate ' +
+      'through; and §9.2 row 4 already names them in the notification the employer gets ' +
+      'when they respond. So this is flat rather than a nested `candidate` object, which ' +
+      'would invite a second field later that *is* protected.\n\n' +
+      '`null` is a normal answer and means "render no name line" — never a placeholder and ' +
+      'never the id. It happens when the candidate has no name on their profile. It is ' +
+      '*not* what BR-14 leaves behind: an erased candidate’s invitations are deleted with ' +
+      'their profile, so the row disappears rather than losing its name.\n\n' +
+      'Present on every invitation read, including the candidate’s own inbox, where it is ' +
+      'simply their own name. One join, one mapper, no route-dependent nulls.',
+  })
+  candidateName!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
       'Null for a general invitation, which carries its own details.',
   })
   vacancyId!: string | null;

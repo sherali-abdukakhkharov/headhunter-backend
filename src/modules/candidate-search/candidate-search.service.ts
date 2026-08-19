@@ -76,6 +76,13 @@ export interface CandidateCard {
   isShortlisted: boolean;
   /** The candidate's stage on any of this employer's vacancies, or null (§6.5). */
   applicationStatus: string | null;
+  /**
+   * The invitation occupying BR-07's slot for *this* search's vacancy, or null.
+   *
+   * Deliberately not "have I ever invited them": the slot is per vacancy, so an employer
+   * who invited this candidate elsewhere may still invite them here.
+   */
+  invitationStatus: string | null;
   matchScore: number;
   matchBreakdown: {
     group: string;
@@ -124,6 +131,7 @@ interface CardRow {
   note: string | null;
   is_shortlisted: boolean;
   application_status: string | null;
+  invitation_status: string | null;
   match_score: string;
   matched: Record<string, number>;
 }
@@ -630,6 +638,7 @@ export class CandidateSearchService {
       note: row.note,
       isShortlisted: row.is_shortlisted,
       applicationStatus: row.application_status,
+      invitationStatus: row.invitation_status,
       matchScore: Number(row.match_score),
       matchBreakdown: groups.map((group) => ({
         group: group.code,

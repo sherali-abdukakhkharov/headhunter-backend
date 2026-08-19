@@ -1078,6 +1078,37 @@ skill scores purely on that skill, and a search with no filters scores everyone 
 `groups` on the response is the same list with the weights, so a client can render the
 explanation without hardcoding them.
 
+### The four relationship fields, and how each is scoped *(added 2026-08-20)*
+
+A card carries what the employer needs in order to decide, so a decision does not cost a
+round trip per row. The scoping differs per field and the difference is the point:
+
+| Field | Scope | Null / false when |
+|---|---|---|
+| `isSaved` | this employer, any vacancy | never saved |
+| `note` | this employer | no note written |
+| `isShortlisted` | this employer **and this `vacancyId`** | no `vacancyId` in the request |
+| `applicationStatus` | this employer, **any** of their vacancies | never applied |
+| `invitationStatus` | this employer **and this `vacancyId`** | that slot is free |
+
+**`invitationStatus` is scoped like `isShortlisted`, not like `applicationStatus`**, and
+that is a deliberate asymmetry rather than an inconsistency. BR-07's slot is
+(employer, candidate, vacancy), so an employer who invited this candidate to a *different*
+vacancy may invite them to this one. A field meaning "have I ever invited them" would report
+`sent` there, and the client would disable a button the server would have accepted — the
+same failure as offering one it will refuse, arrived at from the other side.
+
+With **no** `vacancyId` the field reads the *general* invitation slot, because a search with
+no vacancy context is about to send a general invitation. That is the slot with a null
+`vacancy_id`, and the query reaches it with `IS NOT DISTINCT FROM` — the twin of the index's
+own `NULLS NOT DISTINCT`.
+
+**Only `sent` and `details_requested` block a new invitation.** Those are the two states
+BR-07's partial index covers, so `POST /invitations` answers `409
+invitation.already_invited` for them. `accepted` and `declined` free the slot: render them
+as history ("invited, declined") and keep Invite enabled. The `409` still has to be handled
+either way — the slot can be taken between the search and the tap.
+
 Sorts: `match` (default), `recent`, `experience`, `salary`, `proximity`.
 
 **`proximity` is tiered, not a distance** — same district, then same region, then
@@ -1158,6 +1189,30 @@ salary fields, `scheduleNote` and `message` itself.
 
 `scheduleNote` is free text on purpose: a general invitation is a message, and the
 structured version of it is what publishing a vacancy is for.
+
+### `candidateName` on the invitation *(added 2026-08-20)*
+
+Every invitation read carries `candidateName`, so an employer's sent list can tell one row
+from another. Without it the list is thirty rows of "Sent · 14:32 · Night-shift welder", and
+the only way to identify them is a per-row read of
+`/candidate-search/candidates/{id}` — which is **logged protected-data access** (§11.1) and
+is not meant to be called speculatively. Diluting that log is the harm; the request count is
+the lesser problem.
+
+**A name is not protected data here.** §11.1 protects the phone number, e-mail and CV; §7.3
+already puts the name on the search card the employer found this candidate through; and
+§9.2 row 4 already names them in the notification the employer receives when they respond.
+So the field is a **flat string**, not a nested `candidate` object — a nested one invites a
+second field later that *is* protected.
+
+`null` means "render no name line" — never a placeholder and never the id. It happens when
+the candidate has no name on their profile. It is **not** what BR-14 leaves behind:
+`invitations.candidate_user_id` references `candidate_profiles.user_id` `ON DELETE CASCADE`,
+so an erased candidate's invitations are deleted with their profile and the row disappears
+rather than losing its name.
+
+Present on **every** invitation read, including the candidate's own `received` list, where
+it is simply their own name. One join, one mapper, no route-dependent nulls.
 
 ### What sending one requires
 

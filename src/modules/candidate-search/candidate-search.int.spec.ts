@@ -16,6 +16,7 @@ import { CandidateViewService } from '@modules/applications/candidate-view.servi
 import { CandidatesService } from '@modules/candidates/candidates.service';
 import { HistoryService } from '@modules/candidates/history.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
+import { InvitationsService } from '@modules/invitations/invitations.service';
 import { EmployersService } from '@modules/employers/employers.service';
 import { VerificationService } from '@modules/employers/verification.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
@@ -49,6 +50,7 @@ let applications: ApplicationsService;
 let search: CandidateSearchService;
 let searchCapped: CandidateSearchService;
 let candidateView: CandidateViewService;
+let invitations: InvitationsService;
 
 /**
  * The real notifications service over a no-op sender.
@@ -135,6 +137,17 @@ beforeAll(() => {
     employers,
     new HiringInteractionService(db),
     filesStub,
+  );
+  // Here so the card's `invitationStatus` is checked against invitations the production
+  // write path created - the field exists to predict what `POST /invitations` will answer,
+  // so a hand-inserted row would be testing the query against itself.
+  invitations = new InvitationsService(
+    db,
+    employers,
+    dictionaries,
+    new IdempotencyService(db),
+    notifications,
+    config,
   );
 });
 
@@ -1074,6 +1087,161 @@ describe('UAT-06: search opened from a vacancy', () => {
     await expect(search.prefill(stranger, vacancyId)).rejects.toThrow(
       NotFoundError,
     );
+  });
+});
+
+describe('§7.3’s card knows whether Invite is still available (BR-07)', () => {
+  /** §8.2's other shape: an invitation carrying its own occupation, place and pay. */
+  async function generalInvitationInput(candidateUserId: string) {
+    const { regionId, districtId } = await region();
+
+    return {
+      candidateUserId,
+      occupationId: await seededId('occupation', 'call_centre_operator'),
+      regionId,
+      districtId,
+      salaryFrom: 4_000_000,
+      salaryTo: 6_000_000,
+      salaryPeriodId: await seededId('payment_period', 'monthly'),
+      scheduleNote: 'Five days a week, 09:00 to 18:00.',
+      message:
+        'We are hiring twenty operators; call Anvar on the number above.',
+    };
+  }
+
+  /** The card for one candidate, in the vacancy context the employer is working in. */
+  async function cardFor(
+    employerUserId: string,
+    candidateUserId: string,
+    vacancyId?: string,
+  ) {
+    const { items } = await search.search(employerUserId, {
+      filters: {},
+      sort: 'recent',
+      limit: 50,
+      offset: 0,
+      ...(vacancyId ? { vacancyId } : {}),
+    });
+
+    return items.find((item) => item.candidateUserId === candidateUserId);
+  }
+
+  it('is null until this employer has invited them', async () => {
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    expect(
+      (await cardFor(employerUserId, candidateUserId, vacancyId))
+        ?.invitationStatus,
+    ).toBeNull();
+  });
+
+  it('reports the open invitation for the vacancy in context', async () => {
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    await invitations.invite(employerUserId, { candidateUserId, vacancyId });
+
+    expect(
+      (await cardFor(employerUserId, candidateUserId, vacancyId))
+        ?.invitationStatus,
+    ).toBe('sent');
+  });
+
+  it('stays null for a *different* vacancy, because BR-07’s slot is per vacancy', async () => {
+    // The reason this field is scoped like `isShortlisted` and not like
+    // `applicationStatus`. "Have I ever invited them" would report `sent` here and the
+    // client would disable a button the server would have accepted - the same failure as
+    // offering one it will refuse, arrived at from the other side.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const invitedFor = await publishedVacancy(employerUserId);
+    const other = await publishedVacancy(employerUserId);
+
+    await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId: invitedFor,
+    });
+
+    expect(
+      (await cardFor(employerUserId, candidateUserId, invitedFor))
+        ?.invitationStatus,
+    ).toBe('sent');
+    expect(
+      (await cardFor(employerUserId, candidateUserId, other))?.invitationStatus,
+    ).toBeNull();
+  });
+
+  it('reads the general slot when the search has no vacancy context', async () => {
+    // With no vacancy the employer is about to send a *general* invitation, whose BR-07
+    // slot is the one with a null `vacancy_id`. `IS NOT DISTINCT FROM` is what makes that
+    // slot reachable at all - a plain `=` against null matches nothing, so this test is
+    // the one that fails if somebody "simplifies" the predicate.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    await invitations.invite(employerUserId, { candidateUserId, vacancyId });
+
+    // A vacancy invitation does not occupy the general slot.
+    expect(
+      (await cardFor(employerUserId, candidateUserId))?.invitationStatus,
+    ).toBeNull();
+
+    await invitations.invite(
+      employerUserId,
+      await generalInvitationInput(candidateUserId),
+    );
+
+    expect(
+      (await cardFor(employerUserId, candidateUserId))?.invitationStatus,
+    ).toBe('sent');
+    // And the vacancy slot still answers for itself.
+    expect(
+      (await cardFor(employerUserId, candidateUserId, vacancyId))
+        ?.invitationStatus,
+    ).toBe('sent');
+  });
+
+  it('keeps reporting a declined invitation, which frees the slot', async () => {
+    // The state the client must not read as "cannot invite": BR-07's index covers only
+    // `sent` and `details_requested`, so a declined invitation may be followed by another.
+    // The status is still worth returning - "invited, declined" is history an employer
+    // wants - which is why this is a status and not a boolean.
+    const employerUserId = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const vacancyId = await publishedVacancy(employerUserId);
+
+    const invitation = await invitations.invite(employerUserId, {
+      candidateUserId,
+      vacancyId,
+    });
+    await invitations.respond(candidateUserId, invitation.id, 'declined', null);
+
+    expect(
+      (await cardFor(employerUserId, candidateUserId, vacancyId))
+        ?.invitationStatus,
+    ).toBe('declined');
+  });
+
+  it('never reports another employer’s invitation', async () => {
+    const owner = await newEmployer();
+    const stranger = await newEmployer();
+    const candidateUserId = await newCandidate();
+    const ownerVacancy = await publishedVacancy(owner);
+    const strangerVacancy = await publishedVacancy(stranger);
+
+    await invitations.invite(owner, {
+      candidateUserId,
+      vacancyId: ownerVacancy,
+    });
+
+    expect(
+      (await cardFor(stranger, candidateUserId, strangerVacancy))
+        ?.invitationStatus,
+    ).toBeNull();
   });
 });
 

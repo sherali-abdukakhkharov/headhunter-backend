@@ -517,10 +517,15 @@ export function matchedJson(groups: ScoreGroup[]): RawBuilder<unknown> {
  *
  * `photoFileId` is the one exception to files being BR-09-gated, argued in the service.
  *
- * The three relationship columns save the client a round trip per card, the way the
+ * The four relationship columns save the client a round trip per card, the way the
  * candidate's feed carries `isSaved` and `applicationStatus`: an employer looking at a
  * result needs to know whether they already saved this person, already shortlisted them
- * for this vacancy, and whether the candidate has applied to them.
+ * for this vacancy, whether the candidate has applied to them, and whether they have
+ * already been invited to the thing the employer is about to invite them to.
+ *
+ * All four are correlated subqueries or joins evaluated **past the ranked page**, so they
+ * run over at most `limit` rows (50) rather than over the candidate set. That is what makes
+ * a fourth one cheap enough to add without re-measuring §12.4.
  */
 export function cardColumns(
   employerUserId: string,
@@ -570,7 +575,23 @@ export function cardColumns(
       JOIN vacancies v ON v.id = a.vacancy_id
       WHERE v.employer_user_id = ${employerUserId} AND a.candidate_user_id = p.user_id
       ORDER BY a.created_at DESC LIMIT 1
-    ) AS application_status
+    ) AS application_status,
+    -- "Have I already invited this person for what I am about to invite them to?" - which
+    -- is a narrower question than "have I ever invited them", and the narrow one is the
+    -- useful one. BR-07's slot is (employer, candidate, vacancy), so an employer who
+    -- invited this candidate to a *different* vacancy may invite them to this one, and a
+    -- card that said "invited" would disable a button the server would have accepted.
+    --
+    -- IS NOT DISTINCT FROM is the query-side twin of the index's NULLS NOT DISTINCT: with
+    -- no vacancy in context the employer is about to send a *general* invitation, whose
+    -- slot is the one with a null vacancy_id, and a plain = would match nothing.
+    (
+      SELECT i.status FROM invitations i
+      WHERE i.employer_user_id = ${employerUserId}
+        AND i.candidate_user_id = p.user_id
+        AND i.vacancy_id IS NOT DISTINCT FROM ${vacancyId}::uuid
+      ORDER BY i.created_at DESC LIMIT 1
+    ) AS invitation_status
   `;
 }
 

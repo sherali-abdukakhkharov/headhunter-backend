@@ -9539,6 +9539,17 @@
             "nullable": true,
             "description": "The candidate’s stage on any of this employer’s vacancies, or null."
           },
+          "invitationStatus": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "sent",
+              "details_requested",
+              "accepted",
+              "declined"
+            ],
+            "description": "The invitation occupying BR-07’s slot for **this** search, or null when the slot is free — so an employer can be offered Invite exactly when it is valid, the way the candidate’s feed uses `applicationStatus`.\n\n**Scoped like `isShortlisted`, not like `applicationStatus`.** BR-07’s slot is (employer, candidate, vacancy): with a `vacancyId` this is the invitation for that vacancy, and without one it is the *general* invitation, which is what a search with no vacancy context is about to send. It is deliberately **not** \"have I ever invited them\" — an employer who invited this candidate to a different vacancy may invite them to this one, and a card that said `sent` there would disable a button the server would have accepted.\n\n**Only `sent` and `details_requested` block.** Those two are the states BR-07’s partial index covers, so `POST /invitations` answers `409 `invitation.already_invited`` for them. `accepted` and `declined` free the slot — render them as history (\"invited, accepted\") and keep Invite enabled. The `409` still has to be handled either way: the slot can be taken between this search and the tap."
+          },
           "matchScore": {
             "type": "number",
             "description": "§7.3’s overall requirement match, 0–100."
@@ -9674,6 +9685,11 @@
           },
           "candidateUserId": {
             "type": "string"
+          },
+          "candidateName": {
+            "type": "object",
+            "nullable": true,
+            "description": "The candidate’s name, so an employer’s sent list can tell one row from another without a per-row read of `/candidate-search/candidates/{id}` — which is a logged protected-data access (§11.1) and is not meant to be called speculatively.\n\n**A name is not protected data here.** §11.1 protects the phone number, e-mail and CV; §7.3 puts the name on the search card the employer found this candidate through; and §9.2 row 4 already names them in the notification the employer gets when they respond. So this is flat rather than a nested `candidate` object, which would invite a second field later that *is* protected.\n\n`null` is a normal answer and means \"render no name line\" — never a placeholder and never the id. It happens when the candidate has no name on their profile. It is *not* what BR-14 leaves behind: an erased candidate’s invitations are deleted with their profile, so the row disappears rather than losing its name.\n\nPresent on every invitation read, including the candidate’s own inbox, where it is simply their own name. One join, one mapper, no route-dependent nulls."
           },
           "vacancyId": {
             "type": "object",
