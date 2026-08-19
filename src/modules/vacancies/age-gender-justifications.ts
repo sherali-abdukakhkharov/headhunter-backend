@@ -7,10 +7,11 @@
  * text box would collect "young team" and "we prefer men" and leave a moderator to
  * argue about them one at a time.
  *
- * **This list is the second open client decision, answered as data.** Like the
+ * **This list was the second open client decision, answered as data.** Like the
  * employer evidence rules, every entry carries a provenance tag and a note, so the
  * client's approved list is one edit to one file - no migration, no endpoint, no
- * client release. Until then these are *ours*, tagged `default`.
+ * client release. **The client approved the list as written on 2026-08-20**, which is
+ * why the tags read `client`.
  *
  * The list is deliberately short and each entry names an objective condition of the
  * work rather than a preference about the worker. Two consequences worth stating:
@@ -23,9 +24,16 @@
  * - **The `note` an employer writes is elaboration, never the justification itself.**
  *   A moderator reads it; the code is what the system checks.
  *
- * Uzbek labour law is the source these are drawn from in outline, but nothing here
- * has been reviewed by a lawyer. That review is the client's, and it is why the
- * provenance is `default` rather than `spec`.
+ * **What the approval is, and what it is not.** Uzbek labour law is the source these
+ * are drawn from in outline, and **nothing here has been reviewed by a lawyer.** The
+ * client was told that in those words on 2026-08-20 and chose to proceed with the list
+ * as it stands, so `client` here means "approved for use by the party who owns the
+ * policy", not "checked by counsel". The recommendation is not withdrawn by the
+ * approval: `hazardous_conditions` and `heavy_lifting_limits` both turn on statutory
+ * norms this team read in outline and cannot cite, and both are broad enough that a
+ * wrong reading readmits the discrimination BR-12 exists to forbid. A lawyer should
+ * still see this file before the platform carries volume. Recording that here rather
+ * than only in a commit message is the point of the tag.
  *
  * **Labels are not here.** The four localized labels live in the
  * `restriction_justification` dictionary, like every other selectable value (BR-13),
@@ -36,7 +44,7 @@
  * two sets of codes match exactly.
  */
 
-export type JustificationProvenance = 'spec' | 'default';
+export type JustificationProvenance = 'spec' | 'client' | 'default';
 
 export interface RestrictionJustification {
   code: string;
@@ -50,7 +58,7 @@ export const RESTRICTION_JUSTIFICATIONS: RestrictionJustification[] = [
   {
     code: 'statutory_minimum_age',
     applies: ['age'],
-    provenance: 'default',
+    provenance: 'client',
     note:
       'Some work has a legal age floor above the platform minimum - operating ' +
       'machinery, work involving alcohol or tobacco, security roles. The clearest ' +
@@ -60,7 +68,7 @@ export const RESTRICTION_JUSTIFICATIONS: RestrictionJustification[] = [
   {
     code: 'night_work_restriction',
     applies: ['age'],
-    provenance: 'default',
+    provenance: 'client',
     note:
       'Night shifts are restricted for workers under 18. An age restriction on a ' +
       'night-shift vacancy follows from the schedule, not from a preference - which ' +
@@ -69,7 +77,7 @@ export const RESTRICTION_JUSTIFICATIONS: RestrictionJustification[] = [
   {
     code: 'hazardous_conditions',
     applies: ['age', 'gender'],
-    provenance: 'default',
+    provenance: 'client',
     note:
       'Statutory limits apply to minors and, in some jurisdictions, to specific ' +
       'hazardous work. Left applicable to both kinds because the law does, but this ' +
@@ -79,7 +87,7 @@ export const RESTRICTION_JUSTIFICATIONS: RestrictionJustification[] = [
   {
     code: 'heavy_lifting_limits',
     applies: ['age', 'gender'],
-    provenance: 'default',
+    provenance: 'client',
     note:
       'Manual-handling weight limits differ by age and, under Uzbek norms, by sex. ' +
       'A moderator should require the vacancy to state the actual weights - the ' +
@@ -88,7 +96,7 @@ export const RESTRICTION_JUSTIFICATIONS: RestrictionJustification[] = [
   {
     code: 'single_sex_facility',
     applies: ['gender'],
-    provenance: 'default',
+    provenance: 'client',
     note:
       'Personal care, changing rooms, women-only facilities, and similar settings ' +
       'where the sex of the worker is a genuine requirement of the role rather than ' +

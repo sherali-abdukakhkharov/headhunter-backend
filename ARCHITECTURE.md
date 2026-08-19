@@ -339,7 +339,7 @@ and the status is written in the same transaction as the submission that changes
 §6.1 requires "verification documents if required" and "identity verification data
 if required by policy", and no policy exists. Rather than block the milestone, the
 requirement is **declared** in `employer-requirements.ts` — per employer type, with a
-`spec | default` provenance tag and a note per value, exactly as dictionary content
+`spec | client | default` provenance tag and a note per value, exactly as dictionary content
 declares its own provenance. The `file_purpose` rows it names are seeded regardless,
 so the client renders the upload slots today and the answer arrives as one file edit.
 
@@ -943,21 +943,30 @@ Answers change the schema, so raise them before the affected milestone:
    so the person is erased and the actor id is kept. That is tagged `required`, not
    `provisional`.
 2. ~~**Verification evidence** required for individual (non-company) employers~~ -
-   **no longer blocking.** Declared as data in `employer-requirements.ts` (§5a.1);
-   the current default is that an individual need not upload an identity document and
-   a company must upload a registration certificate. Still wants sign-off.
-3. ~~**Conditional filters** (§7.1, BR-12)~~ - **no longer blocking, but wants legal
-   review.** Five permitted justifications are enumerated in
+   **answered 2026-08-20.** Declared as data in `employer-requirements.ts` (§5a.1), and
+   the client confirmed both defaults as written: an individual need not upload an
+   identity document, a company must upload a registration certificate. Both rows now
+   read `provenance: 'client'`.
+3. ~~**Conditional filters** (§7.1, BR-12)~~ - **approved 2026-08-20, and still not
+   reviewed by a lawyer.** Five permitted justifications are enumerated in
    `modules/vacancies/age-gender-justifications.ts`, each declaring which restriction
    kinds it supports and arguing for itself; the four labels are a
-   `restriction_justification` dictionary. Nothing on that list has been reviewed by a
-   lawyer, which is why every entry is tagged `default`.
-4. **Dictionary value lists** (§13.2). No longer blocking: every type is seeded and
-   working, but four of them carry a conventional default rather than an approved
-   list, and the occupation set is a starting point rather than a classifier. See
-   `src/modules/dictionaries/seed/` - each type states its provenance.
-5. **Does a candidate's own application still reveal their contact details?** *(2026-08-10
-   revision. **Answered by the team on 2026-08-19 and shipped; still wants sign-off.**)* §11.1
+   `restriction_justification` dictionary. The client was told in those words that no
+   lawyer had seen the list and chose to proceed with it, so `client` here means
+   "approved by the party who owns the policy", not "checked by counsel". The
+   recommendation stands and is written into the file: `hazardous_conditions` and
+   `heavy_lifting_limits` turn on statutory norms this team read in outline and cannot
+   cite, and a lawyer should see them before the platform carries volume.
+4. ~~**Dictionary value lists** (§13.2)~~ - **deferred by the client 2026-08-20.** Every
+   type is seeded and working (16 types, 575 items, 2 300 labels); the client chose to
+   ship the compiled starting sets rather than review them now. `occupation` (162) is
+   the one that matters most, being the axis of §7.1's filter, and district-vs-city
+   status is still unchecked against the official register. A correction is one edit
+   plus `pnpm seed` - see `src/modules/dictionaries/seed/`, where each type states its
+   provenance.
+5. ~~**Does a candidate's own application still reveal their contact details?**~~ *(2026-08-10
+   revision. Answered by the team on 2026-08-19, shipped, and **signed off by the client on
+   2026-08-20** - so the reading below is now the product's, not a working assumption.)* §11.1
    gates contact and CV on "a successful Candidate Unlock **or another explicitly approved
    entitlement**", and §9.1 read strictly says an application is not one - which would supersede
    M6's delivered BR-09 behaviour.
@@ -974,21 +983,30 @@ Answers change the schema, so raise them before the affected milestone:
    BR-09 assertion in M6, M7 and M8 changes. Nothing about the purchase, the ledger or the
    entitlement itself is affected, which is what makes the small reading the safe one to ship
    first.
-6. ~~**Fiscal receipt attributes** (§6.7)~~ - **not blocking a payment, only a receipt.**
-   §6.7 assigns the service/product code, VAT and merchant configuration to the client's
-   accounting function. Declared as data in `modules/payments/payment-fiscal.ts` with a
-   `provenance` tag, and while it reads `unknown` **no receipt is sent to either provider** -
-   a guessed IKPU code on a real transaction ends up on a tax return rather than in a log.
-   See [docs/PAYMENTS.md](docs/PAYMENTS.md).
-7. **Who absorbs a refund of Coins that were already spent?** *(new with M13)* BR-16 makes an
-   unlock permanent, so a reversal can only recover what is left in the wallet; the code takes
-   `min(balance, coins)` and records the shortfall, because the alternative is a negative
-   balance the database refuses. The data stays honest either way - this is a commercial
-   question, not a technical one.
+6. **Fiscal receipt attributes** (§6.7) - **half answered 2026-08-20, and still sends no
+   receipt.** §6.7 assigns the service/product code, VAT and merchant configuration to the
+   client's accounting function. Declared as data in `modules/payments/payment-fiscal.ts`
+   with a `provenance` tag; the client confirmed they are **not VAT-registered**, so
+   `vatPercent` is now an established `0` rather than an unknown, and the tag reads
+   `partial`. The **IKPU/MXIK classifier code is still outstanding**, and one missing value
+   withholds the whole receipt - a correct VAT rate beside a guessed product code is no
+   safer than two guesses. See [docs/PAYMENTS.md](docs/PAYMENTS.md).
+7. ~~**Who absorbs a refund of Coins that were already spent?**~~ - **answered 2026-08-20:
+   spent Coins are not refunded.** BR-16 makes an unlock permanent, so a reversal can only
+   recover what is left in the wallet; the code already took `min(balance, coins)` and
+   recorded the shortfall, because the alternative is a negative balance the database
+   refuses. The client's answer is that the shortfall is simply not owed - the service was
+   rendered - so no code changed, and the behaviour that was a technical necessity is now
+   also the commercial rule.
 8. **Merchant accounts, and §12.7's per-storefront channel** *(new with M13)*. Sandbox
    credentials are enough to finish and verify everything; production activation is not
-   something engineering can do. §12.7's store-billing check is date-sensitive by nature and
-   has to happen immediately before release.
+   something engineering can do. **§12.7 answered 2026-08-20: Coins are sold in-app through
+   Payme and CLICK**, on the argument that a Coin buys a real hiring service rather than
+   in-app content. That is a judgement about store policy, not a fact about it, and §12.7
+   requires the check to be re-run immediately before release precisely because the rules
+   move. The ledger is provider-agnostic, so a forced move to store billing is a
+   configuration and an adapter rather than a rebuild - which is what makes the answer
+   reversible.
 
 *Answered:* time zone (single platform zone `Asia/Tashkent`), push provider
 (deferred with M9), file service (Telegram Bot API, §9 above).

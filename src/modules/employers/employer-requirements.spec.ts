@@ -74,8 +74,9 @@ describe('employer requirements', () => {
     it('states provenance and a reason for every evidence rule', () => {
       for (const evidence of requirements.evidence) {
         // The distinction decides who may change the value - the same rule the
-        // dictionary seed follows.
-        expect(['spec', 'default']).toContain(evidence.provenance);
+        // dictionary seed follows. `client` joined the set on 2026-08-20, when the
+        // client confirmed both evidence defaults as written.
+        expect(['spec', 'client', 'default']).toContain(evidence.provenance);
         expect(evidence.note.length).toBeGreaterThan(20);
       }
     });

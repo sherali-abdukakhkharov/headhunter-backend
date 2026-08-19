@@ -160,8 +160,10 @@ describe('isJustificationValid (BR-12)', () => {
   it('states provenance and an argument for every permitted reason', () => {
     for (const justification of RESTRICTION_JUSTIFICATIONS) {
       // The provenance decides who may change the value; the note is what a reviewer
-      // needs in order to disagree with it.
-      expect(['spec', 'default']).toContain(justification.provenance);
+      // needs in order to disagree with it. The set is written out rather than derived
+      // from the type, so widening it stays a deliberate act - `client` was added here
+      // when the client approved the list on 2026-08-20.
+      expect(['spec', 'client', 'default']).toContain(justification.provenance);
       expect(justification.note.length).toBeGreaterThan(40);
       expect(justification.applies.length).toBeGreaterThan(0);
     }

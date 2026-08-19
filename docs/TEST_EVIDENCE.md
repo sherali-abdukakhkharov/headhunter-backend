@@ -53,9 +53,9 @@ so a test cannot set up a state the application could not produce.
 > landed on 2026-08-19, and the test asserts the contact details, the file access *and* the
 > chat gate. The original fifteen were not rewritten, because the retrofit took the reading
 > that an application is one of §11.1's "explicitly approved entitlements" - see the question
-> at the top of [../TODO.md](../TODO.md), which is answered but **still wants the client's
-> sign-off**. What did change across three suites is one reason code: `no_interaction` became
-> `unlock_required`.
+> at the top of [../TODO.md](../TODO.md), **signed off by the client on 2026-08-20**, so these
+> assertions test the agreed rule rather than a working assumption. What did change across
+> three suites is one reason code: `no_interaction` became `unlock_required`.
 
 `src/uat/uat.int.spec.ts` is one `describe` per row of §13.1's table, titled with the
 scenario and asserting that row's own stated expected result. Both moderation flags are

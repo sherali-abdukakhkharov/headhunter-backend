@@ -18,11 +18,23 @@
  * worse than sending none. `fiscalDetail()` returns null while the values are unconfirmed,
  * and the adapters simply omit the field - which is what they do today.
  *
+ * *Half answered on 2026-08-20:* the client is not VAT-registered, so `vatPercent` is a
+ * confirmed zero rather than an unknown. The IKPU classifier code is still outstanding, and
+ * one missing value is enough to withhold the whole receipt - a receipt with a correct VAT
+ * rate and a guessed product code is no safer than one with two guesses.
+ *
  * The corresponding question, and what to ask for, is in docs/PAYMENTS.md.
  */
 
-/** Where a value came from. `client` is the only one that may reach a provider. */
-export type FiscalProvenance = 'client' | 'unknown';
+/**
+ * Where a value came from. `client` is the only one that may reach a provider.
+ *
+ * `partial` exists because the client answered one of the two questions. It is not a
+ * courtesy state: "we asked, were told the VAT treatment, and are still missing the
+ * classifier code" is a different position from "nobody has told us anything", and only the
+ * first one tells the next reader what is left to chase.
+ */
+export type FiscalProvenance = 'client' | 'partial' | 'unknown';
 
 export interface FiscalAttributes {
   /**
@@ -47,22 +59,26 @@ export interface FiscalAttributes {
 }
 
 /**
- * Today's answer: nothing is known.
+ * Today's answer: the VAT treatment is the client's, the classifier code is still nobody's.
  *
- * Written out rather than left as an empty object, because "we asked and have not been told"
+ * Written out rather than left as an empty object, because "we asked and have been told half"
  * is a different state from "nobody thought about it", and only the first one is honest.
  */
 export const FISCAL_ATTRIBUTES: FiscalAttributes = {
   productCode: null,
   packageCode: null,
-  vatPercent: null,
+  // Zero, not null: the client is not VAT-registered, so zero is the *established* rate
+  // rather than an unknown one. The two are deliberately distinguishable here.
+  vatPercent: 0,
   unitCode: null,
-  provenance: 'unknown',
+  provenance: 'partial',
   note:
-    'Not supplied. §6.7 assigns these to the Client/accounting function, and no values ' +
-    'have been provided. Coins are prepaid access to in-app functionality, so an IKPU ' +
-    'class and a VAT treatment both have to be chosen by somebody who can be accountable ' +
-    'for the choice. Until then no fiscal receipt is sent to either provider.',
+    'VAT: 0, client-confirmed 2026-08-20 - the company is not VAT-registered, so zero is ' +
+    'the established rate and not a placeholder. IKPU/MXIK classifier code: still not ' +
+    'supplied. §6.7 assigns it to the Client/accounting function, and Coins are prepaid ' +
+    'access to a digital service, so which information-services class applies has to be ' +
+    'chosen by somebody who can be accountable for the choice. No fiscal receipt is sent ' +
+    'to either provider until it arrives.',
 };
 
 /**

@@ -38,13 +38,14 @@ needs them.
       are provisional. See [docs/RETENTION.md](docs/RETENTION.md) for what the
       client still has to confirm
 - [x] ~~**Individual-employer verification evidence**~~ (§6.1 "if required by
-      policy") - **no longer blocking.** Resolved as *data*: the requirement is
-      declared per employer type in
+      policy") - **answered by the client 2026-08-20.** Resolved as *data*: the
+      requirement is declared per employer type in
       [employer-requirements.ts](src/modules/employers/employer-requirements.ts)
-      with a provenance tag and a note, so the client's answer is one edit to one
-      file. The current default is that an individual employer need not upload an
-      identity document, and a company must upload a registration certificate.
-      What remains is sign-off, not delivery.
+      with a provenance tag and a note. Both defaults were confirmed as written - an
+      individual employer need not upload an identity document, a company must upload
+      a registration certificate - so the two rows now read `provenance: 'client'`
+      and no behaviour changed. The answer cost one word per row, which was the
+      argument for declaring it as data in the first place.
 - [x] ~~**Permitted age/gender justifications**~~ (BR-12) - **no longer blocking.**
       Enumerated as *data*, the same way the employer evidence rules were: five
       permitted reasons in
@@ -52,12 +53,19 @@ needs them.
       each with a provenance tag and an argument, plus a
       `restriction_justification` dictionary for the four labels. Each reason
       declares which restriction kinds it can support, so a gender restriction
-      justified by a minimum-age rule is refused. **Wants legal review** - nothing
-      on that list has been seen by a lawyer, which is why every entry is tagged
-      `default`.
-- [?] **Does a candidate's own application still reveal their contact details?**
-      *(2026-08-10 revision. **Answered by the team on 2026-08-19 and shipped**; still wants
-      the client's sign-off, and blocks nothing.)*
+      justified by a minimum-age rule is refused. **Approved by the client
+      2026-08-20, and still not reviewed by a lawyer** - the client was told that in
+      those words and chose to proceed, so the tags read `client`, meaning "approved
+      by the party who owns the policy" rather than "checked by counsel". The
+      recommendation is written into the file and is not withdrawn by the approval:
+      `hazardous_conditions` and `heavy_lifting_limits` rest on statutory norms this
+      team read in outline and cannot cite, and a lawyer should see them before the
+      platform carries volume.
+- [x] ~~**Does a candidate's own application still reveal their contact details?**~~
+      *(2026-08-10 revision. Answered by the team on 2026-08-19, shipped, and **signed off by
+      the client on 2026-08-20** - the reading below is the product's now, not a working
+      assumption, and the reversal cost recorded at the end of this entry is no longer a risk
+      being carried.)*
       §11.1 says contact and CV become available "only after a successful Candidate Unlock
       **or another explicitly approved entitlement**", and §9.1, read strictly, says an
       application is *not* one - which would supersede M6's delivered BR-09 behaviour.
@@ -83,35 +91,46 @@ needs them.
       the credentials but the host**: a production merchant account should not point at
       `hh.qitmir.uz`, which is a Cloudflare tunnel on a developer machine, and
       re-registering a callback URL later is a support ticket with the provider.
-- [?] **Fiscal receipt attributes** *(§6.7)* - **not blocking a payment, only a receipt.**
-      §6.7 leaves the service/product code, VAT and merchant configuration to "the
-      Client/accounting function", so it is declared as data in
+- [~] **Fiscal receipt attributes** *(§6.7)* - **half answered 2026-08-20, and still sends
+      no receipt.** §6.7 leaves the service/product code, VAT and merchant configuration to
+      "the Client/accounting function", so it is declared as data in
       [payment-fiscal.ts](src/modules/payments/payment-fiscal.ts) with a `provenance` tag -
-      the fourth time that pattern has answered an open question here. **While it reads
-      `unknown` no receipt is sent to either provider**, and a unit test asserts that: a
-      guessed IKPU code on a real transaction ends up on a tax return rather than in a log.
-      One edit to one file when the codes arrive.
-- [?] **Who absorbs a refund of Coins that were already spent?** *(new with M13)* BR-16
-      makes an unlock permanent, so a reversal can only recover what is still in the wallet.
-      The code takes `min(balance, coins)` and writes the shortfall into the ledger row's
-      reason, because a full debit would drive the balance negative, which the database
-      refuses - and a refused transaction would leave the order stuck at `paid` while the
-      provider believed it was refunded. The data stays honest either way; **who eats the
-      difference is a commercial decision**, and there is a test for the case.
-- [?] **§12.7: which payment channel ships per storefront** *(new)* - Coins unlock
-      in-app digital functionality, so Apple and Google may require their own billing
-      rather than Payme/CLICK. The specification requires the ledger to stay
-      provider-agnostic so the answer is a configuration choice rather than a rebuild,
-      and M13 is designed that way - but somebody has to **verify the store rules
-      immediately before release**, which §12.7 says explicitly.
-- [?] **Approved dictionary value lists** from the client (§13.2). **No longer
-      blocking anything.** All 16 types are seeded and working - 575 items, 2 300
-      labels - so M3, M5, M6 and the UAT-06 demo all have real values to select.
-      What remains is *review*, not delivery: `occupation` (162), `skill` (118),
-      `industry` (32), `language`, `skill_level`, `shift` and `education_level` are
-      compiled starting sets rather than client-approved lists, and each states so.
-      District-vs-city status and recent redistricting need checking against the
-      official register. A correction is one edit plus `pnpm seed`.
+      the fourth time that pattern has answered an open question here. The client confirmed
+      they are **not VAT-registered**, so `vatPercent` is an established `0` rather than an
+      unknown, and the tag reads `partial` - a third state that exists because "told half"
+      is not "told nothing". **The IKPU/MXIK classifier code is still owed**, and one
+      missing value withholds the whole receipt: a correct VAT rate beside a guessed
+      product code is no safer than two guesses. Six unit tests hold that gate shut,
+      including the `partial` case. One edit to one file when the code arrives.
+- [x] ~~**Who absorbs a refund of Coins that were already spent?**~~ *(new with M13,
+      **answered 2026-08-20: spent Coins are not refunded**)*. BR-16 makes an unlock
+      permanent, so a reversal can only recover what is still in the wallet. The code takes
+      `min(balance, coins)` and writes the shortfall into the ledger row's reason, because a
+      full debit would drive the balance negative, which the database refuses - and a
+      refused transaction would leave the order stuck at `paid` while the provider believed
+      it was refunded. The client's answer is that the shortfall is not owed: the service
+      was rendered. **No code changed** - what was a technical necessity is now also the
+      commercial rule, and the test that covered the case now documents a policy rather
+      than a workaround.
+- [x] ~~**§12.7: which payment channel ships per storefront**~~ *(**answered 2026-08-20:
+      in-app, through Payme and CLICK**)*. Coins unlock in-app digital functionality, so
+      Apple and Google may require their own billing. The client's reading is that a Coin
+      buys a real hiring service rather than in-app content, and that is a judgement about
+      store policy rather than a fact about it. §12.7 still requires the check to be re-run
+      **immediately before release**, and that requirement is not discharged by this
+      answer - it is why the answer is cheap to reverse: the ledger is provider-agnostic, so
+      a forced move to store billing is a configuration and one adapter, not a rebuild.
+      iOS is paused, so the first exposure is Google Play.
+- [x] ~~**Approved dictionary value lists** from the client (§13.2)~~ - **deferred by the
+      client 2026-08-20: ship the compiled sets as they are.** All 16 types are seeded and
+      working - 575 items, 2 300 labels - so M3, M5, M6 and the UAT-06 demo all have real
+      values to select. What was offered and declined was *review*: `occupation` (162),
+      `skill` (118), `industry` (32), `language`, `skill_level`, `shift` and
+      `education_level` remain compiled starting sets, and each states so in its own seed
+      file. Two things are worth remembering rather than forgetting: `occupation` is the
+      axis §7.1's whole filter turns on, so a missing trade is a search that cannot be
+      performed; and district-vs-city status has still not been checked against the
+      official register. A correction is one edit plus `pnpm seed`, at any time.
 
 ---
 
@@ -453,14 +472,15 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4 and §4a.
 
 ### The open §6.1 decision, resolved as data
 - [x] **`employer-requirements.ts` declares what each type must provide**, with a
-      `spec | default` provenance tag and a note per value - the same pattern the
+      `spec | client | default` provenance tag and a note per value - the same pattern the
       dictionary seed uses. Current defaults: a company must upload a registration
       certificate; an individual **need not** upload an identity document. The
       asymmetry is deliberate and argued in the file: an individual hiring two
       seasonal workers is the case the product exists for, and storing scans of
       identity documents is a liability to accept only when a policy says to
-- [ ] Client sign-off on those two defaults. A change is one edit to that file -
-      no migration, no endpoint change, no client release. **No longer blocking**
+- [x] Client sign-off on those two defaults *(given 2026-08-20)*. Both confirmed as
+      written, so the tags moved from `default` to `client` and nothing else did -
+      no migration, no endpoint change, no client release, which was the point
 
 ### BR-03 *(the rule, ready for its callers)*
 - [x] `EmployersService.gate` / `assertVerified` - the two conditions returned

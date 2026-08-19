@@ -8,22 +8,29 @@ import type { Labels } from '@modules/schemas/schema-types';
  * submitted or an invitation sent, and the evidence a verification submission must
  * carry.
  *
- * **The evidence list is the open client decision.** §6.1 says "verification
- * documents if required" for a company and "identity verification data if required
- * by policy" for an individual, and no policy has been approved. Rather than block
- * the milestone, the requirement is declared here with a conventional default and a
- * provenance tag, exactly as the dictionary seed does: when the client answers,
- * this file changes and nothing else does - no migration, no endpoint, no client
- * release. The `file_purpose` rows it names are seeded regardless, so the client
- * can already render the upload slots.
+ * **The evidence list was the open client decision, and it is closed.** §6.1 says
+ * "verification documents if required" for a company and "identity verification data
+ * if required by policy" for an individual, and no policy existed. Rather than block
+ * the milestone, the requirement was declared here with a conventional default and a
+ * provenance tag, exactly as the dictionary seed does - and on 2026-08-20 the client
+ * confirmed both defaults as written, which cost one word per row and no migration,
+ * no endpoint and no client release. That is the whole argument for the pattern: the
+ * answer was cheaper than the question. The `file_purpose` rows it names are seeded
+ * regardless, so the upload slots always rendered.
  *
  * Why a declaration rather than a `required` flag on the file purpose itself: the
  * same document is mandatory for one employer type and irrelevant to the other, and
  * a dictionary row cannot say that.
  */
 
-/** Where a requirement comes from - the same distinction the dictionary seed draws. */
-export type RequirementProvenance = 'spec' | 'default';
+/**
+ * Where a requirement comes from - the same distinction the dictionary seed draws.
+ *
+ * `client` means somebody who owns the policy said so, and it is what `default` was waiting
+ * to become. The distinction is kept after the answer rather than collapsed into it, because
+ * the two rows the client actually ruled on are not the only rows here.
+ */
+export type RequirementProvenance = 'spec' | 'client' | 'default';
 
 export interface EvidenceRequirement {
   /** `file_purpose` code. Seeded, so the slot renders whatever this says. */
@@ -124,12 +131,12 @@ export const EMPLOYER_REQUIREMENTS: Record<EmployerType, EmployerRequirements> =
         {
           purposeCode: 'company_registration',
           required: true,
-          provenance: 'default',
+          provenance: 'client',
           note:
             'A company claiming to hire on the platform should be a registered one, ' +
-            'and this is the document that shows it. Required by default because the ' +
-            'alternative - verifying nothing - makes the verified badge meaningless. ' +
-            'Needs client confirmation.',
+            'and this is the document that shows it. Required because the alternative - ' +
+            'verifying nothing - makes the verified badge meaningless. Confirmed by the ' +
+            'client 2026-08-20, which is what turned this from a default into policy.',
         },
         {
           purposeCode: 'evidence',
@@ -170,16 +177,16 @@ export const EMPLOYER_REQUIREMENTS: Record<EmployerType, EmployerRequirements> =
         {
           purposeCode: 'id_document',
           required: false,
-          provenance: 'default',
+          provenance: 'client',
           note:
-            'This is the open decision (§6.1, "if required by policy"). Declared ' +
-            'OPTIONAL by default, deliberately the opposite way round from a ' +
-            'company: an individual hiring two seasonal workers is the case the ' +
+            'This was the open decision (§6.1, "if required by policy") and the client ' +
+            'closed it on 2026-08-20: OPTIONAL, deliberately the opposite way round ' +
+            'from a company. An individual hiring two seasonal workers is the case the ' +
             'product exists to serve, and demanding an identity document up front is ' +
             'the surest way to lose them - while collecting and storing scans of ' +
-            'identity documents is itself a data-protection liability we should not ' +
-            'take on without a policy that says to. Flip `required` to true when the ' +
-            'client approves one; nothing else changes.',
+            'identity documents is itself a data-protection liability nobody should ' +
+            'take on without a policy that says to. Flipping `required` to true is ' +
+            'still one edit if that judgement changes; nothing else moves.',
         },
       ],
     },

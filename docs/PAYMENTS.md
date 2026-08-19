@@ -61,9 +61,12 @@ no answer. Registering a URL and then changing it is a support ticket with the p
 
 ---
 
-## Three questions that need an answer from somebody other than an engineer
+## Three questions that needed an answer from somebody other than an engineer
 
-### 1. Fiscal receipt attributes (§6.7) — blocking a receipt, not the payment
+**All three were answered on 2026-08-20.** Two are closed; the first is half closed, and the
+half that is missing is the half that matters.
+
+### 1. Fiscal receipt attributes (§6.7) — half answered, still sends no receipt
 
 §6.7 assigns the service/product code, VAT and related merchant configuration to "the
 Client/accounting function". Nobody here can guess an IKPU (ИКПУ/MXIK) class for prepaid
@@ -72,14 +75,20 @@ access to in-app functionality, and guessing wrong is a tax problem rather than 
 Declared as data in
 [`src/modules/payments/payment-fiscal.ts`](../src/modules/payments/payment-fiscal.ts) with a
 `provenance` tag, the same way the employer evidence rules, the BR-12 justifications and the
-retention periods were. **While `provenance` is `unknown`, no receipt is sent to either
-provider** — the field is simply absent from Payme's `CheckPerformTransaction` response, and a
-unit test asserts that. Payments work; they are just not accompanied by a fiscal receipt.
+retention periods were. **No receipt is sent to either provider until `provenance` is
+`client`** — the field is simply absent from Payme's `CheckPerformTransaction` response, and
+six unit tests assert that. Payments work; they are just not accompanied by a fiscal receipt.
 
-Ask for: the IKPU/MXIK product code, a package code if the classifier needs one, the VAT
-percent, and the unit of measure. Then one edit to that file, and `provenance: 'client'`.
+*Answered on 2026-08-20:* the client is **not VAT-registered**, so `vatPercent` is `0` — an
+established rate, not an unknown one, and the file distinguishes those two. The tag now reads
+`partial`, a third state that exists because "told half" is not "told nothing".
 
-### 2. What happens when a refund arrives after the Coins were spent
+**Still to ask for:** the IKPU/MXIK product code, and a package code if the classifier needs
+one. One missing value withholds the whole receipt on purpose — a correct VAT rate beside a
+guessed product code is no safer than two guesses. When it arrives: one edit to that file, and
+`provenance: 'client'`.
+
+### 2. What happens when a refund arrives after the Coins were spent — answered
 
 A provider can cancel a transaction it already performed. The Coins are taken back with a
 `reversal` ledger row — but the employer may have spent them on Candidate Unlocks, and BR-16
@@ -88,21 +97,31 @@ makes an unlock permanent.
 The code recovers `min(balance, coins)` and records the shortfall in the ledger row's reason,
 because the alternative is a negative balance, which the database refuses — and a refused
 transaction would leave the order stuck at `paid` while the provider believed it was refunded.
-That is an engineering decision made to keep the data honest. **Who absorbs the difference is
-a commercial one**, and it has not been made. `payments.int.spec.ts` has the case
-("recovers only what is left when the Coins were already spent").
+That was an engineering decision made to keep the data honest.
 
-### 3. §12.7: which payment channel ships per storefront
+*Answered on 2026-08-20:* **spent Coins are not refunded** — the service was rendered, so the
+shortfall is not owed. No code changed, which is the useful part: the behaviour that existed
+because the database insisted on it is now also the commercial rule. `payments.int.spec.ts`
+has the case ("recovers only what is left when the Coins were already spent"), and it now
+documents a policy rather than a workaround.
+
+### 3. §12.7: which payment channel ships per storefront — answered, and re-check it
 
 Coins unlock digital functionality inside the app, so Apple and Google may require their own
 billing rather than Payme or CLICK. §12.7 says the team "shall verify store billing rules
 immediately before release", which is a date-sensitive check nobody can do early.
 
-What it costs if the answer is "store billing": one more adapter behind `PaymentProvider`, one
-`ALTER TYPE payment_provider ADD VALUE`, and **nothing else**. `wallet_transactions` has no
-provider column at all and Candidate Unlock never reads one, which is what §12.7 means by the
-ledger staying provider-agnostic. The presentation is already configurable — the client reads
-`GET /payments/providers` rather than hard-coding buttons.
+*Answered on 2026-08-20:* **sell in-app, through Payme and CLICK**, on the reading that a Coin
+buys a real hiring service rather than in-app content. That is a judgement about store policy,
+not a fact about it, and **§12.7's pre-release check is not discharged by it** — the rules move,
+and the answer was chosen partly because it is cheap to reverse. iOS is paused, so the first
+storefront exposure is Google Play.
+
+What it costs if that check comes back "store billing": one more adapter behind
+`PaymentProvider`, one `ALTER TYPE payment_provider ADD VALUE`, and **nothing else**.
+`wallet_transactions` has no provider column at all and Candidate Unlock never reads one, which
+is what §12.7 means by the ledger staying provider-agnostic. The presentation is already
+configurable — the client reads `GET /payments/providers` rather than hard-coding buttons.
 
 ---
 
@@ -208,6 +227,10 @@ resolve. See [RETENTION.md](RETENTION.md).
 4. Run the provider's own sandbox suite — §12.6 requires repeated `Create`/`Perform`/`Cancel`
    requests and invalid amount/account cases. All of those already have tests here; what the
    sandbox adds is *their* client against *our* endpoint.
-5. Supply the fiscal attributes and flip `provenance` to `client`.
-6. Verify the storefront billing rules (§12.7) immediately before release.
+5. Supply the **IKPU/MXIK product code** — the one fiscal value still missing — and flip
+   `provenance` from `partial` to `client`. The VAT rate is already the client's answer (`0`,
+   not VAT-registered).
+6. Verify the storefront billing rules (§12.7) immediately before release. The client's
+   2026-08-20 answer is "in-app through Payme and CLICK", which is a decision, not a
+   verification; this step still has to happen.
 7. Activate production credentials.

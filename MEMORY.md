@@ -39,6 +39,45 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-20 - Seven open questions answered, and the pattern paid for itself
+All seven `[?]` items came back in one sitting. **Six of them changed no code at all** - one
+word per row in a declaration file, and in three cases not even that. That is the return on
+the "declare it as data with a provenance tag" habit, and it is the first time the return has
+been collected rather than argued for.
+
+| Question | Answer | What changed |
+|---|---|---|
+| BR-09: does an application reveal contact? | yes, as shipped | nothing - sign-off only |
+| §6.1 evidence defaults | both as written | two `default` → `client` |
+| BR-12 justifications | approved as written | five `default` → `client` |
+| Refund of spent Coins | not refunded | nothing - `min(balance, coins)` already did this |
+| §12.7 storefront | in-app Payme/CLICK | nothing |
+| Dictionary lists | ship unreviewed | nothing |
+| Fiscal attributes | not VAT-registered → 0 | `vatPercent: 0`, tag `partial` |
+
+Three things worth keeping from it.
+
+**The refund answer validated a decision made for a different reason.** `min(balance, coins)`
+existed because a full debit drives the balance negative and the database refuses it - a
+constraint-shaped answer to an engineering problem. The commercial answer turned out to be the
+same shape: the service was rendered, so the shortfall is not owed. When a database constraint
+forces a behaviour, that behaviour is often the one the business would have chosen; it is worth
+asking before building an escape hatch for it.
+
+**A half answer needs its own state.** The client answered the VAT question and not the IKPU
+one, and the honest representation is neither `unknown` (they told us something) nor `client`
+(they did not tell us enough to send a receipt). `FiscalProvenance` gained `partial`, and
+`fiscalDetail()` still returns null - because a correct VAT rate beside a guessed product code
+is no safer than two guesses. The temptation a partial answer creates is to send "most of" the
+receipt; the gate is what makes that impossible rather than merely discouraged.
+
+**A client sign-off is not a legal review, and the file has to say which one it got.** BR-12's
+list was approved with the client explicitly told that no lawyer had seen it. Writing
+`provenance: 'client'` and stopping there would leave the next reader believing the legal
+question was closed. The tag means "approved by the party who owns the policy"; the
+recommendation to have counsel read `hazardous_conditions` and `heavy_lifting_limits` is
+written into the same file and is *not* withdrawn by the approval.
+
 ### 2026-08-19 (M12, late) - The unlock became an entitlement, on the small reading
 
 M12 built the purchase and nothing read it: `candidate_unlocks` appeared only inside the wallet
@@ -52,8 +91,9 @@ explicitly approved entitlement**"; §9.1 read strictly says an application is n
 the reading that it *is* - a candidate who applied to you volunteered contact with you - so the
 unlock is for candidates who have **not** applied, and M6, M7, M8 and their tests were not
 touched. The strict reading is a superset that can still be built; the reverse would not have
-been true, which is why the small one shipped first. **It still wants the client's sign-off**,
-and it is recorded as an open question in three places rather than as settled fact.
+been true, which is why the small one shipped first. **The client signed it off on 2026-08-20**,
+so it is settled - and the reversal cost above stayed written down for the whole day it was a
+risk, which is the part worth copying.
 
 Four things about the change are worth keeping.
 
@@ -1142,13 +1182,16 @@ ones most likely to bite again:
 
 Tracked as `[?]` items at the top of [TODO.md](TODO.md).
 
-**Nothing is blocking.** One question was answered *by us* rather than by the client, on
-2026-08-19, and it is the only one on this list where a reversal would change behaviour that is
-already delivered: whether a candidate's own application still reveals their contact details.
-We took "yes, an application is an approved entitlement" (§11.1's escape hatch), which left M6,
-M7 and M8 untouched and unblocked the client's unlock UI. **It wants sign-off, and the reversal
-cost is written down** in ARCHITECTURE.md §13 and at the top of TODO.md rather than left to be
-rediscovered - two reason codes invert, and every BR-09 assertion in three milestones changes.
+**Nothing is blocking, and as of 2026-08-20 almost nothing is open.** The client answered all
+seven in one sitting - see the 2026-08-20 entry above for what each cost. Six changed no code;
+the seventh (§6.7's fiscal attributes) was half answered.
+
+One of them was answered *by us* first, on 2026-08-19, and it was the only one on the list where
+a reversal would have changed behaviour that was already delivered: whether a candidate's own
+application still reveals their contact details. We took "yes, an application is an approved
+entitlement" (§11.1's escape hatch), which left M6, M7 and M8 untouched and unblocked the
+client's unlock UI, and **the reversal cost stayed written down** in ARCHITECTURE.md §13 and at
+the top of TODO.md for the day it was a risk. The client agreed with the reading.
 
 Everything else that was blocking came off the list as data with a provenance tag. The
 retention periods (BR-14) were the last of those, on 2026-08-08.
@@ -1156,13 +1199,19 @@ retention periods (BR-14) were the last of those, on 2026-08-08.
 Answered: time-zone policy (single platform zone), push provider (deferred with
 M9), file service (Telegram Bot API).
 
-No longer blocking, though still wanting sign-off - all three declared as data with
-stated defaults and provenance tags, so an answer is one file edit rather than a
-milestone dependency: **individual-employer verification evidence** (§6.1), the
-**permitted age/gender justifications** (BR-12), and the **retention periods**
-(BR-14, [docs/RETENTION.md](docs/RETENTION.md)). The last two want **legal** review
-specifically; nothing on either list has been seen by a lawyer, and every period is
-tagged `provisional` in the API's own response so nobody can mistake it for policy.
+**Still genuinely open**, and both want *legal* review rather than a client answer:
+
+- The **retention periods** (BR-14, [docs/RETENTION.md](docs/RETENTION.md)) - every one but
+  the administrator's is tagged `provisional` in the API's own response, so nobody can mistake
+  it for policy, and the purge runs on an administrator's command rather than a timer for
+  exactly that reason.
+- The **permitted age/gender justifications** (BR-12) - the client approved the list on
+  2026-08-20 after being told no lawyer had seen it, so the tag reads `client` and the
+  recommendation stands in the file. A client sign-off closes the product question and not the
+  legal one, and those are worth keeping apart.
+
+The one client answer still outstanding is a single value: §6.7's **IKPU/MXIK classifier
+code**. Until it arrives no fiscal receipt is sent, and payments work regardless.
 
 The dictionary value lists are no longer a blocker - all 16 types are seeded and
 working - but four of them and the occupation set are compiled starting points

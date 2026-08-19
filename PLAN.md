@@ -41,8 +41,9 @@ a profile contract.
 
 **Every milestone is now built.** What stands between this and a release is not code: the SMS
 templates through Eskiz moderation (M1), the two payment merchant accounts (M13), a stable
-public HTTPS host for the payment callbacks, and the client sign-offs listed at the top of
-[TODO.md](TODO.md).
+public HTTPS host for the payment callbacks, and one IKPU classifier code for §6.7's receipt.
+**The client answered the seven open questions on 2026-08-20** — see the top of
+[TODO.md](TODO.md); six are closed and the fiscal one is half closed.
 
 Two items that used to be on that list are off it, and for different reasons. **The first
 administrator is granted by the seeder** since 2026-08-19 — `SEED_ADMIN_PHONES` carries
@@ -57,12 +58,12 @@ retrofit was built on the reading that an application *is* one of §11.1's "expl
 entitlements". A candidate who applied to an employer volunteered contact with them, which is
 what §11.1's own escape hatch allows, so the unlock is for candidates who have **not** applied.
 
-That reading is the team's, taken 2026-08-19 to unblock the client's unlock UI, and it is the
-one that leaves M6, M7, M8 and their tests as delivered. **It still wants the client's
-sign-off**, and it is recorded as an open question in [TODO.md](TODO.md) and
-[ARCHITECTURE.md](ARCHITECTURE.md) §13 rather than treated as settled. §9.1 read strictly says
-the opposite; if the client insists on that, it inverts two reason codes and reaches into M6,
-M7 and M8 — a much larger change than the one that shipped.
+That reading was the team's, taken 2026-08-19 to unblock the client's unlock UI, and it is the
+one that leaves M6, M7, M8 and their tests as delivered. **The client signed it off on
+2026-08-20**, so it is the product's reading now rather than a risk being carried. §9.1 read
+strictly says the opposite, and had the client chosen it the change would have inverted two
+reason codes and reached into M6, M7 and M8 — which is why the smaller reading shipped first
+and why the reversal cost was written down while it was still a possibility.
 
 ---
 
@@ -150,7 +151,8 @@ batches. `occupation`, `skill`, `industry` and the districts under each region
 serve empty sets until they do — which means the pickers M3 and M5 build against
 work, but have nothing meaningful to offer yet. Four further types
 (`language`, `skill_level`, `shift`, `education_level`) carry a conventional
-default that still needs sign-off.
+default, and on 2026-08-20 the client chose to ship those sets unreviewed —
+a correction stays one edit plus `pnpm seed`.
 
 > Seeding is the largest single content task in the project and needs client
 > input on the approved value lists. Start it early; it is not a day of work.
