@@ -199,11 +199,13 @@ needs them.
       the resend delay locks the user out over a message that never arrived), and a
       failure is a 502 rather than a silent success. 11 unit tests over a stubbed
       `fetch`, 4 integration tests over the real table
-- [ ] **Buy the account and connect it** - two environment variables and a redeploy;
-      the runbook is at the end of [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md).
-      *Blocked: not bought yet.* **Nothing has been run against a real account**
-- [ ] Submit the OTP message for template approval (four interface variants, or a
-      client decision to use one). Approval turnaround is the long pole, not the code
+- [~] **Connect the account** - two environment variables and a redeploy; the runbook is at
+      the end of [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md). **The contract was signed on
+      2026-08-19**, so what is left is credentials and moderation rather than a purchase.
+      **Nothing has been run against a real account yet**
+- [ ] **Submit the four templates for moderation** - written 2026-08-19, one SMS segment
+      each, pinned by 16 tests that assert Eskiz's allowed character set and the billing
+      boundary. Approval turnaround is the long pole, not the code
 - [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` once a provider sends -
       production boot already refuses both, so this is a staging-hygiene item
 - [ ] Flutter client: replace the Telegram sign-in screen with phone + code entry
@@ -341,8 +343,12 @@ in `seed/data/`.
 - [x] `occupation` - 162 across all five §2.1 categories, each with its `category`
       *(default - starting set, needs client approval)*
 - [x] `skill` - 118, grouped by family; `industry` - 32 *(default)*
-- [ ] Client review of the four `default` lists, and of district-vs-city status
-      against the official register. Content review, not a build task
+- [~] Client review of the four `default` lists, and of district-vs-city status
+      against the official register. Content review, not a build task. **Declined for now on
+      2026-08-20**: the client chose to ship the compiled sets as they are. Left open rather
+      than closed because `occupation` is the axis §7.1's whole filter turns on - a missing
+      trade is a search that cannot be performed - and the district register has still not
+      been checked. One edit plus `pnpm seed`, at any time
 
 ### Seed invariants asserted by tests
 - [x] Every item has all four labels, and no active item can exist without them
@@ -1242,13 +1248,18 @@ Everything is in [docs/PAYMENTS.md](docs/PAYMENTS.md), including what to ask for
       machine: a sandbox can reach it, but a production merchant account should not point at
       something that stops answering when the machine is off - and re-registering a callback
       URL is a support ticket with the provider
-- [ ] **Fiscal receipt attributes** (§6.7). Declared as data with a `provenance` tag, and
-      **no receipt is sent while it reads `unknown`** - a guessed IKPU code on a real
-      transaction ends up on a tax return. Payments work without one
-- [ ] **Who absorbs a refund of Coins already spent?** BR-16 makes an unlock permanent, so a
-      reversal can only recover what is left. The code takes `min(balance, coins)` and records
-      the shortfall, because a negative balance is refused by the database. Commercial
-      question, not a technical one
+- [~] **One fiscal value: the IKPU/MXIK classifier code** (§6.7). The VAT question was
+      answered on 2026-08-20 - the client is not VAT-registered, so `vatPercent` is a
+      confirmed `0` - and the tag reads `partial`. **No receipt is sent until the code
+      arrives**, because a correct VAT rate beside a guessed product code is no safer than
+      two guesses. Payments work without one
+- [x] ~~**Who absorbs a refund of Coins already spent?**~~ **Answered 2026-08-20: not
+      refunded.** BR-16 makes an unlock permanent, the code already took `min(balance, coins)`
+      because a negative balance is refused by the database, and the commercial answer turned
+      out to be the same shape as the constraint-shaped one. No code changed
 - [ ] **§12.7's store-billing check**, which §12.6 and §12.7 both say must happen immediately
-      before release. If the answer is Apple or Google billing, it costs one adapter and one
-      `ALTER TYPE` - the ledger has no provider column, which is the whole point
+      before release. **The client decided on 2026-08-20 to sell in-app through Payme and
+      CLICK**, and a decision is not a verification: the store rules move, which is why the
+      check still has to be run against them. If it comes back Apple or Google billing, it
+      costs one adapter and one `ALTER TYPE` - the ledger has no provider column, which is the
+      whole point. iOS is paused, so the first exposure is Google Play
