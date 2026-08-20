@@ -58,14 +58,16 @@ re-derivable from the text.
   request's `x-lang`. The key is also the client-visible error `code`.
 - **Never give a client a Telegram file URL.** It embeds the bot token. File bytes
   are proxied through this API after an ownership check (ARCHITECTURE.md §9).
-- **Login is phone + OTP** (§4.1). **Eskiz delivers since 2026-08-20** — two environment
-  variables and no code change, which is what the `SmsSender` seam was for
-  ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)). `OTP_STATIC_CODE` is **still set on the
-  deployed instance**, so every delivered code is fixed; it substitutes at the one line a
-  random one would be generated, so everything downstream is the production path — never add
-  a second acceptance path in `verify`, and never relax the TTL, the attempt limit or
-  single-use consumption because "it's only the dev code". Boot refuses the variable in
-  production. Three rules here are easy to undo: issuing and delivering are separate methods,
+- **Login is phone + OTP** (§4.1). **Eskiz delivers, and codes are random, since 2026-08-20**
+  — connecting the provider was two environment variables and no code change, which is what
+  the `SmsSender` seam was for ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)).
+  `OTP_STATIC_CODE` is cleared; it substituted at the one line a random code is generated, so
+  everything downstream was always the production path — never add a second acceptance path in
+  `verify`, and never relax the TTL, the attempt limit or single-use consumption because "it's
+  only the dev code". Boot refuses the variable in production. **`OTP_ECHO_IN_RESPONSE` is
+  still on though**, and `POST /auth/otp/send` is public, so any caller can read any
+  registered number's code out of the response — the schema's own comment says so, and it is
+  the last gap in §4.1. Three rules here are easy to undo: issuing and delivering are separate methods,
   because an HTTP call inside the issuing transaction holds a row lock for the provider's
   latency; a *failed* send deletes its code, or the resend delay locks the user out over a
   message that never arrived; and `sms_not_configured` is **exempt** from that deletion while

@@ -82,9 +82,9 @@ would race itself the moment there were two.
 6. **No SMS at all, no error** - check which sender boot chose. `SMS not configured: nothing
    sent` in the logs means `ESKIZ_EMAIL` is unset and `OTP_ECHO_IN_RESPONSE` is returning the
    code in the send response instead. See [SMS_PROVIDER.md](SMS_PROVIDER.md).
-7. **The SMS arrives but the code is always the same** - `OTP_STATIC_CODE` is still set.
-   Expected on this instance today, and listed under escalation below rather than here,
-   because it is a decision and not a fault.
+7. **The SMS arrives but the code is always the same** - `OTP_STATIC_CODE` is set. Cleared on
+   this instance since 2026-08-20, so codes are random; production boot refuses the variable
+   outright.
 
 ### "Everyone is being rate limited"
 
@@ -170,10 +170,19 @@ output is in [BACKUP.md](BACKUP.md) - read that before you need it, not after.
 
 ## Escalation: what needs a decision rather than a fix
 
-- **Every OTP is the same code.** `OTP_STATIC_CODE` is still set on the deployed instance, so
-  SMS *delivery* works (Eskiz, since 2026-08-20) while the code itself is fixed at `666666`.
-  Anyone who knows a registered phone number can sign in as its owner. Clearing it - and
-  `OTP_ECHO_IN_RESPONSE` with it - is the decision; production boot already refuses both.
+- **`OTP_ECHO_IN_RESPONSE=true` hands a login code to anyone who asks.** `OTP_STATIC_CODE`
+  was cleared on 2026-08-20 and codes are now random and delivered by Eskiz - but the echo is
+  still on, and `POST /auth/otp/send` is a **public** route. So any caller can post any
+  registered phone number and read that account's code out of the response body, with no SMS
+  and no credential. The env schema says it in its own comment: *"this flag would hand any
+  caller a login code for any phone number."* It is the last thing standing between this
+  instance and a real login.
+
+  Clearing it costs the mobile team a real SMS per login (160 UZS), which is the reason it is
+  still on. Once it is off, **set `NODE_ENV=production`**: the schema then *refuses* both this
+  flag and `OTP_STATIC_CODE` at boot, so neither hole can be reopened by an `.env` edit. The
+  only other production gate, `TELEGRAM_JWKS_URL` needing https, already passes. Remember
+  `LOG_PRETTY=false` - the image carries no `pino-pretty`.
 - **`API_DOCS_ENABLED` is on and the hostname is public.** `/docs` describes every endpoint
   to anyone who asks.
 - **Retention periods are provisional** until the client approves a privacy policy.

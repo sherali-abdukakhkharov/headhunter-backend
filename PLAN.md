@@ -41,8 +41,8 @@ a profile contract.
 
 **Every milestone is now built.** What stands between this and a release is not code: the two
 payment merchant accounts (M13), a stable public HTTPS host for the payment callbacks, one
-IKPU classifier code for §6.7's receipt, and clearing `OTP_STATIC_CODE` so a login code is a
-one-time code. **The client answered the seven open questions on 2026-08-20** — see the top of
+IKPU classifier code for §6.7's receipt, and clearing `OTP_ECHO_IN_RESPONSE` so a login code
+is not readable by whoever asks for it. **The client answered the seven open questions on 2026-08-20** — see the top of
 [TODO.md](TODO.md); six are closed and the fiscal one is half closed. **Eskiz is connected and
 delivering** as of the same day, with all four templates approved.
 
@@ -108,9 +108,11 @@ and `GET /health` verified end-to-end from the Flutter client.
     delivered end to end ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) has the
     `request_id` and the billing line). Connecting it was two environment
     variables and **no code change**, which is what the sender seam was for.
-  - *The remaining gap is that the code is still fixed.* `OTP_STATIC_CODE` is
-    still set on this instance, so every delivered SMS says `666666`. Production
-    boot refuses the variable; clearing it here is the last step of §4.1.
+  - *Codes are random since the same day* — `OTP_STATIC_CODE` cleared and
+    verified end to end. **The remaining gap is `OTP_ECHO_IN_RESPONSE`**, still
+    on: `POST /auth/otp/send` is public, so any caller can read any registered
+    number's code out of the response. Production boot refuses the flag, which
+    is also why `NODE_ENV=production` cannot be set until it is off.
   - Telegram login (`POST /auth/telegram`) was primary for one day on 2026-08-05
     and is now **deprecated but still working**. Both paths converge on the same
     session issuance, so an account can hold both credentials.

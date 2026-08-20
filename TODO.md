@@ -216,11 +216,21 @@ needs them.
       issued, undelivered, deleted, and answered 502, and `OTP_STATIC_CODE` could not help
       because the row was gone. The `curl` that distinguishes the two logins is now step 0 of
       the runbook in [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)
-- [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` - **now unblocked, and now the last
-      real gap in §4.1**: delivery working is not the same as the code being one-time, and
-      until this is cleared every login code is `666666`. Production boot already refuses
-      both. Left to the client because clearing the echo means the mobile team needs a real
-      SMS per login - a decision about their loop, not about this codebase
+- [x] **Clear `OTP_STATIC_CODE`** *(done 2026-08-20)*. Codes are random and delivered -
+      verified with Eskiz `request_id` `cf3abc09-a0fa-48c7-862d-69a401d54b01`, `DELIVERED`,
+      carrying a code that was not `666666`
+- [ ] **Clear `OTP_ECHO_IN_RESPONSE` - the last real gap in §4.1, and the half that matters.**
+      `POST /auth/otp/send` is a **public** route, so while this is on any caller can post any
+      registered number and read that account's code out of the response body: no SMS, no
+      credential, no rate limit that helps. The env schema says it in its own comment - "this
+      flag would hand any caller a login code for any phone number" - and refuses it in
+      production. Still on because clearing it costs the mobile team a real SMS (160 UZS) per
+      login, which is a decision about their loop rather than about this codebase
+- [ ] **Then set `NODE_ENV=production`.** Blocked only by the echo now that the static code is
+      gone; `TELEGRAM_JWKS_URL` already passes its https gate. Worth doing rather than
+      skipping: it moves both guarantees from "the `.env` file is correct" to "boot refuses
+      otherwise", which is where this codebase keeps rules about money and access. Keep
+      `LOG_PRETTY=false` - the image carries no `pino-pretty`
 - [ ] Flutter client: replace the Telegram sign-in screen with phone + code entry
 
 ### Login: Telegram *(deprecated 2026-08-05, still working)*
