@@ -57,8 +57,34 @@ would race itself the moment there were two.
 4. **401 `auth.otp_invalid` with the right code** - the code is single-use and expires in
    `OTP_TTL_SECONDS`. `OTP_STATIC_CODE` fixes *which* code is issued; it is **not** a
    second acceptance path, so it still needs a live, unconsumed row. Send again.
-5. **No SMS at all** - correct: no provider is connected. `OTP_ECHO_IN_RESPONSE` returns
-   the code in the send response. See [SMS_PROVIDER.md](SMS_PROVIDER.md).
+5. **502 `auth.otp_send_failed`** - the provider refused the send, and this is the one that
+   takes login **down** rather than degrading it. Grep for it:
+
+   ```bash
+   docker logs headhunter-api --since 30m 2>&1 | grep -oE '"context":"(EskizSmsSender|OtpService)","msg":"[^"]*'
+   ```
+
+   `Eskiz login failed with 401` means the credentials. Almost always the **cabinet vs SMS
+   gateway** mistake - Eskiz issues two logins and only the gateway one works on the API.
+   Verify without deploying anything:
+
+   ```bash
+   curl -s -X POST https://notify.eskiz.uz/api/auth/login -F "email=<email>" -F "password=<password>"
+   ```
+
+   A token means the right login; a 401 means the wrong one, and its Russian message says so.
+   **Why login dies rather than degrades:** a failed send deletes its own code (so the resend
+   delay cannot lock somebody out over a message that never arrived), and only
+   `sms_not_configured` is exempt from that. So `OTP_STATIC_CODE` cannot rescue a *broken*
+   provider - the row is gone before anyone can use it. To restore service immediately,
+   comment out `ESKIZ_EMAIL` and `pnpm api:up`: boot falls back to the logging sender, which
+   *is* exempt.
+6. **No SMS at all, no error** - check which sender boot chose. `SMS not configured: nothing
+   sent` in the logs means `ESKIZ_EMAIL` is unset and `OTP_ECHO_IN_RESPONSE` is returning the
+   code in the send response instead. See [SMS_PROVIDER.md](SMS_PROVIDER.md).
+7. **The SMS arrives but the code is always the same** - `OTP_STATIC_CODE` is still set.
+   Expected on this instance today, and listed under escalation below rather than here,
+   because it is a decision and not a fault.
 
 ### "Everyone is being rate limited"
 
@@ -144,11 +170,10 @@ output is in [BACKUP.md](BACKUP.md) - read that before you need it, not after.
 
 ## Escalation: what needs a decision rather than a fix
 
-- **The OTP SMS provider is not bought.** Real users cannot receive a code.
+- **Every OTP is the same code.** `OTP_STATIC_CODE` is still set on the deployed instance, so
+  SMS *delivery* works (Eskiz, since 2026-08-20) while the code itself is fixed at `666666`.
+  Anyone who knows a registered phone number can sign in as its owner. Clearing it - and
+  `OTP_ECHO_IN_RESPONSE` with it - is the decision; production boot already refuses both.
 - **`API_DOCS_ENABLED` is on and the hostname is public.** `/docs` describes every endpoint
   to anyone who asks.
-- **No administrator account exists on the deployed instance**, so
-  `EMPLOYER_VERIFICATION_ENABLED` and `MODERATION_ENABLED` are false there. The first admin
-  is granted by hand - the SQL is in `.env.example`, and no route grants that role by
-  design.
 - **Retention periods are provisional** until the client approves a privacy policy.

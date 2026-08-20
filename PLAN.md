@@ -25,7 +25,7 @@ a profile contract.
 | # | Milestone | Blocks | State |
 |---|---|---|---|
 | M0 | Foundations (running service, health, migrations, CI-able) | everything | **done** |
-| M1 | Auth, users, roles, sessions | all authenticated work | **done**; OTP login works on a fixed code, SMS delivery open |
+| M1 | Auth, users, roles, sessions | all authenticated work | **done**; SMS delivery connected and verified 2026-08-20, but the code is still fixed |
 | M2 | Dictionaries + seed data | M3, M5, M6, M7 | **done**; content awaiting client lists |
 | M3 | Candidate profile + files | M6, M7 | **done**; BR-09 CV access delivered in M6, once its inputs existed |
 | M4 | Employer profile + verification | M5, M7 | **done**; verification auto-approves until M10 gives it a reviewer |
@@ -39,11 +39,12 @@ a profile contract.
 | M12 | Employer wallet, Coins, Candidate Unlock | M13 | **done** — and the BR-09 retrofit landed with it, on the reading that an application is an approved entitlement |
 | M13 | Payme and CLICK top-up | release | **done** — both providers, callbacks verified, crediting exactly once; needs merchant accounts to be switched on |
 
-**Every milestone is now built.** What stands between this and a release is not code: the SMS
-templates through Eskiz moderation (M1), the two payment merchant accounts (M13), a stable
-public HTTPS host for the payment callbacks, and one IKPU classifier code for §6.7's receipt.
-**The client answered the seven open questions on 2026-08-20** — see the top of
-[TODO.md](TODO.md); six are closed and the fiscal one is half closed.
+**Every milestone is now built.** What stands between this and a release is not code: the two
+payment merchant accounts (M13), a stable public HTTPS host for the payment callbacks, one
+IKPU classifier code for §6.7's receipt, and clearing `OTP_STATIC_CODE` so a login code is a
+one-time code. **The client answered the seven open questions on 2026-08-20** — see the top of
+[TODO.md](TODO.md); six are closed and the fiscal one is half closed. **Eskiz is connected and
+delivering** as of the same day, with all four templates approved.
 
 Two items that used to be on that list are off it, and for different reasons. **The first
 administrator is granted by the seeder** since 2026-08-19 — `SEED_ADMIN_PHONES` carries
@@ -97,16 +98,19 @@ Running NestJS service with Kysely over Postgres 18, migration runner, Joi env
 validation, pino logging, helmet, CORS, global validation pipe, Swagger + Scalar,
 and `GET /health` verified end-to-end from the Flutter client.
 
-## M1 - Auth, users, roles *(done - SMS delivery still owed)*
+## M1 - Auth, users, roles *(done - delivery connected 2026-08-20; the code is still fixed)*
 
 **Covers** §4, §2.3 · **BR-01, BR-10** · **UAT-01, UAT-14 (block enforcement)**
 
 - Phone + OTP: send, verify, resend. Hashed OTP storage; server-configured TTL,
   resend delay, attempt limits. Rate limited per phone and per IP.
-  - *Delivery is the one gap.* No SMS provider is bought, so `OTP_STATIC_CODE`
-    issues a fixed code and production boot refuses it. Eskiz.uz is the intended
-    provider ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)); connecting it is
-    additive — a sender behind the existing transaction, no route or DTO change.
+  - *Delivery works since 2026-08-20.* Eskiz.uz is connected and a real code was
+    delivered end to end ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) has the
+    `request_id` and the billing line). Connecting it was two environment
+    variables and **no code change**, which is what the sender seam was for.
+  - *The remaining gap is that the code is still fixed.* `OTP_STATIC_CODE` is
+    still set on this instance, so every delivered SMS says `666666`. Production
+    boot refuses the variable; clearing it here is the last step of §4.1.
   - Telegram login (`POST /auth/telegram`) was primary for one day on 2026-08-05
     and is now **deprecated but still working**. Both paths converge on the same
     session issuance, so an account can hold both credentials.

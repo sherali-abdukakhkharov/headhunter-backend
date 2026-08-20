@@ -199,15 +199,28 @@ needs them.
       the resend delay locks the user out over a message that never arrived), and a
       failure is a 502 rather than a silent success. 11 unit tests over a stubbed
       `fetch`, 4 integration tests over the real table
-- [~] **Connect the account** - two environment variables and a redeploy; the runbook is at
-      the end of [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md). **The contract was signed on
-      2026-08-19**, so what is left is credentials and moderation rather than a purchase.
-      **Nothing has been run against a real account yet**
-- [ ] **Submit the four templates for moderation** - written 2026-08-19, one SMS segment
-      each, pinned by 16 tests that assert Eskiz's allowed character set and the billing
-      boundary. Approval turnaround is the long pole, not the code
-- [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` once a provider sends -
-      production boot already refuses both, so this is a staging-hygiene item
+- [x] **Connect the account** *(done 2026-08-20)*. Two environment variables and a redeploy,
+      exactly as promised - **no code changed**, which is what the seam was for. Verified end
+      to end on hh.qitmir.uz: Eskiz `request_id` `1341d6dd-ad30-4510-a8fc-b87203df0267`,
+      status **`DELIVERED`**, originator `4546`, GSM-7, one segment, 160 UZS. The template
+      tests' billing prediction held exactly
+- [x] **Submit the four templates for moderation** *(approved 2026-08-20)*. All four live
+      with `status: service`, ids 86345-86348. Written 2026-08-19, one SMS segment each,
+      pinned by 16 tests that assert Eskiz's allowed character set and the billing boundary
+- [x] **Found the hard way: Eskiz issues two logins and only one works here.** The
+      `my.eskiz.uz` *cabinet* login is not the *SMS gateway* login, and `/api/auth/login`
+      refuses the first with a 401 that says so. It took login **down** rather than degrading
+      it, because `ESKIZ_EMAIL` being *set* is what selects the real sender - correctness is
+      not checked - and a `sms_transport_failed` deletes the code while `sms_not_configured`
+      is exempt. So a configured-but-broken provider is strictly worse than none: a code was
+      issued, undelivered, deleted, and answered 502, and `OTP_STATIC_CODE` could not help
+      because the row was gone. The `curl` that distinguishes the two logins is now step 0 of
+      the runbook in [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)
+- [ ] Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE` - **now unblocked, and now the last
+      real gap in §4.1**: delivery working is not the same as the code being one-time, and
+      until this is cleared every login code is `666666`. Production boot already refuses
+      both. Left to the client because clearing the echo means the mobile team needs a real
+      SMS per login - a decision about their loop, not about this codebase
 - [ ] Flutter client: replace the Telegram sign-in screen with phone + code entry
 
 ### Login: Telegram *(deprecated 2026-08-05, still working)*

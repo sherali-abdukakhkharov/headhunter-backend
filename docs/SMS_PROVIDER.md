@@ -1,16 +1,29 @@
 # SMS delivery — Eskiz.uz
 
-**Status: built, not bought.** The integration is written and tested; there is no
-account. Set `ESKIZ_EMAIL` and `ESKIZ_PASSWORD` and codes go out - that is the whole
-connection, and nothing in the codebase changes.
+**Status: connected and delivering, since 2026-08-20.** Setting `ESKIZ_EMAIL` and
+`ESKIZ_PASSWORD` was the whole connection, and nothing in the codebase changed — which is
+what the seam was for.
 
-Until then the login path is unchanged: codes are issued and stored, `OTP_STATIC_CODE`
-fixes them and `OTP_ECHO_IN_RESPONSE` returns them, and the logging sender reports
-`failed` rather than pretending anything was delivered.
+The first real code, end to end:
 
-**Nothing here has been run against a real Eskiz account**, because there is not one.
-The field spellings below are the part to re-check on purchase; everything else is
-exercised by `src/modules/auth/sms/sms.spec.ts` against a stubbed `fetch`.
+| | |
+|---|---|
+| Sent | 2026-08-20 12:48 Tashkent, `POST /auth/otp/send` on hh.qitmir.uz |
+| Eskiz `request_id` | `1341d6dd-ad30-4510-a8fc-b87203df0267` |
+| Status | **`DELIVERED`** |
+| Originator | `4546` (the shared code — the account has no branded sender) |
+| Encoding | `0` (GSM-7), one segment, 66 characters |
+| Price | 160 UZS |
+| Text | `JobBridge ilovasiga kirish kodi: 666666. Kodni hech kimga bermang.` |
+
+All four templates are approved and carry `status: service` (ids 86345–86348). The billing
+prediction the template tests make held exactly: one segment, GSM-7, no UCS-2 surprise.
+
+**Two things are still true and still matter.** The code in that message was `666666`,
+because `OTP_STATIC_CODE` is still set on this instance — delivery working is not the same
+as the OTP being a one-time code, and clearing that variable is step 5 below. And the field
+spellings in this document were confirmed against the live account only for the endpoints
+the login path uses; the delivery-callback shape has still never been exercised.
 
 Client direction 2026-08-05: the provider is **Eskiz.uz**, vendor reference
 <https://documenter.getpostman.com/view/663428/RzfmES4z?version=latest>.
@@ -147,18 +160,59 @@ Five decisions are worth knowing before changing any of it.
 
 Neither the code nor the full number is ever logged; `maskPhone` is used throughout.
 
-## Connecting it, on the day the account exists
+## The credential trap, which cost an outage *(2026-08-20)*
 
-1. Set `ESKIZ_EMAIL` and `ESKIZ_PASSWORD` in `.env`, then `pnpm api:up`.
-2. Check the boot log: the warning about `ESKIZ_EMAIL` should be gone.
-3. Send yourself a code. In test mode Eskiz accepts only its three fixed strings, so
+**Eskiz issues two logins, and only one of them works here.** The `my.eskiz.uz` *personal
+cabinet* login is not the *SMS gateway* login, and `POST /api/auth/login` refuses the first
+one with a `401` whose message says so in as many words:
+
+> «Возможно, Вы вводите логин и пароль от персонального кабинета, необходимо использовать
+> логин и пароль только от смс шлюза»
+
+That mistake took login **down**, not merely degraded, and the mechanism is worth
+understanding because it will recur with any provider:
+
+1. `ESKIZ_EMAIL` being set is what selects `EskizSmsSender` at boot. It does not have to
+   be *correct* to be selected.
+2. `OtpService.deliver` deletes the code when a send fails — deliberately, because
+   otherwise the resend delay locks a user out over a message that never arrived.
+3. `sms_not_configured` is exempt from that deletion; `sms_transport_failed` is not.
+
+So a *configured but broken* provider is strictly worse than no provider: every
+`POST /auth/otp/send` issued a code, failed to deliver it, deleted it and answered `502`,
+and `OTP_STATIC_CODE` could not help because the row was already gone.
+
+**Verify credentials before deploying them.** A token in the response means the gateway
+login; a `401` means the cabinet one:
+
+```bash
+curl -s -X POST https://notify.eskiz.uz/api/auth/login \
+  -F "email=<gateway-email>" -F "password=<gateway-password>"
+```
+
+The trigger was a redeploy rather than an edit: the variables sat in `.env` for hours while
+the running container — started before they were added — kept using the logging sender. The
+next `pnpm api:up` read them and the outage began, which made it look like an application
+change had caused it.
+
+## Connecting it — the runbook, and where this instance stands
+
+0. ✅ **Verify the credentials with the `curl` above first.** See the trap above for why.
+1. ✅ Set `ESKIZ_EMAIL` and `ESKIZ_PASSWORD` in `.env`, then `pnpm api:up`.
+2. ✅ Check the boot log: the warning about `ESKIZ_EMAIL` should be gone.
+3. ✅ Send yourself a code. In test mode Eskiz accepts only its three fixed strings, so
    expect `sms_template_not_approved` until a template is approved - the client
    classifies that refusal specifically, because the fix is not in this codebase.
-4. Submit the four `sms.otp_code` variants for approval (or one, if the client decides
-   a single Russian/Uzbek text serves everyone).
-5. Once codes arrive: clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE`. Production
-   boot already refuses both, so this is staging hygiene.
-6. Confirm `ESKIZ_FROM` matches the originator on the account.
+4. ✅ Submit the four `sms.otp_code` variants for approval. All four are live with
+   `status: service`, ids 86345–86348.
+5. ⬜ **Once codes arrive: clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE`.** Production
+   boot already refuses both, so this is staging hygiene — but it is also the step that
+   makes the OTP a *one-time* code rather than a fixed one, so it is the last real gap in
+   §4.1. It is left open deliberately: clearing `OTP_ECHO_IN_RESPONSE` means the mobile
+   team needs a real SMS for every login, which is a decision about their loop rather than
+   about this codebase.
+6. ✅ Confirm `ESKIZ_FROM` matches the originator on the account. `4546`, the shared code —
+   `GET /api/nick/me` returns an empty list, so there is no branded sender to point at.
 - **`OTP_STATIC_CODE` is removed by clearing it**, not by editing code. It substitutes
   at code generation only, so a real sender inherits every behaviour the fixed code was
   tested with.

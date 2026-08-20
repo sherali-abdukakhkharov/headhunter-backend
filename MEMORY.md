@@ -39,6 +39,43 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-08-20 - A configured-but-broken provider is worse than no provider
+Eskiz went live, and the way it first went live took **login down** for a morning. Three
+correct decisions composed into an outage, which is the interesting part - none of them is
+wrong on its own.
+
+1. `ESKIZ_EMAIL` being *set* is what selects `EskizSmsSender` at boot. Presence, not
+   validity - and nothing validates a credential at boot, because that would mean an
+   outbound HTTP call in the constructor.
+2. `OtpService.deliver` **deletes the code** when a send fails. Deliberate: otherwise the
+   resend delay locks a user out over a message that never arrived.
+3. `sms_not_configured` is exempt from that deletion. `sms_transport_failed` is not.
+
+So the *no provider* path is safe by design and the *broken provider* path is not: a code was
+issued, undelivered, deleted, and answered 502, and `OTP_STATIC_CODE` could not rescue it
+because the row was already gone. **The exemption is keyed on which sender was chosen rather
+than on whether the code is recoverable anyway**, and those are different questions on any
+instance where `OTP_STATIC_CODE` is set.
+
+The credential itself was the classic one: **Eskiz issues two logins**, and the `my.eskiz.uz`
+personal-cabinet login is not the SMS-gateway login. `POST /api/auth/login` says so in the
+401 body, in Russian, which is why reading the provider's own error message beat guessing.
+The `curl` that distinguishes them is now step 0 of the runbook.
+
+Two things worth keeping beyond Eskiz:
+
+- **The trigger was a redeploy, not an edit.** The variables sat in `.env` for hours while
+  the running container - started before they were added - kept using the logging sender.
+  `pnpm api:up` read them and the outage began, so it looked like an application change had
+  caused it. Anything read from `env_file` has this property: the change lands at the next
+  restart, arbitrarily far from when it was made.
+- **Verify a third-party credential before deploying it**, not after. One `curl` would have
+  turned a morning of broken login into a thirty-second no-op.
+
+When it did work, the seam delivered on its promise exactly: two environment variables, **no
+code change**, one segment, GSM-7, 160 UZS, `DELIVERED`. The billing prediction the template
+tests make - 66 of 160 characters, one segment - held to the character.
+
 ### 2026-08-20 - Seven open questions answered, and the pattern paid for itself
 All seven `[?]` items came back in one sitting. **Six of them changed no code at all** - one
 word per row in a declaration file, and in three cases not even that. That is the return on
