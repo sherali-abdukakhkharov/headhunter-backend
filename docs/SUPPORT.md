@@ -183,6 +183,7 @@ output is in [BACKUP.md](BACKUP.md) - read that before you need it, not after.
   flag and `OTP_STATIC_CODE` at boot, so neither hole can be reopened by an `.env` edit. The
   only other production gate, `TELEGRAM_JWKS_URL` needing https, already passes. Remember
   `LOG_PRETTY=false` - the image carries no `pino-pretty`.
-- **`API_DOCS_ENABLED` is on and the hostname is public.** `/docs` describes every endpoint
-  to anyone who asks.
+- ~~**`API_DOCS_ENABLED` is on and the hostname is public.**~~ Closed 2026-08-20: the flag is
+  `false`, so `/docs`, `/reference` and `/docs-json` answer 404. If somebody reports the
+  documentation "missing", that is why — point them at `docs/openapi.json` in the repository.
 - **Retention periods are provisional** until the client approves a privacy policy.

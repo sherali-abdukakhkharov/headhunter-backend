@@ -497,8 +497,10 @@ one is one `INSERT INTO user_roles` — until then that instance has to keep bot
   that already worked twice: the policy is data with a provenance tag. The M10 collision is
   resolved by erasing the person and keeping the actor - `RESTRICT` got the answer it was
   holding out for rather than being relaxed.
-- **Two gaps are stated rather than closed**: malware scanning cannot be done where the
-  bytes live, and `API_DOCS_ENABLED` on a public hostname is an operator decision.
+- **One gap is stated rather than closed**: malware scanning cannot be done where the bytes
+  live. The other — `API_DOCS_ENABLED` on a public hostname — was closed on 2026-08-20 by
+  setting it to `false`; the mobile team reads `docs/openapi.json` from the repository, which
+  the same builder produces.
 
 ---
 

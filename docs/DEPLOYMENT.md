@@ -181,12 +181,21 @@ container sets `LOG_PRETTY=false`: `pino-pretty` is a devDependency and the imag
 carries production dependencies only, so pretty printing would fail at boot on a
 transport it does not have.
 
-### `API_DOCS_ENABLED`
+### `API_DOCS_ENABLED=false` *(since 2026-08-20)*
 
-`/docs` and `/reference` describe every endpoint and payload. Useful for the mobile
-devs, and public once the hostname is. Either set it to `false`, or leave it on and
-put a Cloudflare Access policy in front of those two paths — the second is better
-while the client is still being written.
+`/docs`, `/reference` and `/docs-json` describe every endpoint and payload, and the hostname
+is public. All three now answer **404**.
+
+The schema still defaults to `true`: somebody running this locally should get the
+documentation without configuring anything, and a deployment is where the decision belongs.
+
+The mobile developers read `docs/openapi.json` from the repository instead. That is not a
+downgrade — it is the same document from the same builder (`buildOpenApiDocument`, shared
+with `pnpm docs:openapi`), so the file cannot drift from what the server would have served.
+Regenerate it whenever a client-visible response changes.
+
+A Cloudflare Access policy in front of the two paths was the alternative. Turning the flag
+off is stronger: a policy guards a route that still exists.
 
 ### `PUBLIC_BASE_URL=https://hh.qitmir.uz`
 

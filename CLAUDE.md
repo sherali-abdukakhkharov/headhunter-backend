@@ -18,14 +18,14 @@ Code session rooted there can edit this repo too (see that repo's
 | [MEMORY.md](MEMORY.md) | Why decisions were made; traps already paid for. |
 | [README.md](README.md) | Stack, commands, structure, environment gotchas. |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The Cloudflare tunnel at hh.qitmir.uz, and what changes when the API is public. |
-| [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: what OTP delivery will need, and what to ask on purchase. |
-| [docs/PAYMENTS.md](docs/PAYMENTS.md) | Payme and CLICK: both protocols, what to ask on purchase, and the three questions only the client can answer. |
+| [docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md) | Eskiz.uz: connected and delivering; the runbook, and the two-logins trap that cost an outage. |
+| [docs/PAYMENTS.md](docs/PAYMENTS.md) | Payme and CLICK: both protocols, what to ask on purchase, and the three client questions — two answered, one half. |
 | [docs/BACKUP.md](docs/BACKUP.md) | The daily dump, and the **rehearsed** restore with its real output. |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | §12.4 measured at 200k profiles, and the volume that would break it. |
 | [docs/RETENTION.md](docs/RETENTION.md) | BR-14 as data: what is purged, when, and what the client still owes. |
 | [docs/SUPPORT.md](docs/SUPPORT.md) | The runbook: symptoms, causes, and what needs a decision instead. |
 | [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md) | §13.2's test results, and the UAT-to-test mapping. |
-| [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the two gaps. |
+| [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the one gap left. |
 | [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 
 Before implementing anything from the spec, check ARCHITECTURE.md first — several
@@ -64,10 +64,10 @@ re-derivable from the text.
   `OTP_STATIC_CODE` is cleared; it substituted at the one line a random code is generated, so
   everything downstream was always the production path — never add a second acceptance path in
   `verify`, and never relax the TTL, the attempt limit or single-use consumption because "it's
-  only the dev code". Boot refuses the variable in production. **`OTP_ECHO_IN_RESPONSE` is
-  still on though**, and `POST /auth/otp/send` is public, so any caller can read any
-  registered number's code out of the response — the schema's own comment says so, and it is
-  the last gap in §4.1. Three rules here are easy to undo: issuing and delivering are separate methods,
+  only the dev code". **`OTP_ECHO_IN_RESPONSE` is off and `NODE_ENV=production` is set**, so
+  the schema now *refuses* both that flag and `OTP_STATIC_CODE` at boot rather than trusting
+  the `.env` file — §4.1 is closed, and reopening either hole stops the container instead of
+  weakening login. Three rules here are easy to undo: issuing and delivering are separate methods,
   because an HTTP call inside the issuing transaction holds a row lock for the provider's
   latency; a *failed* send deletes its code, or the resend delay locks the user out over a
   message that never arrived; and `sms_not_configured` is **exempt** from that deletion while

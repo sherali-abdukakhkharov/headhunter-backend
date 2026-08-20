@@ -1039,8 +1039,12 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       **not** closed:
   - [ ] Malware scanning is not implemented and cannot be here - the bytes go to
         Telegram, which does not scan a bot upload. Stated as a gap, not fixed.
-  - [ ] `API_DOCS_ENABLED` is on and the hostname is public: decide between
-        turning it off and a Cloudflare Access policy on `/docs` + `/reference`
+  - [x] `API_DOCS_ENABLED=false` *(decided 2026-08-20)*. `/docs`, `/reference` and
+        `/docs-json` all answer 404 on the deployed instance; the schema default stays
+        `true` so a local run is documented without configuration. Chosen over the
+        Cloudflare Access policy because a policy guards a route that still exists.
+        The mobile team reads `docs/openapi.json` from the repository - same builder,
+        so it cannot drift from what the server would have served
 - [x] **BR-14 as data, and the audit-log purge collision resolved** -
       [docs/RETENTION.md](docs/RETENTION.md). Every period declared with a provenance
       tag; the purge runs on request, not a timer; an administrator who has acted is

@@ -87,11 +87,19 @@ key to every account) and `OTP_ECHO_IN_RESPONSE`.
 Phone numbers pass through `maskPhone` at the one place they are logged, and OTP codes and
 tokens are never logged at all — only hashes are stored.
 
-*Outstanding, and an operator decision:* `API_DOCS_ENABLED` defaults to on, and the
-deployment is publicly reachable. The OpenAPI document describes every endpoint and payload
-to anyone who asks. It is currently on because the mobile developers use it; a production
-launch should either turn it off or put an access policy in front of `/docs` and
-`/reference`.
+*Closed 2026-08-20:* `API_DOCS_ENABLED=false` on the deployed instance, so `/docs`,
+`/reference` **and `/docs-json`** all answer 404 — verified. The default in the schema stays
+`true`, because a developer running this locally should get the documentation without
+configuring anything; a deployment is where the decision belongs.
+
+It was on until then because the mobile developers read `/docs-json` directly. They now read
+`docs/openapi.json` from the repository, which is the same document from the same builder
+(`buildOpenApiDocument`, shared with `pnpm docs:openapi`) — so what they read cannot drift
+from what the server serves, which was the reason the two were never allowed to diverge.
+
+The alternative considered and not taken was a Cloudflare Access policy in front of the two
+paths. Turning the flag off is stronger: an access policy protects a route that still exists,
+and this one no longer does.
 
 ## File-type and size validation, malware scanning where possible, protected download URLs
 
@@ -154,12 +162,22 @@ private, no-store`.
 | TLS | Held at the tunnel edge |
 | Role/permission enforcement | Held, asserted over the whole route surface |
 | Rate limiting, five buckets | Held |
-| Secret storage, none in the client | Held; `API_DOCS_ENABLED` is an operator decision |
+| Secret storage, none in the client | Held; `API_DOCS_ENABLED=false` since 2026-08-20 |
 | File validation and protected downloads | Held |
 | Malware scanning | **Not implemented** — infrastructure does not permit it |
 | Input validation, injection, mass assignment | Held, with tests |
 
-Two things outside §12.5 that a reviewer should know: **BR-14's retention periods are still
-unanswered** (no approved privacy policy), and the audit log's actor reference is
-`RESTRICT`, so an administrator who has acted cannot currently be deleted — a collision
-that the retention decision has to resolve deliberately rather than by cascade.
+**One §12.5 gap remains, and it is the one that cannot be closed here:** malware scanning.
+The bytes go to a Telegram chat, and the Bot API does not scan a bot upload, so
+`FilesService` does type and size validation and nothing pretends otherwise.
+
+Also worth a reviewer's attention, in the order the login path acquired them on 2026-08-20:
+**OTP delivery is real** (Eskiz, codes random, `OTP_ECHO_IN_RESPONSE=false`), and
+`NODE_ENV=production` now makes both of the flags that used to weaken it — the echo and
+`OTP_STATIC_CODE` — refused at boot rather than merely unset. That moves two access
+guarantees from "the `.env` file is correct" to "the process will not start otherwise".
+
+Two things outside §12.5: **BR-14's retention periods are still unanswered** (no approved
+privacy policy), and the audit log's actor reference is `RESTRICT`, so an administrator who
+has acted cannot be deleted — a collision the retention decision resolved deliberately, by
+anonymizing rather than cascading.
