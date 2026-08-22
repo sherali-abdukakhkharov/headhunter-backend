@@ -649,7 +649,13 @@ export class AuditEntryDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'What changed, when the reason is not enough on its own. Small by intent.',
+      'What changed, when the reason is not enough on its own. Small by intent. ' +
+      '**An opaque key/value bag — render it as text, do not parse the values.** The keys ' +
+      'differ per `action` and are not enumerated anywhere, because this is a trail rather ' +
+      'than a typed payload; a schema cannot express it and a client that guesses at one ' +
+      'will be wrong for the next action added. Any timestamp inside carries §2’s explicit ' +
+      'offset, formatted where it is written — a `jsonb` bag admits no read-side fix, ' +
+      'since nothing downstream can tell a timestamp from any other string.',
   })
   details!: Record<string, unknown> | null;
 

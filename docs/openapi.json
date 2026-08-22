@@ -5017,7 +5017,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationQueueDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5153,7 +5160,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModerationQueueDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5333,7 +5347,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplaintListDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5520,7 +5541,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserListDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5549,6 +5577,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDetailDto"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`user.not_found`."
           }
@@ -5905,7 +5943,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10289,6 +10334,84 @@
           "items"
         ]
       },
+      "EvidenceFileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "purposeCode": {
+            "type": "string",
+            "description": "`file_purpose` code."
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Where to fetch it on this API. Never a storage URL (ARCHITECTURE.md §9)."
+          }
+        },
+        "required": [
+          "id",
+          "purposeCode",
+          "fileName",
+          "path"
+        ]
+      },
+      "VerificationQueueItemDto": {
+        "type": "object",
+        "properties": {
+          "employerUserId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "`company` or `individual` — §6.1 gives them different fields."
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "legalName": {
+            "type": "object",
+            "nullable": true
+          },
+          "regionId": {
+            "type": "object",
+            "nullable": true
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFileDto"
+            }
+          }
+        },
+        "required": [
+          "employerUserId",
+          "type",
+          "submittedAt",
+          "files"
+        ]
+      },
+      "VerificationQueueDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerificationQueueItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "VerificationDecisionDto": {
         "type": "object",
         "properties": {
@@ -10308,6 +10431,84 @@
         },
         "required": [
           "decision"
+        ]
+      },
+      "RestrictionDto": {
+        "type": "object",
+        "properties": {
+          "ageMin": {
+            "type": "object",
+            "nullable": true
+          },
+          "ageMax": {
+            "type": "object",
+            "nullable": true
+          },
+          "genderId": {
+            "type": "object",
+            "nullable": true
+          },
+          "justificationId": {
+            "type": "object",
+            "nullable": true,
+            "description": "The BR-12 reason the employer chose, from the enumerated list."
+          },
+          "justificationNote": {
+            "type": "object",
+            "nullable": true,
+            "description": "Their elaboration, if any."
+          }
+        }
+      },
+      "ModerationQueueItemDto": {
+        "type": "object",
+        "properties": {
+          "vacancyId": {
+            "type": "string"
+          },
+          "employerUserId": {
+            "type": "string"
+          },
+          "employerName": {
+            "type": "object",
+            "nullable": true
+          },
+          "title": {
+            "type": "object",
+            "nullable": true
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "restriction": {
+            "nullable": true,
+            "description": "Present when the vacancy carries a BR-12 age or gender restriction — which §10.2 requires to be reviewed, and which is why it cannot publish without this queue.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RestrictionDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "vacancyId",
+          "employerUserId",
+          "submittedAt"
+        ]
+      },
+      "ModerationQueueDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModerationQueueItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "VacancyReviewDto": {
@@ -10421,6 +10622,20 @@
           "createdAt"
         ]
       },
+      "ComplaintListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplaintDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "ComplaintDetailDto": {
         "type": "object",
         "properties": {
@@ -10456,6 +10671,213 @@
         "required": [
           "outcome",
           "resolution"
+        ]
+      },
+      "AdminUserDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true,
+            "description": "Visible to an administrator, which is BR-09’s `admin` branch rather than an exception to it (§10.4 searches by phone). Every read is logged (§11.1)."
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "candidate",
+                "employer",
+                "admin"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "restricted",
+              "blocked",
+              "deletion_requested"
+            ]
+          },
+          "restrictedUntil": {
+            "type": "object",
+            "nullable": true,
+            "description": "When a restriction ends. BR-10’s guard lifts it once this passes."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lastLoginAt": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "required": [
+          "userId",
+          "roles",
+          "status",
+          "createdAt"
+        ]
+      },
+      "AdminUserListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StatusHistoryEntryDto": {
+        "type": "object",
+        "properties": {
+          "fromStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "restricted",
+              "blocked",
+              "deletion_requested"
+            ],
+            "nullable": true
+          },
+          "toStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "restricted",
+              "blocked",
+              "deletion_requested"
+            ]
+          },
+          "actorRole": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "employer",
+              "admin"
+            ],
+            "nullable": true
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "toStatus",
+          "createdAt"
+        ]
+      },
+      "UserComplaintDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "status",
+          "createdAt"
+        ]
+      },
+      "AdminUserDetailDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true,
+            "description": "Visible to an administrator, which is BR-09’s `admin` branch rather than an exception to it (§10.4 searches by phone). Every read is logged (§11.1)."
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "candidate",
+                "employer",
+                "admin"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "restricted",
+              "blocked",
+              "deletion_requested"
+            ]
+          },
+          "restrictedUntil": {
+            "type": "object",
+            "nullable": true,
+            "description": "When a restriction ends. BR-10’s guard lifts it once this passes."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "lastLoginAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "statusHistory": {
+            "description": "BR-08’s account trail — half of §10.4’s \"relevant moderation history\".",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusHistoryEntryDto"
+            }
+          },
+          "complaints": {
+            "description": "Complaints filed about this user — the other half.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserComplaintDto"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "roles",
+          "status",
+          "createdAt",
+          "statusHistory",
+          "complaints"
         ]
       },
       "WarnUserDto": {
@@ -10606,6 +11028,68 @@
         },
         "required": [
           "survivorId"
+        ]
+      },
+      "AuditEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "actorUserId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "description": "A dotted code from one exported constant, e.g. `user.blocked`, `vacancy.moderated`, `dictionary.items_merged`."
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "user",
+              "employer",
+              "vacancy",
+              "complaint",
+              "dictionary_item"
+            ]
+          },
+          "targetId": {
+            "type": "object",
+            "nullable": true
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true
+          },
+          "details": {
+            "type": "object",
+            "nullable": true,
+            "description": "What changed, when the reason is not enough on its own. Small by intent. **An opaque key/value bag — render it as text, do not parse the values.** The keys differ per `action` and are not enumerated anywhere, because this is a trail rather than a typed payload; a schema cannot express it and a client that guesses at one will be wrong for the next action added. Any timestamp inside carries §2’s explicit offset, formatted where it is written — a `jsonb` bag admits no read-side fix, since nothing downstream can tell a timestamp from any other string."
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actorUserId",
+          "action",
+          "targetType",
+          "createdAt"
+        ]
+      },
+      "AuditLogDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEntryDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "RetentionRuleDto": {

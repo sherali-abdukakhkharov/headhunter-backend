@@ -159,6 +159,7 @@ export class AdminController {
       'Each item carries its evidence as paths on this API; there is no storage URL to ' +
       'hand out (ARCHITECTURE.md §9).',
   })
+  @ApiOkResponse({ type: VerificationQueueDto })
   async verificationQueue(
     @Query() page: AdminPageDto,
   ): Promise<VerificationQueueDto> {
@@ -250,6 +251,7 @@ export class AdminController {
       'restriction — §10.2 requires those to be reviewed, and a restricted vacancy cannot ' +
       'publish any other way.',
   })
+  @ApiOkResponse({ type: ModerationQueueDto })
   async moderationQueue(
     @Query() page: AdminPageDto,
   ): Promise<ModerationQueueDto> {
@@ -360,6 +362,7 @@ export class AdminController {
       'Over all four target kinds — users, vacancies, messages and profiles — from the one ' +
       'generic table M6 created, so there is one queue rather than four.',
   })
+  @ApiOkResponse({ type: ComplaintListDto })
   async complaintQueue(
     @Query() query: ComplaintQueryDto,
   ): Promise<ComplaintListDto> {
@@ -441,6 +444,7 @@ export class AdminController {
       'against a candidate’s profile, an individual employer’s own name and a company’s ' +
       'public or legal name. Every search is logged (§11.1).',
   })
+  @ApiOkResponse({ type: AdminUserListDto })
   async searchUsers(
     @ActiveUser() user: CurrentUser,
     @Query() query: UserSearchQueryDto,
@@ -462,6 +466,7 @@ export class AdminController {
       'BR-08’s account status trail and the complaints filed about them — the two halves ' +
       'of §10.4’s "relevant moderation history".',
   })
+  @ApiOkResponse({ type: AdminUserDetailDto })
   @ApiNotFoundResponse({ description: '`user.not_found`.' })
   async user(
     @ActiveUser() user: CurrentUser,
@@ -642,6 +647,7 @@ export class AdminController {
       '`UPDATE`, `DELETE` and `TRUNCATE`, so immutability is a property of the table ' +
       'rather than of this module having no write path.',
   })
+  @ApiOkResponse({ type: AuditLogDto })
   async auditLog(@Query() query: AuditQueryDto): Promise<AuditLogDto> {
     const items = await this.audit.list(
       query,

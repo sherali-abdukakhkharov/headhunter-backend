@@ -1059,11 +1059,23 @@ side, which is why two of the three cost no client release when they landed.
       exists to prevent - or a generic snake-to-camel converter with one caller. Their
       readers take either spelling, so nothing is waiting on it. The `salary_from` trap
       they flagged is real: `numeric` arrives as a string
-- [ ] **Found while there: most admin GET routes declare no `@ApiOkResponse`**, so their
-      responses are absent from `docs/openapi.json` - which is now the mobile team's only
-      contract document, `/docs-json` being 404 since 2026-08-20. Added for the two routes
-      touched here; roughly eight remain, each a one-line decorator over a DTO that already
-      exists
+- [x] **Found while there: six admin GET routes declared no `@ApiOkResponse`**, so their
+      responses were absent from `docs/openapi.json` - which is now the mobile team's only
+      contract document, `/docs-json` being 404 since 2026-08-20. All six done: the two
+      touched above, then `users`, `users/{userId}` and `audit` at the mobile session's
+      request (their §10.4 slice), then `verification`, `moderation` and `complaints` -
+      which they had deprioritised, but three one-line decorators over DTOs that already
+      existed was not worth leaving half-done. **Every route in the API now declares a
+      response or is deliberately excluded**; the only exclusions are the two payment
+      callbacks, whose audience is Payme and CLICK and whose reasoning is in
+      `payments-callback.controller.ts`
+- [x] `AuditEntryDto.details` now says in its own description that it is an **opaque
+      key/value bag** - render as text, never parse the values. The mobile session asked
+      for exactly this, and it is the thing a schema cannot express: the keys differ per
+      `action`, are enumerated nowhere, and a client that guesses at them is wrong for the
+      next action added. Their guess that `AdminUserDetailDto` carries audit entries was
+      wrong - it carries `statusHistory` and `complaints`; `details` reaches a client only
+      through `GET /admin/audit`
 
 ## M11 - Hardening
 
