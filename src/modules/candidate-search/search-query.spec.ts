@@ -44,9 +44,10 @@ const db: Database = new Kysely<DB>({
 });
 
 const TODAY = '2026-08-07';
+const ZONE = 'Asia/Tashkent';
 
 function whereSql(filters: CandidateSearchFilters): string {
-  return whereFilters(filters, TODAY).compile(db).sql;
+  return whereFilters(filters, TODAY, ZONE).compile(db).sql;
 }
 
 describe('the card query and §11.1', () => {
@@ -133,7 +134,8 @@ describe('whereFilters', () => {
     // The field code is a bound parameter, not inlined SQL - which is also what keeps
     // the index on (field_code, item_id, user_id) usable.
     expect(
-      whereFilters({ employmentTypeIds: ['t1'] }, TODAY).compile(db).parameters,
+      whereFilters({ employmentTypeIds: ['t1'] }, TODAY, ZONE).compile(db)
+        .parameters,
     ).toContain('employment_type_ids');
   });
 
@@ -150,6 +152,7 @@ describe('whereFilters', () => {
       whereFilters(
         { skillIds: ['s1', 's2'], skillsMatchMode: 'all' },
         TODAY,
+        ZONE,
       ).compile(db).parameters,
     ).toContain(2);
   });
@@ -188,7 +191,8 @@ describe('whereFilters', () => {
     // The filter this replaced was an ILIKE over prose. Nothing here may compare text.
     expect(sqlText).not.toContain('ILIKE');
     expect(
-      whereFilters({ specializationIds: ['s1'] }, TODAY).compile(db).parameters,
+      whereFilters({ specializationIds: ['s1'] }, TODAY, ZONE).compile(db)
+        .parameters,
     ).toContain('specialization');
   });
 
@@ -200,7 +204,7 @@ describe('whereFilters', () => {
 
   it('resolves "available immediately" against the platform date, not the server’s', () => {
     expect(
-      whereFilters({ availableImmediately: true }, TODAY).compile(db)
+      whereFilters({ availableImmediately: true }, TODAY, ZONE).compile(db)
         .parameters,
     ).toContain(TODAY);
   });
@@ -230,17 +234,29 @@ describe('injection (§12.5)', () => {
         genderId: HOSTILE,
         employmentTypeIds: [HOSTILE],
         attributeIds: [HOSTILE],
-        updatedSince: HOSTILE,
         availableBy: HOSTILE,
       },
       '2026-08-07',
+      ZONE,
     ).compile(db);
 
     // Every value reaches Postgres as a bound parameter. The query builder is what makes
     // that true; this asserts that the hand-written `sql` fragments did not undo it - the
     // one place in this codebase where they could.
+    //
+    // `updatedSince` is absent because it is now stronger than bound - see the next test.
     expect(compiled.sql).not.toContain('DROP TABLE');
     expect(compiled.parameters).toContain(HOSTILE);
+  });
+
+  it('refuses a malformed updatedSince rather than compiling it', () => {
+    // Stronger than the parameterisation above: `updatedSince` filters a `timestamptz`, so
+    // it is converted to an instant in the platform zone before it reaches SQL. A value
+    // that is not a calendar date therefore never becomes a query at all - not as text,
+    // and not as a bound parameter either.
+    expect(() => whereFilters({ updatedSince: HOSTILE }, TODAY, ZONE)).toThrow(
+      RangeError,
+    );
   });
 
   it('interpolates only closed-union group codes into raw SQL', () => {

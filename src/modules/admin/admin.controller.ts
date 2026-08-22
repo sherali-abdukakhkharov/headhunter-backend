@@ -123,8 +123,10 @@ export class AdminController {
     description:
       'Totals and queue lengths in one request. The period counts are "newly registered" ' +
       'and "active vacancies and applications for the selected period"; a queue length is ' +
-      'current state, because what matters about a queue is how long it is now. `to` is ' +
-      'inclusive. Defaults to the last 30 days.',
+      'current state, because what matters about a queue is how long it is now. Both `from` ' +
+      'and `to` are **inclusive** calendar dates in the platform zone (`Asia/Tashkent`, ' +
+      '§8.3), so a registration at 02:00 belongs to its own day rather than the one before. ' +
+      'Defaults to the last 30 days.',
   })
   @ApiOkResponse({
     schema: {

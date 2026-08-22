@@ -1,10 +1,85 @@
 import {
   dayBoundsInZone,
+  endOfDayInZone,
   formatDateOnly,
   formatRowTimestamps,
   formatWithOffset,
   offsetMinutes,
+  startOfDayInZone,
 } from './format';
+
+describe('startOfDayInZone / endOfDayInZone', () => {
+  it('resolves a calendar date to the platform zone, not to UTC', () => {
+    // Midnight in Tashkent is 19:00 the previous day in UTC. This is the whole difference
+    // between these helpers and a `::date` cast in SQL, which resolves in the *session*
+    // zone - UTC on this deployment, so five hours late.
+    expect(startOfDayInZone('2026-08-01', 'Asia/Tashkent').toISOString()).toBe(
+      '2026-07-31T19:00:00.000Z',
+    );
+    expect(endOfDayInZone('2026-08-07', 'Asia/Tashkent').toISOString()).toBe(
+      '2026-08-07T19:00:00.000Z',
+    );
+  });
+
+  it('puts an 02:00 Tashkent registration in its own day, which SQL casting did not', () => {
+    // The bug these exist for, as a property. Somebody who registered at 02:00 on the 1st
+    // was excluded from a period starting on the 1st and included in one ending on the
+    // 31st, because '2026-08-01'::date meant 05:00 Tashkent.
+    const registered = new Date('2026-08-01T02:00:00+05:00');
+
+    const august = {
+      start: startOfDayInZone('2026-08-01', 'Asia/Tashkent'),
+      end: endOfDayInZone('2026-08-31', 'Asia/Tashkent'),
+    };
+    const july = {
+      start: startOfDayInZone('2026-07-01', 'Asia/Tashkent'),
+      end: endOfDayInZone('2026-07-31', 'Asia/Tashkent'),
+    };
+
+    expect(registered >= august.start && registered < august.end).toBe(true);
+    expect(registered >= july.start && registered < july.end).toBe(false);
+
+    // And what the old SQL cast did with the same instant, for the record.
+    expect(registered >= new Date('2026-08-01T00:00:00Z')).toBe(false);
+  });
+
+  it('is inclusive of the end date, which is what picking "1st to 7th" means', () => {
+    const lateOnTheSeventh = new Date('2026-08-07T23:30:00+05:00');
+
+    expect(
+      lateOnTheSeventh < endOfDayInZone('2026-08-07', 'Asia/Tashkent'),
+    ).toBe(true);
+  });
+
+  it('follows the wall clock across a DST boundary', () => {
+    // Uzbekistan has no DST; this is about the helpers not becoming quietly wrong if the
+    // zone is ever configured somewhere that does. 2026-03-29 is 23 hours long in Berlin.
+    const start = startOfDayInZone('2026-03-29', 'Europe/Berlin');
+    const end = endOfDayInZone('2026-03-29', 'Europe/Berlin');
+
+    expect(formatWithOffset(start, 'Europe/Berlin')).toBe(
+      '2026-03-29T00:00:00+01:00',
+    );
+    expect(formatWithOffset(end, 'Europe/Berlin')).toBe(
+      '2026-03-30T00:00:00+02:00',
+    );
+    expect(end.getTime() - start.getTime()).toBe(23 * 60 * 60 * 1000);
+  });
+
+  it('refuses anything that is not a calendar date', () => {
+    // Without this the string reaches Intl as a NaN date and surfaces as
+    // `RangeError: Invalid time value` from inside the formatter, which says nothing about
+    // where the bad value came from. Every route validates the shape first, so this is a
+    // programming-error guard - and §12.5's injection test relies on it.
+    expect(() => startOfDayInZone('2026-8-1', 'Asia/Tashkent')).toThrow(
+      RangeError,
+    );
+    expect(() => startOfDayInZone('yesterday', 'Asia/Tashkent')).toThrow(
+      /Not a calendar date/,
+    );
+    expect(() => endOfDayInZone('', 'Asia/Tashkent')).toThrow(RangeError);
+  });
+});
 
 describe('formatRowTimestamps', () => {
   it('renders every instant in a row, which is the point of doing it by type', () => {

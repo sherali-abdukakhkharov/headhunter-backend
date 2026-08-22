@@ -235,6 +235,25 @@ Two shapes need more than that formatter, and both had shipped a `Z` before
   Nothing downstream can tell a timestamp from any other string in an opaque
   bag, so there is no read-side fix; it is formatted where it is **written**.
 
+### The same zone applies to a date *filter*, not only to output
+
+A `'YYYY-MM-DD'` request parameter filtering a `timestamptz` column must be
+resolved to an instant in the platform zone — `startOfDayInZone` and
+`endOfDayInZone`. Never cast it in SQL: `created_at >= '2026-08-01'::date`
+resolves the cast in the **session** zone, which is UTC on this deployment, so it
+means 05:00 Tashkent. Six comparisons across four modules did that until
+2026-08-22, and every one of them filed a 02:00 registration under the previous
+day, at both ends of a range.
+
+Every date range in a client-facing filter is **inclusive at both ends**, which
+is what a person picking "the 1st to the 7th" means. That is expressed as a
+half-open `<` against `endOfDayInZone(to)`, so the convention lives in one
+function rather than in a `+ 1` at each call site.
+
+This is the same trap as `formatDateOnly` and it is invisible locally: every
+machine on this project sits at UTC+5, so the dates look plausible and only the
+small hours are wrong.
+
 Platform zone is `Asia/Tashkent` (single zone, §8.3). Storage is `timestamptz`.
 Going per-user later adds `users.time_zone` defaulting to the platform zone and
 does not change the wire format.

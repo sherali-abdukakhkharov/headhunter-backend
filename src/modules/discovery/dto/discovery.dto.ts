@@ -84,7 +84,9 @@ export class FeedQueryDto {
   salaryFrom?: number;
 
   @ApiPropertyOptional({
-    description: 'Published on or after this date (§5.5 "publication date").',
+    description:
+      'Published on or after this date (§5.5 "publication date") — a calendar date in ' +
+      'the platform zone, inclusive, so a vacancy published at 02:00 on this date is in.',
     example: '2026-08-01',
   })
   @IsOptional()

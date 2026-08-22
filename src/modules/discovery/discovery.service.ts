@@ -9,7 +9,7 @@ import {
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { DictionaryCategory } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
-import { formatDateOnly } from '@infra/time/format';
+import { formatDateOnly, startOfDayInZone } from '@infra/time/format';
 
 /** §5.5's filter set, all optional. */
 export interface DiscoveryFilters {
@@ -395,7 +395,11 @@ export class DiscoveryService {
     }
 
     if (filters.publishedFrom) {
-      conditions.push(sql`v.published_at >= ${filters.publishedFrom}::date`);
+      // An instant in the platform zone, not a SQL date cast: the cast resolves in the
+      // session zone (UTC here), which would hide a vacancy published at 02:00 Tashkent
+      // on the very day being asked for.
+      const start = startOfDayInZone(filters.publishedFrom, this.timeZone);
+      conditions.push(sql`v.published_at >= ${start}`);
     }
 
     if (filters.salaryFrom !== undefined) {

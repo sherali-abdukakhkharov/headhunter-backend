@@ -161,8 +161,19 @@ export class ComplaintQueryDto extends AdminPageDto {
   targetType?: ComplaintTarget;
 }
 
+/**
+ * §10.4's search filters. Every one is optional; several combine with AND.
+ *
+ * Results are ordered **newest registration first** and paged with `limit`/`offset`, so a
+ * filter narrow enough to matter beats a large page: an old account matching a broad filter
+ * sits past the page rather than outside it.
+ */
 export class UserSearchQueryDto extends AdminPageDto {
-  @ApiPropertyOptional({ description: 'A partial phone number (§10.4).' })
+  @ApiPropertyOptional({
+    description:
+      'A partial phone number (§10.4) — a **substring**, not a prefix, because a number is ' +
+      'remembered by its last digits. At least 3 characters.',
+  })
   @IsOptional()
   @IsString()
   @MinLength(3)
@@ -171,9 +182,13 @@ export class UserSearchQueryDto extends AdminPageDto {
 
   @ApiPropertyOptional({
     description:
-      'Matched against a candidate’s name, an individual employer’s own name and a ' +
-      'company’s public or legal name — an administrator should not have to know which ' +
-      'kind of account it is.',
+      'A case-insensitive **substring**, at least 2 characters, matched against every ' +
+      'place a user can have a name: a candidate’s profile name, an individual employer’s ' +
+      'own name, a company’s public name, a company’s legal name, and the account’s own ' +
+      '`full_name` — which in practice only seeded administrators have, and which is what ' +
+      'lets an administrator find a colleague. An administrator should not have to know ' +
+      'which kind of account it is. One match in any of the five returns the row, and the ' +
+      '`name` in the response is resolved by the same order of preference.',
   })
   @IsOptional()
   @IsString()
@@ -181,22 +196,39 @@ export class UserSearchQueryDto extends AdminPageDto {
   @MaxLength(120)
   name?: string;
 
-  @ApiPropertyOptional({ enum: ROLES })
+  @ApiPropertyOptional({
+    enum: ROLES,
+    description:
+      'A user who **holds** this role, not a user whose only role it is — a user may hold ' +
+      'several (§2.3), and a candidate who also employs is matched by either.',
+  })
   @IsOptional()
   @IsIn(ROLES)
   role?: UserRole;
 
-  @ApiPropertyOptional({ enum: STATUSES })
+  @ApiPropertyOptional({ enum: STATUSES, description: 'Exact match.' })
   @IsOptional()
   @IsIn(STATUSES)
   status?: AccountStatus;
 
-  @ApiPropertyOptional({ example: '2026-01-01' })
+  @ApiPropertyOptional({
+    example: '2026-01-01',
+    description:
+      '**Inclusive**, and a calendar date in the platform zone (`Asia/Tashkent`, §8.3) — ' +
+      'so an account registered at 02:00 on this date is included. Not resolved in UTC: ' +
+      'that would start the day at 05:00 local and file the small hours under the day ' +
+      'before.',
+  })
   @IsOptional()
   @Matches(DATE)
   registeredFrom?: string;
 
-  @ApiPropertyOptional({ example: '2026-08-07' })
+  @ApiPropertyOptional({
+    example: '2026-08-07',
+    description:
+      '**Inclusive**, same zone — the whole of this date counts, so `registeredFrom` and ' +
+      '`registeredTo` set to the same day means that one day.',
+  })
   @IsOptional()
   @Matches(DATE)
   registeredTo?: string;

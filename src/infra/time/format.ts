@@ -177,16 +177,33 @@ export function dayBoundsInZone(
   timeZone: string,
 ): { start: Date; end: Date } {
   return {
-    start: midnightInZone(formatDateOnly(date, timeZone), timeZone),
-    end: midnightInZone(
-      nextCalendarDate(formatDateOnly(date, timeZone)),
-      timeZone,
-    ),
+    start: startOfDayInZone(formatDateOnly(date, timeZone), timeZone),
+    end: endOfDayInZone(formatDateOnly(date, timeZone), timeZone),
   };
 }
 
-/** The instant at which `'YYYY-MM-DD'` begins in `timeZone`. */
-function midnightInZone(day: string, timeZone: string): Date {
+/**
+ * The instant at which `'YYYY-MM-DD'` begins in `timeZone`.
+ *
+ * **Use this to filter a `timestamptz` column by a calendar date**, rather than casting the
+ * date in SQL. `created_at >= '2026-08-01'::date` resolves that cast in the *session* zone,
+ * which is UTC on this deployment - so it means 05:00 Tashkent, and somebody who registered
+ * at 02:00 gets filed under the previous day. Bind the instant instead.
+ *
+ * Throws on anything that is not `'YYYY-MM-DD'`. Every route that reaches here validates
+ * the shape first, so this is a programming-error guard rather than a user-facing check -
+ * but without it a malformed string reaches `Intl` as a NaN date and surfaces as
+ * `RangeError: Invalid time value` from inside the formatter, which says nothing about
+ * where the bad value came from. Deliberately not a `LocalizedException`: nobody is meant
+ * to read it.
+ */
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function startOfDayInZone(day: string, timeZone: string): Date {
+  if (!CALENDAR_DAY.test(day)) {
+    throw new RangeError(`Not a calendar date: ${day}`);
+  }
+
   const [year, month, date] = day.split('-').map(Number);
   const asIfUtc = Date.UTC(year, month - 1, date);
 
@@ -196,6 +213,18 @@ function midnightInZone(day: string, timeZone: string): Date {
   const guess = asIfUtc - offsetMinutes(new Date(asIfUtc), timeZone) * 60_000;
 
   return new Date(asIfUtc - offsetMinutes(new Date(guess), timeZone) * 60_000);
+}
+
+/**
+ * The instant at which `'YYYY-MM-DD'` **ends** in `timeZone` - the next day's start.
+ *
+ * The other half of a calendar-date filter, and the reason it is a named function rather
+ * than a `+ 1` at each call site: an inclusive end date is the one a person means when they
+ * pick "the 1st to the 7th", and it is expressed as a half-open `<` against this instant.
+ * Six SQL fragments each adding a day were six chances to add it in the wrong zone.
+ */
+export function endOfDayInZone(day: string, timeZone: string): Date {
+  return startOfDayInZone(nextCalendarDate(day), timeZone);
 }
 
 /**

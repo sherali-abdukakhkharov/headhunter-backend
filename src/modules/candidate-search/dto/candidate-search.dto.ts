@@ -302,7 +302,8 @@ export class CandidateSearchFiltersDto {
   @ApiPropertyOptional({
     example: '2026-07-01',
     description:
-      '§7.1’s "recently updated", against `last_meaningful_update_at`.',
+      '§7.1’s "recently updated", against `last_meaningful_update_at`. A calendar date in ' +
+      'the platform zone, inclusive — a profile updated at 02:00 on this date is included.',
   })
   @IsOptional()
   @Matches(DATE)

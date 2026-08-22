@@ -10,7 +10,11 @@ import {
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AccountStatus, UserRole } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
-import { formatWithOffset } from '@infra/time/format';
+import {
+  endOfDayInZone,
+  formatWithOffset,
+  startOfDayInZone,
+} from '@infra/time/format';
 
 import { NotificationsService } from '@modules/notifications/notifications.service';
 
@@ -150,13 +154,18 @@ export class AdminUsersService {
       conditions.push(sql`u.status = ${filters.status}::account_status`);
     }
 
+    // Both bounds are inclusive calendar dates in the platform zone, resolved to instants
+    // here rather than cast in SQL - `created_at >= '2026-08-01'::date` resolves the cast
+    // in the session zone (UTC on this deployment), so it would mean 05:00 Tashkent and
+    // file a 02:00 registration under the previous day.
     if (filters.registeredFrom) {
-      conditions.push(sql`u.created_at >= ${filters.registeredFrom}::date`);
+      const start = startOfDayInZone(filters.registeredFrom, this.timeZone);
+      conditions.push(sql`u.created_at >= ${start}`);
     }
 
     if (filters.registeredTo) {
-      // Inclusive end date, as on the dashboard.
-      conditions.push(sql`u.created_at < (${filters.registeredTo}::date + 1)`);
+      const end = endOfDayInZone(filters.registeredTo, this.timeZone);
+      conditions.push(sql`u.created_at < ${end}`);
     }
 
     const result = await sql<UserRow>`

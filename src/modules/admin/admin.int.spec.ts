@@ -11,7 +11,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
-import { formatRowTimestamps } from '@infra/time/format';
+import { formatDateOnly, formatRowTimestamps } from '@infra/time/format';
 import type { AppEnv } from '@infra/env-schema';
 import { CandidatesService } from '@modules/candidates/candidates.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
@@ -121,7 +121,7 @@ beforeAll(() => {
     config,
   );
   audit = new AuditService(db);
-  dashboard = new DashboardService(db);
+  dashboard = new DashboardService(db, config);
   moderation = new AdminModerationService(
     db,
     verification,
@@ -372,7 +372,10 @@ describe('§10.1 dashboard', () => {
   it('counts the queues and the period', async () => {
     await submittedEmployer();
 
-    const today = new Date().toISOString().slice(0, 10);
+    // `formatDateOnly`, not `toISOString().slice` - in Tashkent that is yesterday for five
+    // hours a day, and with the period bounds now resolved in the platform zone an
+    // employer created at 02:00 would fall outside a period ending "today".
+    const today = formatDateOnly(new Date(), 'Asia/Tashkent');
     const counters = await dashboard.counters('2020-01-01', today);
 
     expect(counters.period).toEqual({ from: '2020-01-01', to: today });
@@ -380,6 +383,49 @@ describe('§10.1 dashboard', () => {
     expect(counters.awaitingVerification).toBeGreaterThanOrEqual(1);
     expect(counters.employers.total).toBeGreaterThanOrEqual(1);
     expect(counters.employers.new).toBeGreaterThanOrEqual(1);
+  });
+
+  it('files an 02:00 Tashkent registration under its own day, not the previous one', async () => {
+    // The bug this test exists for: every one of these counts compared a `timestamptz`
+    // against a bare `::date`, which Postgres resolves in the *session* zone - UTC on this
+    // deployment. `created_at >= '2026-03-15'::date` therefore meant 05:00 Tashkent, and an
+    // employer who registered at 02:00 was counted in the previous day. It cannot be caught
+    // by reading the SQL, because every machine on this project sits at UTC+5 and the
+    // numbers looked plausible.
+    //
+    // Asserted as a delta rather than an absolute, because this database is shared with the
+    // dev server and the seed loader.
+    const employerUserId = await newUser('employer');
+    const { regionId } = await region();
+    await employers.upsert(employerUserId, 'individual', {
+      fullName: 'Boundary Case',
+      contactPhone: '+998900000001',
+      regionId,
+      description: 'Registered in the small hours.',
+    });
+
+    const before = await dashboard.counters('2026-03-15', '2026-03-15');
+    const beforePreviousDay = await dashboard.counters(
+      '2026-03-14',
+      '2026-03-14',
+    );
+
+    await db
+      .updateTable('employers')
+      .set({ created_at: new Date('2026-03-15T02:00:00+05:00') })
+      .where('user_id', '=', employerUserId)
+      .execute();
+
+    const after = await dashboard.counters('2026-03-15', '2026-03-15');
+    const afterPreviousDay = await dashboard.counters(
+      '2026-03-14',
+      '2026-03-14',
+    );
+
+    expect(after.employers.new).toBe(before.employers.new + 1);
+    expect(afterPreviousDay.employers.new).toBe(
+      beforePreviousDay.employers.new,
+    );
   });
 });
 
@@ -786,6 +832,42 @@ describe('§10.4 user management', () => {
     expect(byName.find((row) => row.userId === candidateUserId)?.phone).toBe(
       phone,
     );
+  });
+
+  it('puts an 02:00 Tashkent registration in its own day, both ways (§10.4)', async () => {
+    // The same five-hour shift as the dashboard, and the one an administrator would have
+    // noticed second: `registeredFrom` and `registeredTo` compared `u.created_at`, a
+    // `timestamptz`, against a bare `::date` that Postgres resolves in the session zone.
+    // Somebody who registered at 02:00 on the 15th was absent from "from the 15th" and
+    // present in "to the 14th" - filed under the wrong day at both ends of a range.
+    const actorUserId = await newUser('admin');
+    const userId = await newUser('candidate');
+
+    // A date from before this product existed, so the windows below cannot collide with the
+    // seed loader or another test - the search orders newest first, and an old row would
+    // otherwise sit past the page limit rather than outside the filter.
+    await db
+      .updateTable('users')
+      .set({ created_at: new Date('2019-02-14T02:00:00+05:00') })
+      .where('id', '=', userId)
+      .execute();
+
+    const ids = async (registeredFrom: string, registeredTo: string) =>
+      (
+        await adminUsers.search(
+          actorUserId,
+          { registeredFrom, registeredTo },
+          50,
+          0,
+        )
+      ).map((row) => row.userId);
+
+    // Its own day, at both ends: `from` includes 02:00 rather than starting at 05:00, and
+    // `to` is inclusive of the day picked.
+    expect(await ids('2019-02-14', '2019-02-14')).toContain(userId);
+
+    // And the previous day does not reach into it, which is the other half of the shift.
+    expect(await ids('2019-02-01', '2019-02-13')).not.toContain(userId);
   });
 
   it('finds an administrator by name, who has no profile to hold one', async () => {

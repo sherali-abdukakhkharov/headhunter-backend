@@ -2300,7 +2300,7 @@
             "name": "publishedFrom",
             "required": false,
             "in": "query",
-            "description": "Published on or after this date (§5.5 \"publication date\").",
+            "description": "Published on or after this date (§5.5 \"publication date\") — a calendar date in the platform zone, inclusive, so a vacancy published at 02:00 on this date is in.",
             "schema": {
               "example": "2026-08-01",
               "type": "string"
@@ -2445,7 +2445,7 @@
             "name": "publishedFrom",
             "required": false,
             "in": "query",
-            "description": "Published on or after this date (§5.5 \"publication date\").",
+            "description": "Published on or after this date (§5.5 \"publication date\") — a calendar date in the platform zone, inclusive, so a vacancy published at 02:00 on this date is in.",
             "schema": {
               "example": "2026-08-01",
               "type": "string"
@@ -2591,7 +2591,7 @@
             "name": "publishedFrom",
             "required": false,
             "in": "query",
-            "description": "Published on or after this date (§5.5 \"publication date\").",
+            "description": "Published on or after this date (§5.5 \"publication date\") — a calendar date in the platform zone, inclusive, so a vacancy published at 02:00 on this date is in.",
             "schema": {
               "example": "2026-08-01",
               "type": "string"
@@ -4923,7 +4923,7 @@
     },
     "/admin/dashboard": {
       "get": {
-        "description": "Totals and queue lengths in one request. The period counts are \"newly registered\" and \"active vacancies and applications for the selected period\"; a queue length is current state, because what matters about a queue is how long it is now. `to` is inclusive. Defaults to the last 30 days.",
+        "description": "Totals and queue lengths in one request. The period counts are \"newly registered\" and \"active vacancies and applications for the selected period\"; a queue length is current state, because what matters about a queue is how long it is now. Both `from` and `to` are **inclusive** calendar dates in the platform zone (`Asia/Tashkent`, §8.3), so a registration at 02:00 belongs to its own day rather than the one before. Defaults to the last 30 days.",
         "operationId": "AdminController_counters",
         "parameters": [
           {
@@ -5479,7 +5479,7 @@
             "name": "phone",
             "required": false,
             "in": "query",
-            "description": "A partial phone number (§10.4).",
+            "description": "A partial phone number (§10.4) — a **substring**, not a prefix, because a number is remembered by its last digits. At least 3 characters.",
             "schema": {
               "type": "string"
             }
@@ -5488,7 +5488,7 @@
             "name": "name",
             "required": false,
             "in": "query",
-            "description": "Matched against a candidate’s name, an individual employer’s own name and a company’s public or legal name — an administrator should not have to know which kind of account it is.",
+            "description": "A case-insensitive **substring**, at least 2 characters, matched against every place a user can have a name: a candidate’s profile name, an individual employer’s own name, a company’s public name, a company’s legal name, and the account’s own `full_name` — which in practice only seeded administrators have, and which is what lets an administrator find a colleague. An administrator should not have to know which kind of account it is. One match in any of the five returns the row, and the `name` in the response is resolved by the same order of preference.",
             "schema": {
               "type": "string"
             }
@@ -5497,6 +5497,7 @@
             "name": "role",
             "required": false,
             "in": "query",
+            "description": "A user who **holds** this role, not a user whose only role it is — a user may hold several (§2.3), and a candidate who also employs is matched by either.",
             "schema": {
               "type": "string",
               "enum": [
@@ -5510,6 +5511,7 @@
             "name": "status",
             "required": false,
             "in": "query",
+            "description": "Exact match.",
             "schema": {
               "type": "string",
               "enum": [
@@ -5524,6 +5526,7 @@
             "name": "registeredFrom",
             "required": false,
             "in": "query",
+            "description": "**Inclusive**, and a calendar date in the platform zone (`Asia/Tashkent`, §8.3) — so an account registered at 02:00 on this date is included. Not resolved in UTC: that would start the day at 05:00 local and file the small hours under the day before.",
             "schema": {
               "example": "2026-01-01",
               "type": "string"
@@ -5533,6 +5536,7 @@
             "name": "registeredTo",
             "required": false,
             "in": "query",
+            "description": "**Inclusive**, same zone — the whole of this date counts, so `registeredFrom` and `registeredTo` set to the same day means that one day.",
             "schema": {
               "example": "2026-08-07",
               "type": "string"
@@ -9368,7 +9372,7 @@
           "updatedSince": {
             "type": "string",
             "example": "2026-07-01",
-            "description": "§7.1’s \"recently updated\", against `last_meaningful_update_at`."
+            "description": "§7.1’s \"recently updated\", against `last_meaningful_update_at`. A calendar date in the platform zone, inclusive — a profile updated at 02:00 on this date is included."
           },
           "ageMin": {
             "type": "number",

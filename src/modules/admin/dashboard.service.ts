@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
+import type { AppEnv } from '@infra/env-schema';
+import { endOfDayInZone, startOfDayInZone } from '@infra/time/format';
 
 export interface DashboardCounters {
   /** The period the "new" and "for the period" counts cover. */
@@ -47,23 +50,38 @@ interface CounterRow {
  */
 @Injectable()
 export class DashboardService {
-  constructor(@Inject(KYSELY) private readonly db: Database) {}
+  private readonly timeZone: string;
+
+  constructor(
+    @Inject(KYSELY) private readonly db: Database,
+    config: ConfigService<AppEnv, true>,
+  ) {
+    this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
+  }
 
   async counters(from: string, to: string): Promise<DashboardCounters> {
-    // The end date is inclusive, which is what a person picking "1st to 7th" means. The
-    // comparison is therefore against the day after, so a row created at 23:30 on the 7th
-    // is inside the period.
+    // The end date is inclusive, which is what a person picking "1st to 7th" means, so the
+    // comparison is half-open against the *next* day's start - a row created at 23:30 on
+    // the 7th is inside the period.
+    //
+    // Both bounds are resolved to instants **here** rather than cast in SQL. `created_at >=
+    // '2026-08-01'::date` resolves that cast in the session zone, which is UTC on this
+    // deployment, so it would mean 05:00 Tashkent: every one of these counts would have
+    // filed a 02:00 registration under the previous day, and silently, because every
+    // machine on this project sits at UTC+5 and the dates still looked plausible.
+    const start = startOfDayInZone(from, this.timeZone);
+    const end = endOfDayInZone(to, this.timeZone);
     const result = await sql<CounterRow>`
       SELECT
         (SELECT count(*) FROM candidate_profiles) AS candidates_total,
         (
           SELECT count(*) FROM candidate_profiles
-          WHERE created_at >= ${from}::date AND created_at < (${to}::date + 1)
+          WHERE created_at >= ${start} AND created_at < ${end}
         ) AS candidates_new,
         (SELECT count(*) FROM employers) AS employers_total,
         (
           SELECT count(*) FROM employers
-          WHERE created_at >= ${from}::date AND created_at < (${to}::date + 1)
+          WHERE created_at >= ${start} AND created_at < ${end}
         ) AS employers_new,
         (
           SELECT count(*) FROM employers WHERE verification_status = 'under_review'
@@ -74,11 +92,11 @@ export class DashboardService {
         (
           SELECT count(*) FROM vacancies
           WHERE status = 'active'
-            AND published_at >= ${from}::date AND published_at < (${to}::date + 1)
+            AND published_at >= ${start} AND published_at < ${end}
         ) AS active_vacancies,
         (
           SELECT count(*) FROM applications
-          WHERE created_at >= ${from}::date AND created_at < (${to}::date + 1)
+          WHERE created_at >= ${start} AND created_at < ${end}
         ) AS applications,
         (SELECT count(*) FROM complaints WHERE status = 'open') AS open_complaints,
         (SELECT count(*) FROM users WHERE status = 'restricted') AS restricted_users,

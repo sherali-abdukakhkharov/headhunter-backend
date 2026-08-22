@@ -225,7 +225,7 @@ export class CandidateSearchService {
     const result = await sql<{ count: string }>`
       SELECT count(*) AS count FROM (
         SELECT 1 FROM candidate_profiles p
-        WHERE ${whereFilters(filters, today)}
+        WHERE ${whereFilters(filters, today, this.timeZone)}
         LIMIT ${this.countCap + 1}
       ) bounded
     `.execute(this.db);
@@ -461,8 +461,8 @@ export class CandidateSearchService {
   ): Promise<CardRow[]> {
     const today = formatDateOnly(new Date(), this.timeZone);
     const where = scope
-      ? sql`${whereFilters(request.filters, today)} AND ${scope}`
-      : whereFilters(request.filters, today);
+      ? sql`${whereFilters(request.filters, today, this.timeZone)} AND ${scope}`
+      : whereFilters(request.filters, today, this.timeZone);
     const matched = matchedColumns(request.filters, groups).map(
       (column) => sql`, ${column}`,
     );

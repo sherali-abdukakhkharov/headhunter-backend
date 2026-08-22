@@ -1,5 +1,7 @@
 import { type RawBuilder, sql } from 'kysely';
 
+import { startOfDayInZone } from '@infra/time/format';
+
 import {
   ATTRIBUTE_FIELD_CODES,
   type CandidateSearchFilters,
@@ -82,10 +84,17 @@ function occupationExperienceYears(
  * `today` is the platform-zone calendar date (CLAUDE.md: never `toISOString().slice`),
  * and it is what makes "available immediately" and an age range mean the same thing to
  * every replica.
+ *
+ * `timeZone` is that same zone, and it is needed as well as `today` rather than instead of
+ * it: `available_from` and `date_of_birth` are `date` columns, so comparing them to a
+ * `'YYYY-MM-DD'` is exact, but `last_meaningful_update_at` is a `timestamptz` and a date
+ * cast against it resolves in the *session* zone - UTC on this deployment. So
+ * `updatedSince` needs a real instant, and the zone is the only way to compute one.
  */
 export function whereFilters(
   filters: CandidateSearchFilters,
   today: string,
+  timeZone: string,
 ): RawBuilder<unknown> {
   const conditions: RawBuilder<unknown>[] = [searchableCandidate()];
 
@@ -285,9 +294,8 @@ export function whereFilters(
   }
 
   if (filters.updatedSince) {
-    conditions.push(
-      sql`p.last_meaningful_update_at >= ${filters.updatedSince}::date`,
-    );
+    const start = startOfDayInZone(filters.updatedSince, timeZone);
+    conditions.push(sql`p.last_meaningful_update_at >= ${start}`);
   }
 
   // --- conditional filters (BR-12) ---------------------------------------

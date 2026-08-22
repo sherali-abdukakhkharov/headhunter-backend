@@ -1077,6 +1077,42 @@ side, which is why two of the three cost no client release when they landed.
       wrong - it carries `statusHistory` and `complaints`; `details` reaches a client only
       through `GET /admin/audit`
 
+### A date filter resolved in the wrong zone *(found and fixed 2026-08-22)*
+
+Found while answering a mobile question about `GET /admin/users`' filter semantics - they
+asked whether `registeredFrom` is inclusive, and the honest answer turned out to be "yes,
+but of the wrong day".
+
+- [x] **Six comparisons across four modules cast a `'YYYY-MM-DD'` to `::date` in SQL and
+      compared it to a `timestamptz`.** Postgres resolves that cast in the **session** zone,
+      which is UTC on this deployment, so `created_at >= '2026-08-01'::date` meant 05:00
+      Tashkent. Anyone who registered between midnight and 05:00 was filed under the
+      previous day - absent from a period starting that day *and* present in one ending the
+      day before. Proven against the real database before fixing, not reasoned about:
+      `'2026-08-01 02:00+05'::timestamptz >= '2026-08-01'::date` is **false**
+  - [x] `DashboardService.counters` - all four period counts (§10.1). This is the one that
+        mattered: an administrator reads these numbers as fact
+  - [x] `AdminUsersService.search` - `registeredFrom` and `registeredTo` (§10.4)
+  - [x] `whereFilters` - `updatedSince` against `last_meaningful_update_at` (§7.1)
+  - [x] `DiscoveryService` - `publishedFrom` against `published_at` (§5.5)
+- [x] `startOfDayInZone` / `endOfDayInZone` exported from `infra/time/format.ts`. The
+      inclusive-end convention lives in `endOfDayInZone` rather than in a `+ 1` at each call
+      site - six fragments each adding a day were six chances to add it in the wrong zone
+- [x] `whereFilters` now takes the zone as well as `today`. Both, not one: `available_from`
+      and `date_of_birth` are `date` columns so a string comparison is exact, but
+      `last_meaningful_update_at` is a `timestamptz`
+- [x] `startOfDayInZone` **throws** on anything that is not `'YYYY-MM-DD'`. Without it a
+      malformed value reaches `Intl` as a NaN date and surfaces as `RangeError: Invalid time
+      value` from inside the formatter. §12.5's injection test now asserts that a hostile
+      `updatedSince` is *refused* rather than merely parameterised - stronger than it was
+- [x] The existing dashboard integration test used `toISOString().slice(0, 10)`, which is
+      yesterday in Tashkent for five hours a day. Harmless before; with the bounds resolved
+      correctly it would have failed nightly between 00:00 and 05:00. Now `formatDateOnly`
+- [ ] **Not fixed, and not mine to fix here: ~20 integration specs mint a fixture phone
+      from `Math.random()`**, which collides often enough to have failed twice in one
+      session (`duplicate key value violates unique constraint "users_phone_key"`). It reads
+      as a flaky test and is a flaky *fixture*. One sweep with a counter would end it
+
 ## M11 - Hardening
 
 - [x] Load test both budgets; fix misses before adding a search projection -
