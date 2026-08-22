@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 
 import type { Database } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
+import { fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 
 import { RateLimitService } from './rate-limit.service';
@@ -112,7 +113,7 @@ describe('RateLimitService', () => {
 
   it('never stores a phone number in the clear', async () => {
     const limits = new RateLimitService(db, configService());
-    const phone = `+99890${Date.now().toString().slice(-7)}`;
+    const phone = fixturePhone();
 
     await limits.consume('otp', 'phone', phone, 5);
 

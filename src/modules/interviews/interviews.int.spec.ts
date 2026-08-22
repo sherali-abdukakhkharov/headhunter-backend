@@ -8,7 +8,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import { ValidationFailedException } from '@infra/api/exceptions/validation-failed.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { ApplicationsService } from '@modules/applications/applications.service';
@@ -150,7 +150,7 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 }
 
 async function newUser(role: 'candidate' | 'employer'): Promise<string> {
-  const phone = `+99894${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })

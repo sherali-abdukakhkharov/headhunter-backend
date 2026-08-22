@@ -9,7 +9,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import { ValidationFailedException } from '@infra/api/exceptions/validation-failed.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { EmployersService } from '@modules/employers/employers.service';
@@ -165,7 +165,7 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 
 /** A verified employer, which BR-03 requires before any vacancy exists. */
 async function verifiedEmployer(): Promise<string> {
-  const phone = `+99897${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })
@@ -243,7 +243,7 @@ async function completeFields(): Promise<Record<string, unknown>> {
 
 describe('VacanciesService', () => {
   it('refuses to create a vacancy for an unverified employer (BR-03)', async () => {
-    const phone = `+99897${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+    const phone = fixturePhone();
     const row = await db
       .insertInto('users')
       .values({ phone, locale: 'uz-Latn' })

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { ForbiddenError } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 
 import { DevicesService } from './devices.service';
 import { NotificationsService } from './notifications.service';
@@ -68,7 +68,7 @@ afterAll(async () => {
 async function newUser(
   locale: 'uz-Latn' | 'ru' | 'en' = 'uz-Latn',
 ): Promise<string> {
-  const phone = `+99891${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale })

@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { TooManyRequestsError } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
+import { fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 
 import { EmployersService } from '@modules/employers/employers.service';
@@ -68,7 +69,7 @@ let pool: Pool;
 
 /** Unique per test run so parallel runs and leftovers cannot collide. */
 function testPhone(): string {
-  return `+99890${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  return fixturePhone();
 }
 
 beforeAll(() => {

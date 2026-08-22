@@ -1108,10 +1108,48 @@ but of the wrong day".
 - [x] The existing dashboard integration test used `toISOString().slice(0, 10)`, which is
       yesterday in Tashkent for five hours a day. Harmless before; with the bounds resolved
       correctly it would have failed nightly between 00:00 and 05:00. Now `formatDateOnly`
-- [ ] **Not fixed, and not mine to fix here: ~20 integration specs mint a fixture phone
-      from `Math.random()`**, which collides often enough to have failed twice in one
-      session (`duplicate key value violates unique constraint "users_phone_key"`). It reads
-      as a flaky test and is a flaky *fixture*. One sweep with a counter would end it
+
+### The flaky fixture, and what was actually flaky *(2026-08-22)*
+
+- [x] **Twenty-one specs minted a fixture phone from `Math.random()` over seven digits**,
+      each writing the expression out again, and it failed unrelated tests twice in one
+      session with `duplicate key value violates unique constraint "users_phone_key"`. It
+      reads as a flaky test and is a flaky *fixture*, which is worse: it teaches whoever
+      sees it to re-run rather than to look
+- [x] **The birthday problem was the smaller half.** The dev database had collected
+      **12 029** fixture users over eighteen days, ~300 more per run, because the suites
+      cannot delete an administrator who acted - the audit log's actor reference is RESTRICT
+      and that is deliberate (§10.4). Seven digits against twelve thousand rows is about one
+      collision per eight hundred inserts, and a full run makes hundreds
+- [x] One `fixturePhone()` in `infra/db/testing/int-db.ts`, plus `fixtureTelegramId()` -
+      `users.telegram_user_id` is UNIQUE too, so the deprecated login path had the identical
+      flake. Eleven `crypto.randomInt` digits under a `+9987` prefix that marks test data.
+      Five consecutive clean full runs, ~1 500 fixture users, no collision
+- [x] **Three specs carried 20-attempt retry loops against the unique index** and a comment
+      each explaining why they were necessary - the problem was known, written down three
+      times, and worked around rather than fixed. The loops are gone
+- [x] `pnpm test -- src/infra/db/testing/fixture-phone.spec.ts` pins the one property a
+      reader would otherwise have to rediscover: the number sits **exactly** on
+      `normalizePhone`'s fifteen-digit bound, so widening it would make every fixture fail
+      the real auth path with `auth.phone_invalid`, and fail in the integration suites where
+      nothing points at the cause
+- [x] **Two constructed schemes were tried and thrown away first**, both deriving uniqueness
+      from `JEST_WORKER_ID` plus a counter. Both failed the same way, and it is recorded in
+      the helper because it is not guessable: **Jest gives each test file a fresh module
+      registry *and* a fresh realm**, so neither a module-level `let` nor `globalThis`
+      survives from one spec file to the next. There is no process-wide counter to be had
+      from inside a test. The second attempt failed four suites at once with the very error
+      it was written to remove
+- [ ] **Still leaking, and now visible: ~300 fixture users per run stay behind.** Four specs
+      (`auth`, `telegram-login`, `users`, `files`) delete no users at all; the rest skip what
+      RESTRICT forbids. Harmless to test *reliability* now, but the table grows forever and
+      it is shared with the dev server. The honest fix is per-spec cleanup plus a one-off
+      purge through `RetentionService`, which is the only thing that clears `stored_files`
+      references in the right order - never a plain `DELETE`
+- [ ] **Noticed while there: spec type errors are invisible to the pipeline.** `pnpm
+      typecheck` uses `tsconfig.build.json`, which excludes specs, and Jest compiles with
+      SWC, which strips types without checking them. `npx tsc --noEmit -p tsconfig.json`
+      reports **seven** pre-existing errors in specs, none of them new. Worth a gate
 
 ## M11 - Hardening
 

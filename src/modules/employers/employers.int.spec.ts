@@ -9,7 +9,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import type { EmployerType } from '@infra/db/database.types';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
@@ -101,7 +101,7 @@ afterAll(async () => {
 });
 
 async function newEmployer(): Promise<string> {
-  const phone = `+99895${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })

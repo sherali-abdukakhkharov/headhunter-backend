@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import { requireRetentionRule } from '@infra/retention/retention-policy';
 
 import { AuditService } from './audit.service';
@@ -82,7 +82,7 @@ function longAgo(): Date {
 async function newUser(
   role: 'candidate' | 'employer' | 'admin',
 ): Promise<string> {
-  const phone = `+99895${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })
@@ -416,7 +416,7 @@ describe('the transient sweeps', () => {
   it('removes an expired OTP row and reports how many', async () => {
     const cutoffDays = requireRetentionRule('otp_codes').days ?? 1;
     const old = new Date(Date.now() - (cutoffDays + 1) * 24 * 60 * 60 * 1000);
-    const phone = `+99894${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+    const phone = fixturePhone();
 
     await db
       .insertInto('otp_codes')

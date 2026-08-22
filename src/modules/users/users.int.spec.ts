@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { NotFoundError } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 
 import { UsersService } from './users.service';
 
@@ -29,7 +29,7 @@ afterAll(async () => {
 
 /** A bare user row - these tests need no session or OTP. */
 async function newUser(): Promise<string> {
-  const phone = `+99891${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
 
   const row = await db
     .insertInto('users')

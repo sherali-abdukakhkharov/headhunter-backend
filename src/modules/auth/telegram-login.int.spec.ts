@@ -8,7 +8,11 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import type { CryptoKey } from 'jose';
 
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import {
+  createIntTestDb,
+  fixturePhone,
+  fixtureTelegramId,
+} from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 
 import { AuthService } from './auth.service';
@@ -133,14 +137,8 @@ async function idToken(options: TokenOptions = {}): Promise<string> {
     .sign(options.signWith ?? signingKey);
 }
 
-/** A Telegram user id no other test in this run will use. */
-function telegramId(): string {
-  return String(500_000_000 + Math.floor(Math.random() * 100_000_000));
-}
-
-function testPhone(): string {
-  return `+99894${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
-}
+const telegramId = fixtureTelegramId;
+const testPhone = fixturePhone;
 
 beforeAll(async () => {
   ({ db, destroy } = createIntTestDb());

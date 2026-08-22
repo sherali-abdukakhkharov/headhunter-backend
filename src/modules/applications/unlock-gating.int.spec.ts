@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
@@ -235,7 +235,7 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 /** A user with a phone nothing else has taken - these suites leave employers behind. */
 async function newUser(role: 'candidate' | 'employer'): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const phone = `+99891${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+    const phone = fixturePhone();
     const row = await db
       .insertInto('users')
       .values({ phone, locale: 'uz-Latn' })

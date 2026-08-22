@@ -6,7 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 
 import { AccountStatusGuard } from '@infra/api/guards/account-status.guard';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
@@ -322,7 +322,7 @@ afterAll(async () => {
 // --- fixtures ---------------------------------------------------------------
 
 function testPhone(): string {
-  return `+99897${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  return fixturePhone();
 }
 
 async function seededId(type: string, code: string): Promise<string> {
@@ -387,38 +387,26 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 /**
  * A user with a phone number nothing else has taken.
  *
- * The retry matters because this suite deliberately cannot delete every user it creates -
- * administrators who acted and employers who hold a wallet stay behind - so the digits
- * available under `+99897` accumulate across runs and a random one eventually collides with
- * a row an earlier run left. Asking the unique index is cheaper than hoping.
+ * This suite deliberately cannot delete every user it creates - administrators who acted
+ * and employers who hold a wallet stay behind - so its numbers accumulate across runs. That
+ * used to need a twenty-attempt retry against the unique index; `fixturePhone` draws from
+ * eleven digits rather than seven, so there is nothing left for the retry to catch.
  */
 async function newUser(role: 'candidate' | 'employer' | 'admin'): Promise<{
   userId: string;
   phone: string;
 }> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const phone = testPhone();
-    const row = await db
-      .insertInto('users')
-      .values({ phone, locale: 'uz-Latn' })
-      .onConflict((oc) => oc.column('phone').doNothing())
-      .returning('id')
-      .executeTakeFirst();
+  const phone = testPhone();
+  const row = await db
+    .insertInto('users')
+    .values({ phone, locale: 'uz-Latn' })
+    .returning('id')
+    .executeTakeFirstOrThrow();
 
-    if (!row) {
-      continue;
-    }
+  await db.insertInto('user_roles').values({ user_id: row.id, role }).execute();
+  users.push(row.id);
 
-    await db
-      .insertInto('user_roles')
-      .values({ user_id: row.id, role })
-      .execute();
-    users.push(row.id);
-
-    return { userId: row.id, phone };
-  }
-
-  throw new Error('could not find a free test phone number in 20 attempts');
+  return { userId: row.id, phone };
 }
 
 async function storedFile(

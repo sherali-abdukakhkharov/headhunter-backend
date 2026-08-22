@@ -5,7 +5,7 @@ import { sql } from 'kysely';
 
 import type { Database } from '@infra/db/database.module';
 import type { PaymentOrderStatus } from '@infra/db/database.types';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { EmployersService } from '@modules/employers/employers.service';
 import { WalletService } from '@modules/wallet/wallet.service';
@@ -124,57 +124,48 @@ afterAll(async () => {
 /**
  * An employer, with a phone number nothing else has taken.
  *
- * The retry is not defensive padding. Because this suite cannot delete the employers it
- * creates - see the header - the seven digits available under `+99893` accumulate across
- * runs, and a random one eventually collides with a row a previous run left behind. So the
- * insert asks the unique index rather than hoping, exactly as the production paths do.
+ * This used to be a twenty-attempt retry loop against the unique index, because the suite
+ * cannot delete the employers it creates - see the header - so its numbers accumulated
+ * across runs and a random one eventually collided with a row an earlier run left behind.
+ * `fixturePhone` draws from eleven digits instead of seven, which moves a collision from
+ * once every few hundred inserts to once in a billion - so there is nothing left to retry.
  */
 async function newEmployer(): Promise<string> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const phone = `+99893${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
-    const row = await db
-      .insertInto('users')
-      .values({ phone, locale: 'uz-Latn' })
-      .onConflict((oc) => oc.column('phone').doNothing())
-      .returning('id')
-      .executeTakeFirst();
+  const row = await db
+    .insertInto('users')
+    .values({ phone: fixturePhone(), locale: 'uz-Latn' })
+    .returning('id')
+    .executeTakeFirstOrThrow();
 
-    if (!row) {
-      continue;
-    }
+  await db
+    .insertInto('user_roles')
+    .values({ user_id: row.id, role: 'employer' })
+    .execute();
+  users.push(row.id);
 
-    await db
-      .insertInto('user_roles')
-      .values({ user_id: row.id, role: 'employer' })
-      .execute();
-    users.push(row.id);
+  // A verified, complete employer profile and a candidate profile on the same row.
+  //
+  // The reversal test spends its Coins through real `unlock` calls, and since M12's retrofit
+  // that requires §7's gate to pass (an employer who cannot see candidates must not be
+  // charged for access to one) and the target to have a profile. Inserted directly because
+  // this suite constructs the payment stack, not the profile stack - the gate itself is
+  // covered through the real services in `applications/unlock-gating.int.spec.ts`.
+  await db
+    .insertInto('employers')
+    .values({
+      user_id: row.id,
+      type: 'company',
+      verification_status: 'verified',
+      verified_at: sql`now()`,
+      is_complete: true,
+    })
+    .execute();
+  await db
+    .insertInto('candidate_profiles')
+    .values({ user_id: row.id })
+    .execute();
 
-    // A verified, complete employer profile and a candidate profile on the same row.
-    //
-    // The reversal test spends its Coins through real `unlock` calls, and since M12's retrofit
-    // that requires §7's gate to pass (an employer who cannot see candidates must not be
-    // charged for access to one) and the target to have a profile. Inserted directly because
-    // this suite constructs the payment stack, not the profile stack - the gate itself is
-    // covered through the real services in `applications/unlock-gating.int.spec.ts`.
-    await db
-      .insertInto('employers')
-      .values({
-        user_id: row.id,
-        type: 'company',
-        verification_status: 'verified',
-        verified_at: sql`now()`,
-        is_complete: true,
-      })
-      .execute();
-    await db
-      .insertInto('candidate_profiles')
-      .values({ user_id: row.id })
-      .execute();
-
-    return row.id;
-  }
-
-  throw new Error('could not find a free test phone number in 20 attempts');
+  return row.id;
 }
 
 /** An employer with an order open for `coins`, through the real creation path. */

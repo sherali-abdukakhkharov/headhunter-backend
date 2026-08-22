@@ -10,7 +10,7 @@ import {
   NotFoundError,
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import { formatDateOnly, formatRowTimestamps } from '@infra/time/format';
 import type { AppEnv } from '@infra/env-schema';
 import { CandidatesService } from '@modules/candidates/candidates.service';
@@ -214,7 +214,7 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 async function newUser(
   role: 'candidate' | 'employer' | 'admin',
 ): Promise<string> {
-  const phone = `+99895${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })
@@ -571,10 +571,11 @@ describe('§10.2 vacancy moderation', () => {
     expect(queued?.employerName).toBe(employer.name);
 
     // Two numbers with different meanings, which is why they are two fields rather than a
-    // COALESCE: the account number is §10.4's search key and is always there, the contact
-    // number is what this employer published for their company and may be neither.
+    // COALESCE: the account number is §10.4's search key, the contact number is what this
+    // employer published for their company, and they are usually different numbers.
     expect(employer.contactPhone).toBe('+998901234567');
-    expect(employer.phone).toMatch(/^\+99895/);
+    expect(employer.phone).not.toBe(employer.contactPhone);
+    expect(employer.phone).toMatch(/^\+998/);
   });
 
   it('falls back to an individual employer’s own name, having no company', async () => {

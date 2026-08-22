@@ -10,7 +10,7 @@ import {
   NotFoundError,
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
@@ -184,7 +184,7 @@ async function region(): Promise<{ regionId: string; districtId: string }> {
 }
 
 async function newUser(role: 'candidate' | 'employer'): Promise<string> {
-  const phone = `+99899${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })

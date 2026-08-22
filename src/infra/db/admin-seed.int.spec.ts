@@ -1,7 +1,7 @@
 import { sql } from 'kysely';
 
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 
 import { seedAdministrators } from './admin-seed';
 
@@ -36,14 +36,13 @@ afterAll(async () => {
 });
 
 /**
- * A number no other suite uses. The suites deliberately leave rows behind on failure, so a
- * fixed number here would collide with a previous run rather than with a bug.
+ * A number no other suite uses, and no previous run either.
+ *
+ * This spec named the problem before there was a shared answer to it: the suites leave rows
+ * behind on failure, so a fixed number collides with a previous run rather than with a bug.
+ * `fixturePhone` is that answer - see its comment for why random was not one.
  */
-function uniquePhone(): string {
-  const tail = String(Math.floor(Math.random() * 9_000_000) + 1_000_000);
-
-  return `+99893${tail}`;
-}
+const uniquePhone = fixturePhone;
 
 async function track(phone: string): Promise<string> {
   const row = await db

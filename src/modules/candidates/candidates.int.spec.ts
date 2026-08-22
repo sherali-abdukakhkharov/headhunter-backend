@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { ValidationFailedException } from '@infra/api/exceptions/validation-failed.exception';
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
@@ -62,7 +62,7 @@ afterAll(async () => {
 });
 
 async function newCandidate(): Promise<string> {
-  const phone = `+99893${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+  const phone = fixturePhone();
   const row = await db
     .insertInto('users')
     .values({ phone, locale: 'uz-Latn' })

@@ -2,7 +2,7 @@ import type { ExecutionContext } from '@nestjs/common';
 import { sql } from 'kysely';
 
 import type { Database } from '@infra/db/database.module';
-import { createIntTestDb } from '@infra/db/testing/int-db';
+import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 
 import { AccountStatusGuard, MUTATING_METHODS } from './account-status.guard';
 
@@ -59,7 +59,7 @@ async function newUser(
   restrictedUntil: 'future' | 'past' | null = null,
 ): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const phone = `+99890${String(Math.floor(Math.random() * 10 ** 7)).padStart(7, '0')}`;
+    const phone = fixturePhone();
     const row = await db
       .insertInto('users')
       .values({
