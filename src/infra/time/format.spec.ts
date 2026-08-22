@@ -1,9 +1,61 @@
 import {
   dayBoundsInZone,
   formatDateOnly,
+  formatRowTimestamps,
   formatWithOffset,
   offsetMinutes,
 } from './format';
+
+describe('formatRowTimestamps', () => {
+  it('renders every instant in a row, which is the point of doing it by type', () => {
+    // The shape that made this necessary: `VacancyReviewDto.vacancy` is the vacancies row,
+    // and it carries four timestamptz columns. A per-field call at the boundary has to be
+    // kept in step with a `select()` in another file, and the one that is forgotten ships
+    // a `Z` - which is what `ComplaintDetailDto.target.created_at` did.
+    const row = {
+      id: 'v1',
+      published_at: new Date('2026-08-12T09:00:00Z'),
+      closed_at: null,
+      created_at: new Date('2026-08-01T19:30:00Z'),
+      updated_at: new Date('2026-08-12T09:00:00Z'),
+    };
+
+    expect(formatRowTimestamps(row, 'Asia/Tashkent')).toEqual({
+      id: 'v1',
+      published_at: '2026-08-12T14:00:00+05:00',
+      closed_at: null,
+      created_at: '2026-08-02T00:30:00+05:00',
+      updated_at: '2026-08-12T14:00:00+05:00',
+    });
+  });
+
+  it('leaves a calendar date alone, which is what makes the type test safe', () => {
+    // `date` columns are strings end to end in this codebase (`--date-parser string`), so a
+    // Date instance is always an instant. If that ever changed, `starts_on` would come back
+    // as a Date and this helper would render a deadline as a timestamp - so assert it.
+    const row = {
+      starts_on: '2026-09-01',
+      ends_on: null,
+      deadline_on: '2026-08-25',
+      worker_count: 3,
+      salary_is_negotiable: false,
+      salary_from: '5000000.00',
+    };
+
+    expect(formatRowTimestamps(row, 'Asia/Tashkent')).toEqual(row);
+  });
+
+  it('does not walk into a nested object', () => {
+    // Shallow on purpose: the audit log's `details` is jsonb, and reformatting whatever a
+    // caller stored in it is not this function's business. That bag is fixed where it is
+    // written instead.
+    const nested = { at: new Date('2026-08-12T09:00:00Z') };
+
+    expect(formatRowTimestamps({ details: nested }, 'Asia/Tashkent')).toEqual({
+      details: nested,
+    });
+  });
+});
 
 describe('formatWithOffset', () => {
   it('renders the platform zone with an explicit offset', () => {

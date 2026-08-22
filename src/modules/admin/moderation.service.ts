@@ -45,6 +45,25 @@ export interface ModerationQueueItem {
   } | null;
 }
 
+/**
+ * Who the vacancy belongs to, for §10.2's "contact information".
+ *
+ * Not on `VacancyRow`, because a vacancy row does not know it - and the review needs it for
+ * a moderator who arrived by deep link, notification or reload rather than from the queue.
+ */
+export interface EmployerIdentity {
+  name: string | null;
+  /** The account number, which is also §10.4's search key. */
+  phone: string | null;
+  /**
+   * The number the employer published for their company - a different field, and often a
+   * different number. Not coalesced with the account one: a moderator about to call
+   * somebody should know which of the two they are looking at. §6.1 makes it mandatory for
+   * a complete profile, so anything that got as far as review has one.
+   */
+  contactPhone: string | null;
+}
+
 export interface ComplaintItem {
   id: string;
   targetType: ComplaintTarget;
@@ -113,7 +132,7 @@ export class AdminModerationService {
       rows.map(async (row) => ({
         employerUserId: row.employer_user_id,
         type: row.type,
-        name: row.public_name ?? row.full_name,
+        name: employerNameOf(row),
         legalName: row.legal_name,
         regionId: row.region_id,
         submittedAt: row.submitted_at,
@@ -216,7 +235,7 @@ export class AdminModerationService {
     return rows.map((row) => ({
       vacancyId: row.id,
       employerUserId: row.employer_user_id,
-      employerName: row.public_name ?? row.full_name,
+      employerName: employerNameOf(row),
       title: row.title,
       submittedAt: row.updated_at,
       // §10.2 requires the restriction to be reviewed, so the queue shows which items
@@ -234,15 +253,66 @@ export class AdminModerationService {
     }));
   }
 
-  /** §10.2's "review vacancy details, requirements ... and restrictions". */
-  async vacancyForReview(vacancyId: string): Promise<VacancyAggregate> {
+  /**
+   * §10.2's "review vacancy details, requirements, contact information ... and
+   * restrictions".
+   *
+   * The employer is fetched alongside the vacancy because §10.2 names contact information
+   * as part of what is reviewed, and `loadVacancy` returns the `vacancies` row - which
+   * knows an `employer_user_id` and nothing else. The queue already resolves the name; a
+   * moderator opening the same vacancy from a deep link, a notification or a reload was
+   * getting a uuid.
+   *
+   * Showing it is BR-09's `admin` branch rather than a hole in it (`expose()` returns
+   * `contactDetails: true` with reason `admin`), which is why the read is **logged** -
+   * §11.1 requires access to protected data to be, and a phone number is protected however
+   * ordinary the screen showing it looks.
+   */
+  async vacancyForReview(
+    actorUserId: string,
+    vacancyId: string,
+  ): Promise<{ aggregate: VacancyAggregate; employer: EmployerIdentity }> {
     const aggregate = await loadVacancy(this.db, vacancyId);
 
     if (!aggregate) {
       throw new NotFoundError('vacancy.not_found');
     }
 
-    return aggregate;
+    const employer = await this.employerIdentityOf(
+      aggregate.row.employer_user_id,
+    );
+
+    this.logger.log(
+      `Admin ${actorUserId} reviewed vacancy ${vacancyId} of employer ${aggregate.row.employer_user_id}`,
+    );
+
+    return { aggregate, employer };
+  }
+
+  /**
+   * One employer's name and two numbers.
+   *
+   * `companies` is a LEFT join because an individual employer has none, and `users` is an
+   * inner one because the account is what the employer row hangs off.
+   */
+  private async employerIdentityOf(
+    employerUserId: string,
+  ): Promise<EmployerIdentity> {
+    const row = await this.db
+      .selectFrom('employers as e')
+      .innerJoin('users as u', 'u.id', 'e.user_id')
+      .leftJoin('companies as c', 'c.employer_user_id', 'e.user_id')
+      .select(['e.full_name', 'e.contact_phone', 'c.public_name', 'u.phone'])
+      .where('e.user_id', '=', employerUserId)
+      .executeTakeFirst();
+
+    // An employer row is guaranteed by the vacancy's foreign key, but a null-safe read
+    // costs nothing and keeps a review from 500-ing over a name.
+    return {
+      name: row ? employerNameOf(row) : null,
+      phone: row?.phone ?? null,
+      contactPhone: row?.contact_phone ?? null,
+    };
   }
 
   /** §10.2's approve or reject, with M5's rules and M10's audit row (BR-04, BR-12). */
@@ -472,6 +542,20 @@ export class AdminModerationService {
       path: `/admin/employers/${employerUserId}/evidence/${row.id}`,
     }));
   }
+}
+
+/**
+ * An employer's display name: a company's public name, else the individual's own.
+ *
+ * One expression, because three places show it - the verification queue, the moderation
+ * queue and the vacancy review - and a moderator who arrives at the review from the list
+ * must read the same name they just tapped.
+ */
+function employerNameOf(row: {
+  public_name: string | null;
+  full_name: string | null;
+}): string | null {
+  return row.public_name ?? row.full_name;
 }
 
 function toComplaint(row: {

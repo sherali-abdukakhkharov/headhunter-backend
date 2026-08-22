@@ -11,6 +11,7 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import type { Database } from '@infra/db/database.module';
 import { createIntTestDb } from '@infra/db/testing/int-db';
+import { formatRowTimestamps } from '@infra/time/format';
 import type { AppEnv } from '@infra/env-schema';
 import { CandidatesService } from '@modules/candidates/candidates.service';
 import { DictionariesService } from '@modules/dictionaries/dictionaries.service';
@@ -128,7 +129,7 @@ beforeAll(() => {
     filesStub,
     audit,
   );
-  adminUsers = new AdminUsersService(db, audit, notifications);
+  adminUsers = new AdminUsersService(db, audit, notifications, config);
   adminDictionaries = new DictionaryAdminService(db, audit);
   guard = new AccountStatusGuard(db);
 });
@@ -501,6 +502,68 @@ describe('§10.2 vacancy moderation', () => {
     ).toBe('active');
   });
 
+  it('names the employer on the review, so a deep link is not a bare uuid (§10.2)', async () => {
+    const employerUserId = await verifiedEmployer();
+    const adminUserId = await newUser('admin');
+    const vacancyId = await draftVacancy(employerUserId);
+    await vacancies.submit(employerUserId, vacancyId);
+
+    const { aggregate, employer } = await moderation.vacancyForReview(
+      adminUserId,
+      vacancyId,
+    );
+
+    expect(aggregate.row.id).toBe(vacancyId);
+
+    // §10.2 lists contact information among what is reviewed, and the review must show the
+    // **same** name the queue showed - one expression, so tapping a queue row cannot land
+    // on a screen naming somebody else.
+    const queued = (await moderation.moderationQueue(100, 0)).find(
+      (row) => row.vacancyId === vacancyId,
+    );
+    expect(employer.name).toBe('Uzum');
+    expect(queued?.employerName).toBe(employer.name);
+
+    // Two numbers with different meanings, which is why they are two fields rather than a
+    // COALESCE: the account number is §10.4's search key and is always there, the contact
+    // number is what this employer published for their company and may be neither.
+    expect(employer.contactPhone).toBe('+998901234567');
+    expect(employer.phone).toMatch(/^\+99895/);
+  });
+
+  it('falls back to an individual employer’s own name, having no company', async () => {
+    const employerUserId = await newUser('employer');
+    const adminUserId = await newUser('admin');
+    const { regionId } = await region();
+
+    // §6.1's individual fields, all four - anything less and BR-03 refuses the vacancy
+    // before there is a review to look at.
+    await employers.upsert(employerUserId, 'individual', {
+      fullName: 'Dilnoza Yusupova',
+      contactPhone: '+998911112233',
+      regionId,
+      description: 'Hiring a shop assistant for a family business.',
+    });
+    await verification.submit(employerUserId, []);
+    await moderation.decideVerification(
+      await newUser('admin'),
+      employerUserId,
+      'verified',
+      null,
+    );
+
+    const vacancyId = await draftVacancy(employerUserId);
+    const { employer } = await moderation.vacancyForReview(
+      adminUserId,
+      vacancyId,
+    );
+
+    // The `companies` join is a LEFT join for exactly this row: an individual has no
+    // public name, and the review must still say who this is.
+    expect(employer.name).toBe('Dilnoza Yusupova');
+    expect(employer.contactPhone).toBe('+998911112233');
+  });
+
   it('rejects with a reason, and refuses one without', async () => {
     const employerUserId = await verifiedEmployer();
     const adminUserId = await newUser('admin');
@@ -600,6 +663,33 @@ describe('§10.2 complaints', () => {
 
     expect(complaint.status).toBe('open');
     expect(target).toMatchObject({ id: vacancyId, status: 'active' });
+  });
+
+  it('hands back a target whose timestamp the boundary must format (§2)', async () => {
+    // The target is columns rather than named fields, and two of the four shapes carry a
+    // `created_at`. This pins both halves of that bug: the driver really does return a
+    // `Date` here, and `formatRowTimestamps` - which is what the controller applies - turns
+    // it into the offset form the contract freezes. A `Z` would throw in the Dart client.
+    const reporterUserId = await newUser('candidate');
+    const targetUserId = await newUser('candidate');
+
+    const row = await db
+      .insertInto('complaints')
+      .values({
+        target_type: 'user',
+        target_id: targetUserId,
+        reporter_user_id: reporterUserId,
+        reason: 'This account is impersonating a company.',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    const { target } = await moderation.complaint(row.id);
+
+    expect(target?.created_at).toBeInstanceOf(Date);
+    expect(
+      formatRowTimestamps(target ?? {}, 'Asia/Tashkent').created_at,
+    ).toMatch(/\+05:00$/);
   });
 
   it('reviews it once, with its audit row in the same transaction', async () => {

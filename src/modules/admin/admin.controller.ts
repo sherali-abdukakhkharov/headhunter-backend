@@ -32,7 +32,11 @@ import {
 } from '@infra/api/decorators/current-user.decorator';
 import { RequireRole } from '@infra/api/decorators/require-role.decorator';
 import type { AppEnv } from '@infra/env-schema';
-import { formatDateOnly, formatWithOffset } from '@infra/time/format';
+import {
+  formatDateOnly,
+  formatRowTimestamps,
+  formatWithOffset,
+} from '@infra/time/format';
 
 import { AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
@@ -264,16 +268,35 @@ export class AdminController {
 
   @Get('moderation/:vacancyId')
   @ApiOperation({
-    summary: 'The vacancy, its requirements and its restriction (§10.2)',
+    summary:
+      'The vacancy, its requirements, its employer and its restriction (§10.2)',
+    description:
+      'The employer’s name and phone are alongside the vacancy’s own columns because ' +
+      '§10.2 names contact information as part of the review, and the row itself carries ' +
+      'only an `employer_user_id`. Reading them is BR-09’s `admin` branch and is logged ' +
+      '(§11.1).',
   })
+  @ApiOkResponse({ type: VacancyReviewDto })
   @ApiNotFoundResponse({ description: '`vacancy.not_found`.' })
   async vacancyForReview(
+    @ActiveUser() user: CurrentUser,
     @Param('vacancyId', ParseUUIDPipe) vacancyId: string,
   ): Promise<VacancyReviewDto> {
-    const aggregate = await this.moderation.vacancyForReview(vacancyId);
+    const { aggregate, employer } = await this.moderation.vacancyForReview(
+      user.id,
+      vacancyId,
+    );
 
     return {
-      vacancy: { ...aggregate.row },
+      vacancy: {
+        ...formatRowTimestamps(aggregate.row, this.timeZone),
+        // Flat beside the columns rather than nested, which is what the moderation queue
+        // already does with `employerName` - the same payload should not identify an
+        // employer two different ways depending on which screen asked.
+        employer_name: employer.name,
+        employer_phone: employer.phone,
+        employer_contact_phone: employer.contactPhone,
+      },
       requirements: aggregate.requirements.map((requirement) => ({
         ...requirement,
       })),
@@ -362,6 +385,7 @@ export class AdminController {
       'title, the person’s name and account state. Deliberately small: this is a review ' +
       'screen, and the full record is one link away.',
   })
+  @ApiOkResponse({ type: ComplaintDetailDto })
   @ApiNotFoundResponse({ description: '`complaint.not_found`.' })
   async complaint(
     @Param('id', ParseUUIDPipe) id: string,
@@ -373,7 +397,10 @@ export class AdminController {
         ...complaint,
         createdAt: formatWithOffset(complaint.createdAt, this.timeZone),
       },
-      target,
+      // The target is columns rather than named fields, so its timestamps are formatted by
+      // type - two of the four shapes carry a `created_at`, and a per-field call here would
+      // have to be kept in step with a `select()` in the service (§2).
+      target: target && formatRowTimestamps(target, this.timeZone),
     };
   }
 

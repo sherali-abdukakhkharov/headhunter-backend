@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
 import {
@@ -8,6 +9,8 @@ import {
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { AccountStatus, UserRole } from '@infra/db/database.types';
+import type { AppEnv } from '@infra/env-schema';
+import { formatWithOffset } from '@infra/time/format';
 
 import { NotificationsService } from '@modules/notifications/notifications.service';
 
@@ -89,12 +92,16 @@ interface UserRow {
 @Injectable()
 export class AdminUsersService {
   private readonly logger = new Logger(AdminUsersService.name);
+  private readonly timeZone: string;
 
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
-  ) {}
+    config: ConfigService<AppEnv, true>,
+  ) {
+    this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
+  }
 
   /**
    * §10.4's search: "by phone, name, role, status, or registration date".
@@ -358,8 +365,17 @@ export class AdminUsersService {
         details: {
           from: current.status,
           to,
+          // §2 applies here too, and this is the one place it is easy to miss: the audit
+          // `details` bag is stored as jsonb and handed back to `GET /admin/audit`
+          // verbatim, so nothing downstream can tell a timestamp from any other string
+          // and reformat it on the way out. `toISOString()` would put a `Z` in a response.
           ...(restrictedUntil
-            ? { restrictedUntil: restrictedUntil.toISOString() }
+            ? {
+                restrictedUntil: formatWithOffset(
+                  restrictedUntil,
+                  this.timeZone,
+                ),
+              }
             : {}),
         },
       });

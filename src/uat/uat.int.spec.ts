@@ -239,7 +239,7 @@ beforeAll(() => {
     filesStub,
     audit,
   );
-  adminUsers = new AdminUsersService(db, audit, notifications);
+  adminUsers = new AdminUsersService(db, audit, notifications, config);
   guard = new AccountStatusGuard(db);
   // §9.1's chat gate reads the same shared entitlement BR-09 does, which is what lets UAT-17
   // assert its "chat becomes available" clause without chat knowing an unlock exists.

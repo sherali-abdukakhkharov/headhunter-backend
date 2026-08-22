@@ -1022,6 +1022,49 @@ Wire shapes are in [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) §4h.
       on a label edit, a duplicate code is refused, and a merge leaves the loser resolvable
 - [x] The audit log answers both of its questions - by actor and by target
 
+### Three asks from the mobile session *(2026-08-22, after the app's §10.2 complaint queue)*
+
+None of them blocked the client - each was worked around and pinned by a test on their
+side, which is why two of the three cost no client release when they landed.
+
+- [x] **The review had no employer.** §10.2 lists contact information among what a
+      moderator reviews, and `GET /admin/moderation/{vacancyId}` answered the `vacancies`
+      row - an `employer_user_id` and nothing else. The queue already resolved the name, so
+      the query existed and was being run for the list and not the detail. Now three keys
+      beside the columns: `employer_name`, `employer_phone`, `employer_contact_phone`, the
+      name from the **same expression** the two queues use. Their reader was written for
+      these already, so the card appeared with no release - the second time that pattern
+      has paid, after `InvitationDto.candidateName`
+- [x] **`employer_email` is not coming**, and that is an answer rather than a deferral:
+      there is no e-mail column anywhere in the schema. Login is phone + OTP (§4.1) and
+      every contact field is a phone number. Told them to drop the getter
+- [x] **`ComplaintDetailDto.target.created_at` shipped a `Z`** - a real §2 violation. The
+      complaint beside it was formatted and the target was spread in raw. Fixed by
+      formatting rather than by dropping the column, because the same bug was in two more
+      places and a formatter fixes the class:
+  - [x] `formatRowTimestamps` converts by **runtime type**, which is only safe because a
+        calendar date is a `'YYYY-MM-DD'` string in this codebase - so a `Date` is always
+        an instant. A per-field call cannot be kept in step with a `select()` in another
+        file
+  - [x] `VacancyReviewDto.vacancy` had **four** unformatted timestamps and nobody had
+        noticed, because the client reads no timestamp off that row
+  - [x] The audit log's `details` bag stored `restrictedUntil` with `toISOString()`. No
+        read-side fix is possible for a `jsonb` bag - nothing downstream can tell a
+        timestamp from any other string - so it is formatted where it is **written**. Fixed
+        before the audit screen exists rather than after
+- [ ] **Declined: typed DTOs for the two raw-row responses** (their item 3, offered as
+      cosmetic). `VacancyReviewDto.vacancy` being the row as stored is the point of a
+      review screen, and a camelCase DTO would mean either hand-writing a mapping of 30
+      columns - a second copy of the column list, which is what the one-declaration rule
+      exists to prevent - or a generic snake-to-camel converter with one caller. Their
+      readers take either spelling, so nothing is waiting on it. The `salary_from` trap
+      they flagged is real: `numeric` arrives as a string
+- [ ] **Found while there: most admin GET routes declare no `@ApiOkResponse`**, so their
+      responses are absent from `docs/openapi.json` - which is now the mobile team's only
+      contract document, `/docs-json` being 404 since 2026-08-20. Added for the two routes
+      touched here; roughly eight remain, each a one-line decorator over a DTO that already
+      exists
+
 ## M11 - Hardening
 
 - [x] Load test both budgets; fix misses before adding a search projection -

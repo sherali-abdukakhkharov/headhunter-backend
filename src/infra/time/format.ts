@@ -123,6 +123,35 @@ export function formatWithOffset(date: Date, timeZone: string): string {
 }
 
 /**
+ * A row on its way into a response, with every instant in it rendered per §2.
+ *
+ * Two admin responses carry the selected **columns** rather than named fields -
+ * `VacancyReviewDto.vacancy` is the vacancy as stored and `ComplaintDetailDto.target` is
+ * whichever of four rows was reported. A per-field `formatWithOffset` call cannot be kept
+ * complete there: the column list lives in a `select()` somewhere else, and the one that is
+ * forgotten when a column is added is the one that ships a `Z`.
+ *
+ * So this converts by **runtime type** instead, which is exactly right in this codebase
+ * rather than merely convenient: a calendar date is a `'YYYY-MM-DD'` string end to end
+ * (`--date-parser string`, `infra/db/pg-types.ts`), so a `Date` is always an instant and
+ * never a date column. Shallow on purpose - a row is flat, and walking further would start
+ * rewriting `jsonb` payloads whose contents are not ours to reformat.
+ */
+export function formatRowTimestamps<T extends object>(
+  row: T,
+  timeZone: string,
+): Record<string, unknown> {
+  const formatted: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(row)) {
+    formatted[key] =
+      value instanceof Date ? formatWithOffset(value, timeZone) : value;
+  }
+
+  return formatted;
+}
+
+/**
  * The instants that bound the calendar day `date` falls in, at `timeZone`.
  *
  * `start` is that day's midnight and `end` is the next one - so a "today" window is

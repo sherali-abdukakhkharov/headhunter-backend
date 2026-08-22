@@ -5169,6 +5169,7 @@
     },
     "/admin/moderation/{vacancyId}": {
       "get": {
+        "description": "The employer’s name and phone are alongside the vacancy’s own columns because §10.2 names contact information as part of the review, and the row itself carries only an `employer_user_id`. Reading them is BR-09’s `admin` branch and is logged (§11.1).",
         "operationId": "AdminController_vacancyForReview",
         "parameters": [
           {
@@ -5181,6 +5182,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacancyReviewDto"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`vacancy.not_found`."
           }
@@ -5190,7 +5201,7 @@
             "bearer": []
           }
         ],
-        "summary": "The vacancy, its requirements and its restriction (§10.2)",
+        "summary": "The vacancy, its requirements, its employer and its restriction (§10.2)",
         "tags": [
           "admin"
         ]
@@ -5351,6 +5362,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplaintDetailDto"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`complaint.not_found`."
           }
@@ -10289,6 +10310,26 @@
           "decision"
         ]
       },
+      "VacancyReviewDto": {
+        "type": "object",
+        "properties": {
+          "vacancy": {
+            "type": "object",
+            "description": "The vacancy row as stored, plus the three keys that identify its employer. `employer_name` is a company’s public name, else the individual’s own — the same resolution the moderation queue shows. `employer_phone` is the account number, which is also §10.4’s search key. `employer_contact_phone` is the number the employer published for their company; it is a different field and may be a different number, and §6.1 makes it mandatory for a complete profile, so a vacancy that reached review has one. §10.2 lists contact information among what a moderator reviews, and the row alone carries only an `employer_user_id`. **There is no e-mail address:** this product has no such column anywhere — login is phone + OTP (§4.1). Timestamps carry §2’s explicit offset like every other response."
+          },
+          "requirements": {
+            "description": "Its structured requirements, keyed by schema field code.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "vacancy",
+          "requirements"
+        ]
+      },
       "ModerationDecisionDto": {
         "type": "object",
         "properties": {
@@ -10328,6 +10369,72 @@
         "required": [
           "status",
           "reason"
+        ]
+      },
+      "ComplaintDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "vacancy",
+              "user",
+              "profile",
+              "message"
+            ]
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "reporterUserId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "actioned",
+              "dismissed"
+            ]
+          },
+          "resolution": {
+            "type": "object",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "targetType",
+          "targetId",
+          "reporterUserId",
+          "reason",
+          "status",
+          "createdAt"
+        ]
+      },
+      "ComplaintDetailDto": {
+        "type": "object",
+        "properties": {
+          "complaint": {
+            "$ref": "#/components/schemas/ComplaintDto"
+          },
+          "target": {
+            "type": "object",
+            "nullable": true,
+            "description": "Enough of the reported thing to judge it, resolved per kind: the message body, the vacancy’s title and status, or the person’s name and account state. Null if it is gone — a complaint outlives its target on purpose. Its keys are columns, so they are snake_case; its timestamps carry §2’s explicit offset."
+          }
+        },
+        "required": [
+          "complaint"
         ]
       },
       "ComplaintReviewDto": {

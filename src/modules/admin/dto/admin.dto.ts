@@ -514,7 +514,17 @@ export class ModerationQueueDto {
 
 export class VacancyReviewDto {
   @ApiProperty({
-    description: 'The vacancy row as stored, for review (§10.2).',
+    description:
+      'The vacancy row as stored, plus the three keys that identify its employer. ' +
+      '`employer_name` is a company’s public name, else the individual’s own — the same ' +
+      'resolution the moderation queue shows. `employer_phone` is the account number, ' +
+      'which is also §10.4’s search key. `employer_contact_phone` is the number the ' +
+      'employer published for their company; it is a different field and may be a ' +
+      'different number, and §6.1 makes it mandatory for a complete profile, so a vacancy ' +
+      'that reached review has one. §10.2 lists contact information among what a moderator ' +
+      'reviews, and the row alone carries only an `employer_user_id`. **There is no e-mail ' +
+      'address:** this product has no such column anywhere — login is phone + OTP (§4.1). ' +
+      'Timestamps carry §2’s explicit offset like every other response.',
   })
   vacancy!: Record<string, unknown>;
 
@@ -548,7 +558,8 @@ export class ComplaintDetailDto {
     description:
       'Enough of the reported thing to judge it, resolved per kind: the message body, the ' +
       'vacancy’s title and status, or the person’s name and account state. Null if it is ' +
-      'gone — a complaint outlives its target on purpose.',
+      'gone — a complaint outlives its target on purpose. Its keys are columns, so they ' +
+      'are snake_case; its timestamps carry §2’s explicit offset.',
   })
   target!: Record<string, unknown> | null;
 }

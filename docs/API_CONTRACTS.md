@@ -221,6 +221,20 @@ Implementation consequence on our side: `Date.prototype.toISOString()` emits
 `Z`, so serialization goes through one deliberate formatter with a test — not
 per-DTO `toISOString()` calls.
 
+Two shapes need more than that formatter, and both had shipped a `Z` before
+2026-08-22:
+
+- **A response that carries columns rather than named fields** —
+  `VacancyReviewDto.vacancy` and `ComplaintDetailDto.target`. A per-field call
+  cannot be kept complete there, because the column list lives in a `select()`
+  in another file and the column that is forgotten is the one that ships a `Z`.
+  These go through `formatRowTimestamps`, which converts by **runtime type**.
+  That is safe rather than merely convenient: a calendar date is a
+  `'YYYY-MM-DD'` string end to end, so a `Date` is always an instant.
+- **A timestamp stored inside a `jsonb` payload** — the audit log's `details`.
+  Nothing downstream can tell a timestamp from any other string in an opaque
+  bag, so there is no read-side fix; it is formatted where it is **written**.
+
 Platform zone is `Asia/Tashkent` (single zone, §8.3). Storage is `timestamptz`.
 Going per-user later adds `users.time_zone` defaulting to the platform zone and
 does not change the wire format.
@@ -1434,12 +1448,12 @@ POST  /admin/verification/{employerUserId}              ->  204
 GET   /admin/employers/{employerUserId}/evidence/{fileId} ->  bytes
 
 GET   /admin/moderation                                  ->  { items }
-GET   /admin/moderation/{vacancyId}                       ->  VacancyReview
+GET   /admin/moderation/{vacancyId}                       ->  VacancyReviewDto
 POST  /admin/moderation/{vacancyId}                        ->  204
 PUT   /admin/vacancies/{vacancyId}/status                   ->  204
 
 GET   /admin/complaints?targetType=                          ->  { items }
-GET   /admin/complaints/{id}                                  ->  { complaint, target }
+GET   /admin/complaints/{id}                                  ->  ComplaintDetailDto
 POST  /admin/complaints/{id}/review                            ->  204
 
 GET   /admin/users?phone=&name=&role=&status=&registeredFrom=   ->  { items }  (§10.4)
@@ -1480,6 +1494,32 @@ legal name, else an individual employer's name, else the account's own `full_nam
 only the seeded administrators have. `name=` searches all of them. An account that has
 registered but filled nothing in has no name yet; render the phone number, not an empty
 string.
+
+### The vacancy review names its employer, and there is no e-mail
+
+`GET /admin/moderation/{vacancyId}` answers `{ vacancy, requirements }` where `vacancy` is
+the stored row. Since 2026-08-22 that object also carries three employer keys, because
+§10.2 lists contact information among what a moderator reviews and the row itself knows
+only an `employer_user_id` — a moderator arriving from the queue had a name, one arriving
+from a deep link, a notification or a reload had a uuid.
+
+```
+employer_name           a company's public name, else the individual's own
+employer_phone          the account number, which is also §10.4's search key
+employer_contact_phone  the number published for the company (§6.1, mandatory)
+```
+
+Flat beside the columns rather than nested, because the moderation *queue* already carries
+`employerName` that way and one payload should not identify an employer two different ways
+depending on which screen asked. `employer_name` is the **same expression** the queue uses,
+so tapping a queue row cannot land on a screen naming somebody else.
+
+**There is no e-mail address, here or anywhere.** The product has no such column: login is
+phone + OTP (§4.1) and every contact field in the schema is a phone number. A client
+parsing an `employer_email` will read null forever.
+
+Reading these is BR-09's `admin` branch rather than a hole in it — `expose()` answers
+`contactDetails: true` with reason `admin` — which is why the read is logged (§11.1).
 
 ### The audit log is append-only in the database (§10.4)
 
