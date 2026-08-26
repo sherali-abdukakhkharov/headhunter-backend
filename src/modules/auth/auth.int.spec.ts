@@ -220,6 +220,48 @@ describe('OtpService', () => {
     ).rejects.toThrow();
   });
 
+  it('tells the client the rules of the code it just issued (§4.2)', async () => {
+    // The client hard-coded six digits and could say nothing about the limit
+    // until the server refused, so changing either setting silently gave every
+    // app an input that refuses the code it was sent. Both are configuration
+    // and neither is a secret, so the challenge describes itself.
+    const { otp } = services({ OTP_LENGTH: 4, OTP_MAX_ATTEMPTS: 7 });
+    const sent = await otp.send(testPhone(), 'login', null);
+
+    expect(sent.codeLength).toBe(4);
+    expect(sent.maxAttempts).toBe(7);
+    expect(sent.devCode).toHaveLength(4);
+  });
+
+  it('never reports how many attempts are left', async () => {
+    // The refusal is deliberately identical for "no code", "expired" and
+    // "wrong code", so probing a number cannot reveal whether one is pending.
+    // A remaining-attempt counter on that refusal would be exactly that oracle
+    // — a number with a live code would answer with a figure and a number
+    // without one would not. The *limit* travels on the send instead, where it
+    // reveals nothing, and the client counts its own attempts against it.
+    const { otp } = services();
+    const phone = testPhone();
+
+    const sent = await otp.send(phone, 'login', null);
+    const wrong = sent.devCode === '000000' ? '111111' : '000000';
+
+    const refused = await otp
+      .verify(phone, 'login', wrong)
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    const unknownPhone = await otp
+      .verify(testPhone(), 'login', wrong)
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    // Same key, same shape, nothing to tell the two apart.
+    expect(refused).toMatchObject({ messageKey: 'auth.otp_invalid' });
+    expect(unknownPhone).toMatchObject({ messageKey: 'auth.otp_invalid' });
+    expect(JSON.stringify(refused)).toBe(JSON.stringify(unknownPhone));
+  });
+
   it('rejects an expired code', async () => {
     const { otp } = services({ OTP_TTL_SECONDS: 30 });
     const phone = testPhone();

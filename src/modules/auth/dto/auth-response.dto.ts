@@ -16,6 +16,37 @@ export class OtpSentResponseDto {
   })
   resendAvailableAt!: string;
 
+  @ApiProperty({
+    example: 6,
+    description:
+      'Digits in the code, from `OTP_LENGTH`. §4.2 makes this configuration, ' +
+      'and until it was published the client hard-coded six — so changing the ' +
+      'setting would have silently given every app an input that refuses the ' +
+      'code it was sent.',
+  })
+  codeLength!: number;
+
+  @ApiProperty({
+    example: 5,
+    description:
+      'How many wrong guesses this code allows before it is locked out and a ' +
+      'new one must be requested (`OTP_MAX_ATTEMPTS`, §4.2).\n\n' +
+      '**This is the limit, not the number remaining, and that is on ' +
+      'purpose.** `POST /auth/otp/verify` answers `auth.otp_invalid` ' +
+      'identically for "no code", "expired" and "wrong code", so that probing ' +
+      'a phone number cannot reveal whether a code is pending for it. ' +
+      'Attaching a remaining-attempt count to that refusal would undo exactly ' +
+      'that: a number with a live code would answer with a counter and a ' +
+      'number without one would not, which is the oracle the shared message ' +
+      'exists to close.\n\n' +
+      'The limit leaks nothing — it is policy, and an attacker learns it by ' +
+      'guessing wrong five times. The client counts its own attempts against ' +
+      'it, which is accurate for the person actually typing and is the only ' +
+      'party the countdown is for. The server stays authoritative: it answers ' +
+      '`auth.otp_too_many_attempts` whatever the client believed.',
+  })
+  maxAttempts!: number;
+
   @ApiPropertyOptional({
     description:
       'Development only, when OTP_ECHO_IN_RESPONSE is on. Boot refuses this ' +

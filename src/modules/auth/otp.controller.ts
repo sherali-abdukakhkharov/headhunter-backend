@@ -91,6 +91,8 @@ export class OtpController {
         result.resendAvailableAt,
         this.timeZone,
       ),
+      codeLength: result.codeLength,
+      maxAttempts: result.maxAttempts,
       ...(result.devCode ? { devCode: result.devCode } : {}),
     };
   }

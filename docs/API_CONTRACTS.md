@@ -42,9 +42,29 @@ All three are `@Public()` and rate limited — `send`/`resend` on the `otp` buck
 `verify` on the `auth` bucket — per phone **and** per IP, with `Retry-After` on
 every 429.
 
-**`OtpSent`** — `{ expiresAt, resendAvailableAt, devCode? }`. Both timestamps are
-§2 offset strings. `devCode` appears only while `OTP_ECHO_IN_RESPONSE` is on, which
-boot refuses in production; a client must never depend on it existing.
+**`OtpSent`** — `{ expiresAt, resendAvailableAt, codeLength, maxAttempts, devCode? }`.
+Both timestamps are §2 offset strings. `devCode` appears only while
+`OTP_ECHO_IN_RESPONSE` is on, which boot refuses in production; a client must
+never depend on it existing.
+
+**The challenge describes its own rules** (added 2026-08-26). `codeLength` is
+`OTP_LENGTH` and `maxAttempts` is `OTP_MAX_ATTEMPTS`, both §4.2 configuration.
+Before they were published the client hard-coded six digits and could say
+nothing about the budget, so changing either setting would have silently given
+every installed app an input that refuses the code it was sent.
+
+**`maxAttempts` is the limit, never the number remaining, and that is the whole
+design.** `verify` answers `auth.otp_invalid` identically for "no code",
+"expired" and "wrong code", so probing a phone number cannot reveal whether one
+is pending. Attaching a remaining-attempt count to *that* refusal would be
+exactly the oracle the shared message exists to close: a number with a live code
+would answer with a figure and a number without one would not.
+
+The limit leaks nothing — it is policy, and an attacker learns it by guessing
+wrong five times. The client counts its own attempts against it, which is
+accurate for the person actually typing and is the only party a countdown is
+for; the server stays authoritative and answers `auth.otp_too_many_attempts`
+whatever the client believed.
 
 **`AuthTokens`** is unchanged and stays **frozen**: `accessToken`, `refreshToken`,
 `expiresInSeconds`, `roles`, `activeRole`, `isNewUser`. Telegram login returns the

@@ -19,6 +19,24 @@ import { SmsSender } from './sms/sms-sender';
 export interface OtpSendResult {
   expiresAt: Date;
   resendAvailableAt: Date;
+
+  /**
+   * The rules of the challenge that was just created, so the client does not
+   * have to guess them.
+   *
+   * Both are configuration (§4.2) and neither is a secret. Publishing them is
+   * what lets the code field size itself and the screen count attempts down;
+   * before it, the client hard-coded six digits and could say nothing about
+   * the limit until the server refused.
+   *
+   * **`maxAttempts` is the limit, never the number remaining.** See the DTO for
+   * why: a remaining count on a failed verify would tell an attacker that a
+   * code is pending for that phone, which is precisely what the one shared
+   * `auth.otp_invalid` message exists to hide.
+   */
+  codeLength: number;
+  maxAttempts: number;
+
   /** Populated only when `OTP_ECHO_IN_RESPONSE` is on; never in production. */
   devCode?: string;
 }
@@ -173,6 +191,11 @@ export class OtpService {
           resendAvailableAt: new Date(
             inserted.created_at.getTime() + this.resendDelaySeconds * 1000,
           ),
+          // The challenge describes its own rules. Read from the same fields
+          // that enforce them, so a configuration change reaches the client on
+          // the next send rather than needing an app release.
+          codeLength: this.length,
+          maxAttempts: this.maxAttempts,
           ...(this.echoInResponse ? { devCode: code } : {}),
         },
         code,
