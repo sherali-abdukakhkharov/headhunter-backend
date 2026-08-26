@@ -313,6 +313,93 @@ async function draftVacancy(
   return vacancyId;
 }
 
+describe('the audit log names who acted (§10.4)', () => {
+  /** Gives a user the name a candidate profile would carry. */
+  async function named(userId: string, fullName: string): Promise<void> {
+    await db
+      .insertInto('candidate_profiles')
+      .values({ user_id: userId, full_name: fullName })
+      .onConflict((oc) =>
+        oc.column('user_id').doUpdateSet({ full_name: fullName }),
+      )
+      .execute();
+  }
+
+  it('resolves the actor to a name, so a client does not fetch one account per row', async () => {
+    const actorUserId = await newUser('admin');
+    await named(actorUserId, 'Dilnoza Rashidova');
+    const targetUserId = await newUser('candidate');
+
+    await adminUsers.warn(actorUserId, targetUserId, 'First warning.');
+    const [entry] = await audit.list({ actorUserId }, 1, 0);
+
+    expect(entry.actorName).toBe('Dilnoza Rashidova');
+    // The uuid stays: a name is not an account, and the row still has to open one.
+    expect(entry.actorUserId).toBe(actorUserId);
+  });
+
+  it('answers null for an administrator with no name anywhere', async () => {
+    // A seeded account has no profile to ask - which is the case the client's
+    // fallback to the uuid exists for, so it must be reachable.
+    const actorUserId = await newUser('admin');
+    const targetUserId = await newUser('candidate');
+
+    await adminUsers.warn(actorUserId, targetUserId, 'First warning.');
+    const [entry] = await audit.list({ actorUserId }, 1, 0);
+
+    expect(entry.actorName).toBeNull();
+  });
+
+  it('resolves a user target too, since that is the log’s other question', async () => {
+    const actorUserId = await newUser('admin');
+    const targetUserId = await newUser('candidate');
+    await named(targetUserId, 'Bekzod Yusupov');
+
+    await adminUsers.warn(actorUserId, targetUserId, 'First warning.');
+    const [entry] = await audit.list({ actorUserId }, 1, 0);
+
+    expect(entry.targetType).toBe('user');
+    expect(entry.targetName).toBe('Bekzod Yusupov');
+  });
+
+  it('leaves targetName null when the target is not an account', async () => {
+    // A vacancy id resolves to nothing here on purpose. Its title is in `details`,
+    // put there by the action that moderated it.
+    const actorUserId = await newUser('admin');
+    const employerUserId = await verifiedEmployer();
+    const vacancyId = await draftVacancy(employerUserId);
+    await vacancies.submit(employerUserId, vacancyId);
+
+    await moderation.moderateVacancy(actorUserId, vacancyId, 'active', null);
+    const [entry] = await audit.list({ actorUserId }, 1, 0);
+
+    expect(entry.targetType).toBe('vacancy');
+    expect(entry.targetName).toBeNull();
+    expect(entry.targetId).toBe(vacancyId);
+  });
+
+  it('still filters by actor and by target with the names attached', async () => {
+    // The columns moved behind an alias when the subqueries went in, so the two
+    // questions the log answers are worth re-asserting rather than assumed.
+    const actorUserId = await newUser('admin');
+    await named(actorUserId, 'Nodira Ismoilova');
+    const targetUserId = await newUser('candidate');
+
+    await adminUsers.warn(actorUserId, targetUserId, 'First warning.');
+
+    const byActor = await audit.list({ actorUserId }, 20, 0);
+    const byTarget = await audit.list(
+      { targetType: 'user', targetId: targetUserId },
+      20,
+      0,
+    );
+
+    expect(byActor).toHaveLength(1);
+    expect(byTarget).toHaveLength(1);
+    expect(byTarget[0].actorName).toBe('Nodira Ismoilova');
+  });
+});
+
 describe('the audit log is append-only (§10.4)', () => {
   async function oneRow(): Promise<{ id: string; actorUserId: string }> {
     const actorUserId = await newUser('admin');

@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Transaction } from 'kysely';
+import { type Transaction, sql } from 'kysely';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
 import type { DB } from '@infra/db/database.types';
+
+import { displayNameFor } from './display-name';
 
 /**
  * Every administrator action this product records (§10.4, §11.1).
@@ -50,6 +52,29 @@ export interface AuditEntry {
 export interface AuditRecord extends AuditEntry {
   id: string;
   createdAt: Date;
+
+  /**
+   * Who the actor is, resolved here rather than by the caller.
+   *
+   * A uuid is a way in, not a name, and the client had no cheap route to one: a name per
+   * distinct actor meant `GET /admin/users/:id` each, which returns a phone number, a
+   * status history and a complaint list to obtain a string - and writes a §11.1 access
+   * log line every time. A page of names would have cost a page of logged reads of other
+   * people's contact details on a screen nobody opened to read them.
+   *
+   * Null only for an administrator with no name anywhere, which a seeded account can be.
+   */
+  actorName: string | null;
+
+  /**
+   * The same, for the target - and **only when `targetType` is `user`**.
+   *
+   * The other four target types are not accounts, so there is nothing for this expression
+   * to resolve and it answers null. That is not a gap to fill later with a union over four
+   * more tables: a vacancy's title and a dictionary item's label are already in
+   * `details` where the action that touched them put them.
+   */
+  targetName: string | null;
 }
 
 /**
@@ -97,26 +122,35 @@ export class AuditService {
     limit: number,
     offset: number,
   ): Promise<AuditRecord[]> {
-    let query = this.db.selectFrom('admin_audit_log').selectAll();
+    // Aliased, because the two name subqueries need to say which `id` they mean.
+    let query = this.db
+      .selectFrom('admin_audit_log as l')
+      .selectAll('l')
+      .select([
+        displayNameFor(sql`l.actor_user_id`).as('actor_name'),
+        // A target that is not a user resolves to nothing, which is the answer.
+        sql<string | null>`CASE WHEN l.target_type = 'user'
+          THEN ${displayNameFor(sql`l.target_id`)} END`.as('target_name'),
+      ]);
 
     if (filters.actorUserId) {
-      query = query.where('actor_user_id', '=', filters.actorUserId);
+      query = query.where('l.actor_user_id', '=', filters.actorUserId);
     }
 
     if (filters.targetType) {
-      query = query.where('target_type', '=', filters.targetType);
+      query = query.where('l.target_type', '=', filters.targetType);
     }
 
     if (filters.targetId) {
-      query = query.where('target_id', '=', filters.targetId);
+      query = query.where('l.target_id', '=', filters.targetId);
     }
 
     if (filters.action) {
-      query = query.where('action', '=', filters.action);
+      query = query.where('l.action', '=', filters.action);
     }
 
     const rows = await query
-      .orderBy('created_at', 'desc')
+      .orderBy('l.created_at', 'desc')
       .limit(limit)
       .offset(offset)
       .execute();
@@ -130,6 +164,8 @@ export class AuditService {
       reason: row.reason,
       details: row.details as Record<string, unknown> | null,
       createdAt: row.created_at,
+      actorName: row.actor_name,
+      targetName: row.target_name,
     }));
   }
 }

@@ -19,18 +19,7 @@ import {
 import { NotificationsService } from '@modules/notifications/notifications.service';
 
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
-
-/**
- * The name §10.2 shows for an account, in the order the account itself would answer.
- *
- * Shared by the list and the detail because they must agree: two copies of this expression
- * drifting is one user shown under two names depending on which screen you opened.
- *
- * `u.full_name` is **last**. A profile name is the one the person maintains and the one
- * their counterpart sees; `users.full_name` is what the deployment was told through
- * `SEED_ADMIN_PHONES`, and it exists because an administrator has no profile to ask.
- */
-const DISPLAY_NAME = sql`COALESCE(cp.full_name, c.public_name, e.full_name, u.full_name)`;
+import { DISPLAY_NAME } from './display-name';
 
 export interface UserSearchFilters {
   /** §10.4's "by phone" - a partial number, because that is how one is remembered. */

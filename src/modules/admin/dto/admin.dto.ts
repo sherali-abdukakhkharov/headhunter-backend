@@ -663,6 +663,17 @@ export class AuditEntryDto {
   @ApiProperty() id!: string;
   @ApiProperty() actorUserId!: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'The actor’s display name, resolved here so a client does not fetch one account ' +
+      'per row to get it — a fetch that returns a phone number, a status history and a ' +
+      'complaint list for a string, and writes a §11.1 access log line every time. Null ' +
+      'only for an administrator with no name anywhere, which a seeded account can be; ' +
+      'the uuid is always present.',
+  })
+  actorName!: string | null;
+
   @ApiProperty({
     description:
       'A dotted code from one exported constant, e.g. `user.blocked`, ' +
@@ -676,6 +687,18 @@ export class AuditEntryDto {
   targetType!: string;
 
   @ApiPropertyOptional({ nullable: true }) targetId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'The target’s display name, and **only when `targetType` is `user`** — the other ' +
+      'four target types are not accounts, so there is nothing to resolve. That is not a ' +
+      'gap to fill later with a union over four more tables: a vacancy’s title and a ' +
+      'dictionary item’s label are already in `details`, put there by the action that ' +
+      'touched them.',
+  })
+  targetName!: string | null;
+
   @ApiPropertyOptional({ nullable: true }) reason!: string | null;
 
   @ApiPropertyOptional({

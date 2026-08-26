@@ -1519,7 +1519,7 @@ PUT   /admin/dictionaries/items/{itemId}                             ->  204
 PUT   /admin/dictionaries/items/{itemId}/active                        ->  204
 POST  /admin/dictionaries/items/{itemId}/merge                          ->  204
 
-GET   /admin/audit?actorUserId=&targetType=&targetId=                    ->  { items }
+GET   /admin/audit?actorUserId=&targetType=&targetId=&action=            ->  { items }
 ```
 
 ### The two flags are on, and this is what turned them on
@@ -1547,6 +1547,26 @@ legal name, else an individual employer's name, else the account's own `full_nam
 only the seeded administrators have. `name=` searches all of them. An account that has
 registered but filled nothing in has no name yet; render the phone number, not an empty
 string.
+
+**The audit log carries `actorName` and `targetName`** *(2026-08-26)*, resolved by that
+same expression — one copy of it, shared, because two would be one person shown under two
+names depending on the screen.
+
+The alternative was the client fetching `GET /admin/users/:id` per distinct id, which
+returns a phone number, a status history and a complaint list to obtain a string, and
+writes a §11.1 access log line each time. Twenty rows would have bought a page of names
+with a page of logged reads of other people's contact details, on a screen nobody opened to
+read contact details. So the log resolves them once, in the query already reading the row.
+
+Two things about them:
+
+- **The uuid stays**, and the row still opens that account. A name is not an account, and
+  `actorName` is null for an administrator with no name anywhere — which a seeded one is.
+  Render the id when the name is missing rather than an empty line.
+- **`targetName` is only ever set when `targetType` is `user`.** The other four target
+  types are not accounts, so there is nothing to resolve. That is not a gap to fill later
+  with a union over four more tables: a vacancy's title and a dictionary item's label are
+  already in `details`, put there by the action that touched them.
 
 ### The vacancy review names its employer, and there is no e-mail
 
