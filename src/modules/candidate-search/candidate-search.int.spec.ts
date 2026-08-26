@@ -731,29 +731,43 @@ describe('§7.3’s ranking and card', () => {
       .where('is_active', '=', true)
       .executeTakeFirstOrThrow();
 
+    // Every other fixture in this file is a call-centre operator, and so are several
+    // hundred rows this development database has collected. An occupation filter is
+    // what keeps these three inside one page of results; a *location* filter would
+    // not do, for the reason stated below.
+    const agronomist = await seededId('occupation', 'agronomist');
+
     const near = await newCandidate({
       region_id: regionId,
       district_id: districtId,
+      primary_occupation_id: agronomist,
     });
     const sameRegion = await newCandidate({
       region_id: regionId,
       district_id: otherDistrict.id,
+      primary_occupation_id: agronomist,
     });
     const far = await newCandidate({
       region_id: otherRegion.id,
       district_id: farDistrict.id,
+      primary_occupation_id: agronomist,
     });
 
     const { items } = await search.search(employerUserId, {
       // No location *filter*: the point of the sort is to order candidates a wide search
       // returned, and filtering by district would leave it nothing to order. That is why
       // the reference point is its own field.
-      filters: { proximityDistrictId: districtId },
+      filters: { proximityDistrictId: districtId, occupationIds: [agronomist] },
       sort: 'proximity',
       limit: 50,
       offset: 0,
     });
     const order = idsIn(items);
+
+    // Stated before the ordering, because `indexOf` answers -1 for a row that never
+    // arrived and "-1 < -1" then fails as though the sort were wrong. That is what this
+    // test used to do whenever another suite's candidates filled the page first.
+    expect(order).toEqual(expect.arrayContaining([near, sameRegion, far]));
 
     // Tiers, not distances: places are dictionary ids here, and this is what the region
     // tree can honestly support. Same district, then same region, then the rest.
