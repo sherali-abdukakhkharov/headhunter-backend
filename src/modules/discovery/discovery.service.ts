@@ -20,6 +20,12 @@ export interface DiscoveryFilters {
   workFormatIds?: string[];
   shiftIds?: string[];
   salaryFrom?: number;
+  /** The upper half of §5.5's range. See `where` for why it is not a mirror. */
+  salaryTo?: number;
+  /** §5.5's "experience": a ceiling on what the vacancy *demands*, not a floor. */
+  experienceYearsMax?: number;
+  /** `language` ids the vacancy must require, any one of them, at any level. */
+  languageIds?: string[];
   category?: DictionaryCategory;
   /** Vacancies published on or after this date (§5.5 "publication date"). */
   publishedFrom?: string;
@@ -412,12 +418,41 @@ export class DiscoveryService {
       )`);
     }
 
+    if (filters.salaryTo !== undefined) {
+      // Deliberately not a mirror image of the floor. A vacancy is out only when its
+      // *floor* is above the ceiling asked for, so any overlapping range is in - and a
+      // vacancy stating only "up to 3,000,000" has no floor, which must pass a ceiling
+      // of 2,000,000 rather than fail a NULL comparison.
+      conditions.push(sql`(
+        v.salary_is_negotiable
+        OR v.salary_from IS NULL
+        OR v.salary_from <= ${filters.salaryTo}
+      )`);
+    }
+
+    if (filters.experienceYearsMax !== undefined) {
+      // NOT EXISTS, not EXISTS, and that is the whole of this filter. Experience on a
+      // vacancy is a *demand* rather than an attribute, so §5.5's "experience" asks to
+      // hide what the candidate cannot reach - which makes a vacancy that states no
+      // requirement a pass, since it demands nothing. The employer's filter over
+      // `candidate_experience` is the same word with the opposite polarity.
+      conditions.push(sql`NOT EXISTS (
+        SELECT 1 FROM vacancy_requirements r
+        WHERE r.vacancy_id = v.id
+          AND r.field_code = 'experience_years_min'
+          AND r.value_int > ${filters.experienceYearsMax}
+      )`);
+    }
+
     // Requirement-backed filters: one semi-join per field over a single indexed table,
     // matching any of the ids the candidate chose.
     for (const [fieldCode, ids] of [
       ['employment_type_ids', filters.employmentTypeIds],
       ['work_format_ids', filters.workFormatIds],
       ['shift_ids', filters.shiftIds],
+      // Level is not compared. §5.5 asks for "language", and a vacancy wanting Russian
+      // at C1 is still a Russian vacancy to somebody filtering for Russian work.
+      ['languages', filters.languageIds],
     ] as const) {
       if (ids?.length) {
         conditions.push(sql`EXISTS (

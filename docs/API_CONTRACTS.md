@@ -973,14 +973,28 @@ employer's `isVerified`, which is what makes BR-03's badge worth having.
 
 Filters (§5.5) are query parameters, id lists comma-separated:
 `occupationIds`, `category`, `regionId`, `districtId`, `employmentTypeIds`,
-`workFormatIds`, `shiftIds`, `salaryFrom`, `publishedFrom`, plus `limit` (max 50)
-and `offset`.
+`workFormatIds`, `shiftIds`, `salaryFrom`, `salaryTo`, `experienceYearsMax`,
+`languageIds`, `publishedFrom`, plus `limit` (max 50) and `offset`. That is all nine
+of §5.5's; the last three landed 2026-08-26, and the client had been rendering a notice
+naming them as missing.
 
 - **`recommended` is rule-based**, not a model: occupation counts double, region and
   category one each, ties break on recency. A candidate with no profile gets the recent
   feed rather than an empty one.
 - **`salaryFrom` keeps negotiable vacancies.** One has not said no to the figure, and
   excluding them would hide much of the seasonal work.
+- **`salaryTo` is not the mirror of `salaryFrom`.** A vacancy is excluded only when its
+  *floor* is above the ceiling asked for, so any overlapping range is in. Written field
+  for field against the floor it would compare a NULL and drop "up to 3,000,000" from a
+  search with a ceiling of 2,000,000 — a vacancy that might well pay it.
+- **`experienceYearsMax` is a ceiling on what the vacancy demands**, and the polarity is
+  the interesting half. Experience on a vacancy is a *requirement*, not an attribute, so
+  the filter hides what the caller cannot reach — and a vacancy stating no requirement
+  demands nothing, so it passes. `/candidate-search` uses the same word for the opposite
+  thing: there the years are something a person **has**, and the filter is a floor.
+- **`languageIds` matches what the vacancy requires**, at any level, and a vacancy that
+  names no language does not match. "Show me work where my Russian is wanted" — not
+  "hide work I am unqualified for", which is what the recommended feed's ranking is for.
 - **Everything except `saved` is filtered to visible vacancies** — active, deadline not
   passed (BR-04, BR-06, BR-11). `saved` deliberately is not: a candidate who saved
   something needs to see that it closed rather than have it vanish.

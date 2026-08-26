@@ -85,6 +85,47 @@ export class FeedQueryDto {
 
   @ApiPropertyOptional({
     description:
+      'Maximum pay, the other half of §5.5’s "salary/payment range". A vacancy is ' +
+      'excluded only when its **floor** is above this, so any range overlapping the one ' +
+      'asked for is in — and a negotiable vacancy passes, for the same reason it passes ' +
+      '`salaryFrom`.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  salaryTo?: number;
+
+  @ApiPropertyOptional({
+    description:
+      '§5.5’s "experience", as a ceiling on what the vacancy **demands**: one requiring ' +
+      'more than this many years is excluded, and one stating no requirement passes ' +
+      'because it demands nothing. The polarity is the opposite of the employer-side ' +
+      'filter on `/candidate-search`, where the same word means years a person **has** ' +
+      'and the filter is a floor.',
+    maximum: 50,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  experienceYearsMax?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Comma-separated `language` ids. Matches vacancies that **require** one of them ' +
+      'at any level (§5.5 "language") — not vacancies the caller is qualified for, ' +
+      'which is what the recommended feed’s ranking is for.',
+  })
+  @IsOptional()
+  @toArray()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  languageIds?: string[];
+
+  @ApiPropertyOptional({
+    description:
       'Published on or after this date (§5.5 "publication date") — a calendar date in ' +
       'the platform zone, inclusive, so a vacancy published at 02:00 on this date is in.',
     example: '2026-08-01',
