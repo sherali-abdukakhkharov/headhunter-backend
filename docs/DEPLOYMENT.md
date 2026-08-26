@@ -166,15 +166,20 @@ without `CLIENT_IP_HEADER` logs a warning at boot for exactly that reason.
 
 Two settings are refused at boot in production, both deliberately:
 
-- `OTP_ECHO_IN_RESPONSE` must be `false`. It is currently `true` in the local `.env`
-  and would hand any caller a login code for any phone number.
+- `OTP_ECHO_IN_RESPONSE` must be `false`. It would hand any caller a login code for
+  any phone number, over a **public** route.
 - `TELEGRAM_JWKS_URL` must be `https`. Signing keys fetched over plaintext can be
   substituted, which forges every login.
 
-`OTP_STATIC_CODE` is refused too, which is why **the container does not set
-`NODE_ENV`**: the image would refuse to boot against the current `.env`, and the
-fixed code is intentional until an SMS provider exists. The flag to flip when that
-day comes is in `.env`, not in the image.
+`OTP_STATIC_CODE` is refused too, and **since 2026-08-20 `NODE_ENV=production` is
+set**: Eskiz delivers, both variables are cleared, and the guarantee has moved off
+the `.env` file and onto boot validation. Reopening either hole now stops the
+container instead of weakening login, which is the point.
+
+Until that day the container deliberately did *not* set `NODE_ENV`, because the
+image would have refused to boot against the `.env` it had. If a future change
+needs a fixed code again, that ordering is the one to repeat — clear the flags
+first, set `NODE_ENV` second.
 
 Because of that, log format is controlled by `LOG_PRETTY`, not by `NODE_ENV`. The
 container sets `LOG_PRETTY=false`: `pino-pretty` is a devDependency and the image
@@ -241,10 +246,13 @@ state, and the first one changed on 2026-08-05:
 
 Not blockers for a staging URL; each is a real gap for production.
 
-- **No SMS provider.** Login codes are not delivered anywhere; `OTP_STATIC_CODE` and
-  `OTP_ECHO_IN_RESPONSE` stand in, and production boot refuses both. Connecting
-  Eskiz.uz is therefore a hard prerequisite for real users, not a nice-to-have — see
-  [SMS_PROVIDER.md](SMS_PROVIDER.md).
+- ~~**No SMS provider.**~~ **Done 2026-08-20.** Eskiz.uz delivers, codes are random,
+  and both stand-ins are cleared with `NODE_ENV=production` refusing them at boot.
+  Real numbers have been signing in since; owner confirmed 2026-08-26. See
+  [SMS_PROVIDER.md](SMS_PROVIDER.md), including the outage connecting it caused.
+  Left listed rather than deleted because this is the section somebody reads to
+  decide whether the deployment can carry users, and an item that vanishes reads as
+  one that was never considered.
 - **Rate limits are per instance-independent but the counter table is never pruned.**
   `rate_limit_counters` holds one row per phone and per IP seen. Bounded, but it only
   grows — the maintenance job is an M11 ops task.
@@ -275,8 +283,8 @@ Not blockers for a staging URL; each is a real gap for production.
 | Cloudflare 1016 / DNS error | `cloudflared tunnel route dns` was not run, or the CNAME was removed |
 | Everything rate-limited at once | `CLIENT_IP_HEADER` is unset — every caller is sharing the loopback bucket |
 | Boot refuses to start | Joi rejected a variable; the message names it and says why |
-| No SMS arrives after `/auth/otp/send` | Expected — no provider is connected. The code is `OTP_STATIC_CODE`, and `devCode` in the response |
+| No SMS arrives after `/auth/otp/send` | A real failure now — Eskiz delivers, and there is no `devCode` to fall back on. Check the boot log for `ESKIZ_EMAIL`, then the response code: `sms_template_not_approved` is fixed in Eskiz's dashboard, not here |
 | `/auth/otp/*` returns 404 | `OTP_LOGIN_ENABLED` is false. The 404 is deliberate; see `OtpEnabledGuard` |
-| Boot logs `OTP_STATIC_CODE is set` | Not an error. It warns on every start because a fixed code is a master key |
+| Boot logs `OTP_STATIC_CODE is set` | Should no longer happen. It warns because a fixed code is a master key to every account — if you see it, somebody set the variable, and `NODE_ENV=production` should have refused the boot outright |
 | Logs `auto-verified: EMPLOYER_VERIFICATION_ENABLED is off` | Expected until M10. Nobody can approve a submission yet, so it self-approves; the audit row records a null actor. Turn the flag on when the admin module lands |
 | Telegram login fails, nothing in our logs | The redirect URI is not registered in BotFather. It fails on the client, before reaching us |

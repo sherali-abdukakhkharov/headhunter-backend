@@ -23,17 +23,21 @@ prediction the template tests make held exactly: one segment, GSM-7, no UCS-2 su
 `request_id` `cf3abc09-a0fa-48c7-862d-69a401d54b01`, also `DELIVERED`, carrying a code that
 was not `666666`.
 
-**One gap is left, and it is not delivery.** `OTP_ECHO_IN_RESPONSE=true` is still set, and
-`POST /auth/otp/send` is a **public** route — so any caller can post any registered number and
-read that account's code out of the response body, no SMS and no credential required. The env
-schema states it in its own comment: *"this flag would hand any caller a login code for any
-phone number."* Clearing it is what makes §4.1 real; the cost is that the mobile team then
-needs a real SMS (160 UZS) per login.
+**The echo is off too, since 2026-08-20**, and `NODE_ENV=production` is set — so the schema
+now *refuses* both that flag and `OTP_STATIC_CODE` at boot rather than trusting an `.env` file
+to stay correct. §4.1 is closed and neither hole can be reopened by editing a file; the
+container stops instead.
 
-Once it is off, **set `NODE_ENV=production`** so the schema *refuses* both this flag and
-`OTP_STATIC_CODE` at boot rather than trusting an `.env` file to stay correct. The only other
-production gate — `TELEGRAM_JWKS_URL` on https — already passes. Keep `LOG_PRETTY=false`: the
-image carries no `pino-pretty`.
+That was the gap worth closing, and it was not delivery. `OTP_ECHO_IN_RESPONSE=true` on a
+**public** `POST /auth/otp/send` let any caller post any registered number and read that
+account's code out of the response body — no SMS and no credential required. The env schema
+says as much in its own comment: *"this flag would hand any caller a login code for any phone
+number."*
+
+The cost is the one it was always going to be: a real SMS per login, about 160 UZS. Owner
+confirmed on 2026-08-26 that real numbers are signing in through it.
+
+Keep `LOG_PRETTY=false`: the image carries no `pino-pretty`.
 
 Also still unexercised: the field spellings here were confirmed against the live account only
 for the endpoints the login path uses, and the delivery-callback shape has never been run.
@@ -218,13 +222,16 @@ change had caused it.
    classifies that refusal specifically, because the fix is not in this codebase.
 4. ✅ Submit the four `sms.otp_code` variants for approval. All four are live with
    `status: service`, ids 86345–86348.
-5. ◐ **Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE`.** The static code is cleared;
-   the echo is not, and the echo is the half that matters — see the gap noted at the top.
-   Production boot refuses both, which is why step 7 exists.
-7. ⬜ **Set `NODE_ENV=production`**, once the echo is off. Until then the image would refuse
-   to boot, which is the schema doing its job. After it, neither hole can be reopened by an
-   `.env` edit — the guarantee moves from a file to boot validation, which is where this
-   codebase prefers to keep them.
+5. ✅ **Clear `OTP_STATIC_CODE` and `OTP_ECHO_IN_RESPONSE`.** Both done 2026-08-20, the
+   static code first and the echo a little over an hour later. The echo was the half that
+   mattered, for the reason at the top of this file.
+7. ✅ **Set `NODE_ENV=production`.** Done the same day, once the echo was off — until then
+   the image would have refused to boot, which is the schema doing its job. Now neither hole
+   can be reopened by an `.env` edit: the guarantee has moved from a file to boot validation,
+   which is where this codebase prefers to keep them.
+   **This runbook is complete.** It said otherwise for six days after it was, while CLAUDE.md
+   said it was done — a contradiction between two files in this repository, resolved on
+   2026-08-26 in favour of what the deployment actually does.
 6. ✅ Confirm `ESKIZ_FROM` matches the originator on the account. `4546`, the shared code —
    `GET /api/nick/me` returns an empty list, so there is no branded sender to point at.
 - **`OTP_STATIC_CODE` is removed by clearing it**, not by editing code. It substitutes
