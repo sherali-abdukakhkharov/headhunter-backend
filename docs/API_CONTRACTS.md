@@ -1403,6 +1403,7 @@ GET   /conversations                                   ->  { items: Conversation
 GET   /conversations/{id}                               ->  Conversation
 GET   /conversations/{id}/messages?limit=&before=         ->  { items: Message[] }
 POST  /conversations/{id}/messages                        ->  Message
+POST  /conversations/{id}/attachments  (multipart)         ->  { fileId, … }
 PUT   /conversations/{id}/read                             ->  204
 POST  /conversations/{id}/block                            ->  204
 DELETE/conversations/{id}/block                            ->  204
@@ -1458,6 +1459,39 @@ M10 reviews vacancy reports through, one open report per person per message.
 One file per message, and it must be a file the **sender owns** — knowing an id is not
 owning it. `downloadPath` points at `/conversations/{id}/messages/{id}/file`, the third
 entitlement-bearing download route in the product; `/files/{id}/content` stays owner-only.
+
+**Sending one takes two calls** *(2026-08-26)*: `POST /conversations/{id}/attachments`
+with multipart `file`, then the returned `fileId` on the message. Not one multipart send,
+because the send route already takes an owned `fileId`, a failed send should not cost the
+upload twice, and an upload and a send have very different latencies to show. Ownership is
+what binds the two, and it is checked on send whatever the upload did.
+
+**The file is not bound to the conversation by the upload.** It becomes an attachment when
+a message carries it, which is why an abandoned upload is an ordinary file its owner owns
+rather than a dangling row pointing at a thread.
+
+**The upload re-asks the send gate** — participant, not blocked, not read-only. Same
+reason send re-asks it: an interaction can end while a client holds the screen, and bytes
+accepted into a thread that has become history could never be sent. The refusals are the
+send route's: 404 for a stranger, `chat.blocked`, `chat.read_only`.
+
+**There is no `purpose` field on the request**, unlike the profile upload. Every file that
+arrives here is stored under `message_attachment`, a `file_purpose` row of its own. Two
+reasons it is its own row rather than a reuse of `evidence`:
+
+- **Purpose is what authorizes a read.** A profile attachment is readable by an employer
+  who has unlocked the candidate; a message attachment by the other participant in one
+  conversation. Two rules on one code is a rule nobody can state.
+- **It is the one purpose with no attachment slot**, so the profile upload route refuses
+  it — `maxCount` superseding would retire yesterday's attachment when today's is sent,
+  and a chat history is not a slot.
+
+Letting the caller name the purpose would also let them mint a profile document through
+the chat gate, which is why the field is absent rather than validated.
+
+**Deploying this needs `pnpm seed` re-run**, since the purpose is a dictionary row. The
+seeder is idempotent in the strong sense — a second run writes nothing — so it is safe on
+a live database.
 
 ### Interviews (§8.3)
 

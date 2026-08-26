@@ -12,11 +12,16 @@ import {
   Put,
   Query,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNoContentResponse,
@@ -32,6 +37,7 @@ import {
   ActiveUser,
   type CurrentUser,
 } from '@infra/api/decorators/current-user.decorator';
+import { BadRequestError } from '@infra/api/exceptions/localized.exception';
 import { RateLimit } from '@infra/api/decorators/rate-limit.decorator';
 import type { AppEnv } from '@infra/env-schema';
 import { formatWithOffset } from '@infra/time/format';
@@ -45,8 +51,10 @@ import {
   MessageListDto,
   MessagePageDto,
   OpenConversationDto,
+  MessageAttachmentDto,
   ReportMessageDto,
   SendMessageDto,
+  UploadMessageAttachmentDto,
 } from './dto/chat.dto';
 
 /**
@@ -171,6 +179,56 @@ export class ChatController {
     return this.toMessageDto(
       await this.chat.send(user.id, user.activeRole, id, dto, idempotencyKey),
     );
+  }
+
+  @Post(':id/attachments')
+  @RateLimit('files')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UploadMessageAttachmentDto })
+  @ApiOperation({
+    summary: 'Upload a file to send in this conversation (§9.1)',
+    description:
+      'Two calls rather than a multipart send: the send route already takes a `fileId`' +
+      ' the sender owns, a failed send does not cost the upload twice, and the two ' +
+      'have very different latencies to show. **The file is not bound to the ' +
+      'conversation here** — it becomes an attachment when a message carries it, ' +
+      'which is also why an abandoned upload is an ordinary owned file rather than ' +
+      'a dangling row. The send gate is re-asked, for the reason it is re-asked on ' +
+      'send: an interaction can end while a client holds the screen, and bytes ' +
+      'accepted into a thread that has become history could never be sent.',
+  })
+  @ApiOkResponse({ type: MessageAttachmentDto })
+  @ApiForbiddenResponse({ description: '`chat.blocked`.' })
+  @ApiConflictResponse({
+    description: '`chat.read_only` — the interaction has ended.',
+  })
+  async uploadAttachment(
+    @ActiveUser() user: CurrentUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<MessageAttachmentDto> {
+    if (!file) {
+      throw new BadRequestError('file.missing');
+    }
+
+    const stored = await this.chat.uploadAttachment(
+      user.id,
+      user.activeRole,
+      id,
+      {
+        bytes: file.buffer,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+      },
+    );
+
+    return {
+      fileId: stored.id,
+      fileName: stored.fileName,
+      mimeType: stored.mimeType,
+      sizeBytes: stored.sizeBytes,
+    };
   }
 
   @Put(':id/read')

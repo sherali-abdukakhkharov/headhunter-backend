@@ -152,6 +152,32 @@ export class MessageDto {
   @ApiProperty() createdAt!: string;
 }
 
+export class UploadMessageAttachmentDto {
+  @ApiProperty({
+    type: 'string',
+    format: 'binary',
+    description:
+      'Validated against its actual content, not its name: extension, declared MIME ' +
+      'type and magic bytes must agree (§12.5). There is no purpose field — every file uploaded here is a message attachment, and letting a caller name the purpose ' +
+      'would let them mint a profile document through the chat gate.',
+  })
+  file!: unknown;
+}
+
+export class MessageAttachmentDto {
+  @ApiProperty({
+    description:
+      'Send this back as `fileId` on the message that carries it. The file is **not** bound ' +
+      'to the conversation until then, so an abandoned upload is an ordinary file its ' +
+      'owner owns rather than a dangling row.',
+  })
+  fileId!: string;
+
+  @ApiProperty() fileName!: string;
+  @ApiProperty() mimeType!: string;
+  @ApiProperty() sizeBytes!: number;
+}
+
 export class MessageListDto {
   @ApiProperty({ type: [MessageDto], description: 'Newest first.' })
   items!: MessageDto[];

@@ -25,7 +25,7 @@ import { NotificationsService } from '@modules/notifications/notifications.servi
 import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
 import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
-import { ChatService } from './chat.service';
+import { MESSAGE_ATTACHMENT_PURPOSE, ChatService } from './chat.service';
 
 /**
  * Gated chat against a real Postgres (§9.1).
@@ -66,6 +66,9 @@ const config = {
           : undefined,
 } as unknown as ConfigService<AppEnv, true>;
 
+/** What `filesStub.store` was last called with. */
+let lastStore: { ownerUserId: string; purposeCode: string } | null = null;
+
 const filesStub = {
   readAsAuthorized: (ownerUserId: string, fileId: string) =>
     Promise.resolve({
@@ -79,6 +82,30 @@ const filesStub = {
       },
       bytes: Buffer.from(ownerUserId.slice(0, 3)),
     }),
+
+  // Stubbed rather than real: the real one uploads to Telegram, and what these tests
+  // are about is which purpose the chat module asks for and who it lets ask.
+  store: async (
+    ownerUserId: string,
+    purposeCode: string,
+    upload: { originalName: string; mimeType: string },
+  ) => {
+    lastStore = { ownerUserId, purposeCode };
+
+    // A real row, not a minted id: `assertOwnFile` on the send path is a real query,
+    // and it is the thing that binds an upload to the message that carries it. A stub
+    // returning an id nothing owns would make the two calls untestable together.
+    const id = await storedFile(ownerUserId, purposeCode, upload.originalName);
+
+    return {
+      id,
+      purposeId: 'p',
+      fileName: upload.originalName,
+      mimeType: upload.mimeType,
+      sizeBytes: 128,
+      createdAt: new Date(),
+    };
+  },
 } as never;
 
 beforeAll(() => {
@@ -219,6 +246,7 @@ async function newEmployer(): Promise<string> {
 async function storedFile(
   ownerUserId: string,
   purposeCode: string,
+  fileName = 'plan.pdf',
 ): Promise<string> {
   const unique = randomUUID();
   const row = await db
@@ -229,7 +257,7 @@ async function storedFile(
       telegram_file_id: `fake-${unique}`,
       telegram_file_unique_id: unique,
       telegram_message_id: '1',
-      file_name: 'plan.pdf',
+      file_name: fileName,
       mime_type: 'application/pdf',
       size_bytes: 128,
       sha256: unique.replace(/-/g, '').repeat(2).slice(0, 64),
@@ -564,6 +592,139 @@ describe('sending and reading (§9.1)', () => {
         message.id,
       ),
     ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe('sending a file (§9.1 "approved attachments")', () => {
+  const upload = {
+    bytes: Buffer.from('%PDF-1.4'),
+    originalName: 'offer.pdf',
+    mimeType: 'application/pdf',
+  };
+
+  beforeEach(() => {
+    lastStore = null;
+  });
+
+  /** An open conversation over a live application, which is what §9.1's gate wants. */
+  async function conversation(): Promise<{
+    employerUserId: string;
+    candidateUserId: string;
+    applicationId: string;
+    conversationId: string;
+  }> {
+    const { employerUserId, candidateUserId, applicationId } = await applied();
+    const opened = await chat.open(employerUserId, 'employer', candidateUserId);
+
+    return {
+      employerUserId,
+      candidateUserId,
+      applicationId,
+      conversationId: opened.id,
+    };
+  }
+
+  it('stores under the message purpose, not a profile one', async () => {
+    const { employerUserId, conversationId } = await conversation();
+
+    const stored = await chat.uploadAttachment(
+      employerUserId,
+      'employer',
+      conversationId,
+      upload,
+    );
+
+    expect(stored.fileName).toBe('offer.pdf');
+    // The whole of this change. `evidence` would have worked and would have made one
+    // code mean two authorization rules.
+    expect(lastStore).toEqual({
+      ownerUserId: employerUserId,
+      purposeCode: MESSAGE_ATTACHMENT_PURPOSE,
+    });
+  });
+
+  it('is offered to the candidate side too', async () => {
+    const { candidateUserId, conversationId } = await conversation();
+
+    await chat.uploadAttachment(
+      candidateUserId,
+      'candidate',
+      conversationId,
+      upload,
+    );
+
+    expect(lastStore?.ownerUserId).toBe(candidateUserId);
+  });
+
+  it('lets the uploaded file be sent, and only by its owner', async () => {
+    const { employerUserId, candidateUserId, conversationId } =
+      await conversation();
+
+    const stored = await chat.uploadAttachment(
+      employerUserId,
+      'employer',
+      conversationId,
+      upload,
+    );
+    const message = await chat.send(
+      employerUserId,
+      'employer',
+      conversationId,
+      {
+        fileId: stored.id,
+      },
+    );
+
+    expect(message.fileId).toBe(stored.id);
+
+    // `assertOwnFile` is what binds the two calls: an id is not an entitlement.
+    await expect(
+      chat.send(candidateUserId, 'candidate', conversationId, {
+        fileId: stored.id,
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it('refuses a stranger with the same 404 a read gets', async () => {
+    const { conversationId } = await conversation();
+    const stranger = await newCandidate();
+
+    await expect(
+      chat.uploadAttachment(stranger, 'candidate', conversationId, upload),
+    ).rejects.toThrow(NotFoundError);
+    // Nothing was stored, which is the half a thrown error does not prove.
+    expect(lastStore).toBeNull();
+  });
+
+  it('refuses a blocked conversation', async () => {
+    const { employerUserId, candidateUserId, conversationId } =
+      await conversation();
+    await chat.block(candidateUserId, 'candidate', conversationId, {
+      blocked: true,
+    });
+
+    await expect(
+      chat.uploadAttachment(employerUserId, 'employer', conversationId, upload),
+    ).rejects.toThrow(ForbiddenError);
+    expect(lastStore).toBeNull();
+  });
+
+  it('refuses a thread that has become history', async () => {
+    // The reason the gate is re-asked here rather than trusted from when the screen
+    // opened: bytes accepted into a read-only thread could never be sent.
+    const { candidateUserId, applicationId, conversationId } =
+      await conversation();
+    await applications.withdraw(candidateUserId, applicationId);
+
+    await expect(
+      chat.uploadAttachment(
+        candidateUserId,
+        'candidate',
+        conversationId,
+        upload,
+      ),
+    ).rejects.toThrow(ConflictError);
+    expect(lastStore).toBeNull();
   });
 });
 

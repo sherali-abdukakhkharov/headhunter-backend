@@ -578,7 +578,25 @@ export const DICTIONARY_SEED: SeedType[] = [
           en: 'Profile photo',
         },
       },
-      // --- employer verification (§6.1) ---
+      // §9.1 "approved attachments". Its own purpose rather than reusing `evidence`,
+      // because purpose is what authorizes a read: a profile attachment is readable by
+      // an employer who has unlocked the candidate, and a message attachment by the
+      // other participant in that one conversation. Two rules on one code is a rule
+      // nobody can state.
+      //
+      // It is also the one purpose with no attachment *slot*, which is why the profile
+      // upload route refuses it: `maxCount` superseding would retire yesterday's
+      // attachment when today's is sent, and a chat history is not a slot.
+      {
+        code: 'message_attachment',
+        labels: {
+          'uz-Latn': 'Xabarga ilova',
+          'uz-Cyrl': 'Хабарга илова',
+          ru: 'Вложение к сообщению',
+          en: 'Message attachment',
+        },
+      },
+            // --- employer verification (§6.1) ---
       // "verification documents if required" for a company and "identity
       // verification data if required by policy" for an individual. Which of these
       // is actually mandatory is an open client decision, so the requirement lives

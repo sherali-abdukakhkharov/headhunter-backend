@@ -13,6 +13,15 @@ import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 
+/**
+ * The `file_purpose` code every message attachment is stored under (§9.1).
+ *
+ * Named here because this module is its only writer, and cross-checked against the
+ * dictionary seed by a test - a code that drifts from the row would fail every upload
+ * at the point the purpose is resolved, which is a long way from where it was typed.
+ */
+export const MESSAGE_ATTACHMENT_PURPOSE = 'message_attachment';
+
 export interface Conversation {
   id: string;
   employerUserId: string;
@@ -236,6 +245,40 @@ export class ChatService {
     });
 
     return message;
+  }
+
+  /**
+   * Stores a file for a message that has not been sent yet (§9.1).
+   *
+   * Two calls rather than one multipart send, and deliberately: the send route already
+   * takes a `fileId` the sender owns, a failed send does not cost the upload again, and
+   * the two have very different latencies to show. `assertOwnFile` is what binds them.
+   *
+   * **The same gate as sending**, re-asked for the same reason: an interaction can end
+   * while a client holds the screen, and an upload accepted into a thread that has become
+   * history would be bytes nobody can ever send.
+   *
+   * The file is **not** bound to the conversation here. It becomes an attachment when a
+   * message carries it, and until then it is an ordinary file its owner owns - which is
+   * also what makes an abandoned upload harmless rather than a dangling row.
+   */
+  async uploadAttachment(
+    userId: string,
+    role: UserRole | null,
+    conversationId: string,
+    upload: { bytes: Buffer; originalName: string; mimeType: string },
+  ): Promise<StoredFile> {
+    const conversation = await this.read(userId, role, conversationId);
+
+    if (conversation.isBlocked) {
+      throw new ForbiddenError('chat.blocked');
+    }
+
+    if (!conversation.canSend) {
+      throw new ConflictError('chat.read_only');
+    }
+
+    return this.files.store(userId, MESSAGE_ATTACHMENT_PURPOSE, upload);
   }
 
   private async insertMessage(
