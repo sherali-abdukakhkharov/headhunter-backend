@@ -699,9 +699,8 @@ describe('sending a file (§9.1 "approved attachments")', () => {
   it('refuses a blocked conversation', async () => {
     const { employerUserId, candidateUserId, conversationId } =
       await conversation();
-    await chat.block(candidateUserId, 'candidate', conversationId, {
-      blocked: true,
-    });
+    // The fourth argument is the moderator-facing reason, not a flag.
+    await chat.block(candidateUserId, 'candidate', conversationId, null);
 
     await expect(
       chat.uploadAttachment(employerUserId, 'employer', conversationId, upload),
