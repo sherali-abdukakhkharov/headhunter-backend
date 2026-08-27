@@ -39,6 +39,11 @@ lerna-debug.log*
 .env
 .env.local
 .env.*.local
+# Anything else that starts with .env - a dated backup taken before a deploy is
+# still every secret this service holds. One of them reached a commit on
+# 2026-08-27 and was caught before the push; the rule is now the shape of the
+# mistake rather than a list of the spellings someone thought of.
+.env.*
 !.env.example
 
 # temp directory

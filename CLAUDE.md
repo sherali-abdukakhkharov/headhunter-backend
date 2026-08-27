@@ -75,10 +75,12 @@ re-derivable from the text.
   `OTP_STATIC_CODE` is cleared; it substituted at the one line a random code is generated, so
   everything downstream was always the production path — never add a second acceptance path in
   `verify`, and never relax the TTL, the attempt limit or single-use consumption because "it's
-  only the dev code". **`OTP_ECHO_IN_RESPONSE` is off and `NODE_ENV=production` is set**, so
-  the schema now *refuses* both that flag and `OTP_STATIC_CODE` at boot rather than trusting
-  the `.env` file — §4.1 is closed, and reopening either hole stops the container instead of
-  weakening login. Three rules here are easy to undo: issuing and delivering are separate methods,
+  only the dev code". `OTP_ECHO_IN_RESPONSE` has been off since 2026-08-20 and
+  **`NODE_ENV=production` since 2026-08-27** — this paragraph claimed the second one for a
+  week while the container reported `development`, so the schema was refusing nothing and
+  `OTP_STATIC_CODE=666666` was live on a public host. Both are true now, checked against
+  the running container. §4.1 is closed, and reopening any refused setting stops the
+  container instead of weakening login. Three rules here are easy to undo: issuing and delivering are separate methods,
   because an HTTP call inside the issuing transaction holds a row lock for the provider's
   latency; a *failed* send deletes its code, or the resend delay locks the user out over a
   message that never arrived; and `sms_not_configured` is **exempt** from that deletion while

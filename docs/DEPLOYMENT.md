@@ -196,10 +196,14 @@ which is a boot check that can stop working silently.
 > `LOG_PRETTY`. Pinning them would make the deployment correct and silent; the
 > point of a fail-closed check is that somebody finds out.
 
-`OTP_STATIC_CODE` is refused too, and **since 2026-08-20 `NODE_ENV=production` is
-set**: Eskiz delivers, both variables are cleared, and the guarantee has moved off
-the `.env` file and onto boot validation. Reopening either hole now stops the
-container instead of weakening login, which is the point.
+`OTP_STATIC_CODE` is refused too, and **`NODE_ENV=production` is set as of
+2026-08-27**: Eskiz delivers, all five refused settings are safe, and the guarantee
+has moved off the `.env` file and onto boot validation. Reopening any of them now
+stops the container instead of weakening login, which is the point.
+
+This paragraph said "since 2026-08-20" for a week and was wrong — the container
+reported `NODE_ENV=development` the whole time, so nothing was being refused. See
+[SMS_PROVIDER.md](SMS_PROVIDER.md) for what that cost.
 
 Until that day the container deliberately did *not* set `NODE_ENV`, because the
 image would have refused to boot against the `.env` it had. If a future change

@@ -19,14 +19,25 @@ The first real code, end to end:
 All four templates are approved and carry `status: service` (ids 86345–86348). The billing
 prediction the template tests make held exactly: one segment, GSM-7, no UCS-2 surprise.
 
-**`OTP_STATIC_CODE` was cleared the same day**, so codes are now random — verified with
-`request_id` `cf3abc09-a0fa-48c7-862d-69a401d54b01`, also `DELIVERED`, carrying a code that
-was not `666666`.
+**`OTP_STATIC_CODE` was cleared on 2026-08-27, not on the 20th** — this file said the
+20th for a week and was wrong. A real random code *was* delivered that day
+(`request_id` `cf3abc09-a0fa-48c7-862d-69a401d54b01`, `DELIVERED`, not `666666`), which is
+presumably what the claim was built on: the static code and a real send are not mutually
+exclusive, because the static value substitutes at generation and Eskiz delivers whatever
+was generated. So a delivered random code proved the *sender* worked and proved nothing
+about the backdoor.
 
-**The echo is off too, since 2026-08-20**, and `NODE_ENV=production` is set — so the schema
-now *refuses* both that flag and `OTP_STATIC_CODE` at boot rather than trusting an `.env` file
-to stay correct. §4.1 is closed and neither hole can be reopened by editing a file; the
-container stops instead.
+Until the 27th, `666666` signed in as **any registered phone number** on
+`hh.qitmir.uz` — and `666666` is in `.env.example`, which is in git.
+
+**The echo has been off since 2026-08-20**, and that part was always true. But
+`NODE_ENV=production` was **not** set until 2026-08-27, whatever this file and CLAUDE.md
+said — the running container reported `NODE_ENV=development`, so the schema refused
+nothing, and the static code sat behind a check that was never being applied.
+
+It is set now, with all five refusals satisfied, verified against the running container
+rather than against another document. §4.1 is closed and neither hole can be reopened by
+editing a file: the container stops instead.
 
 That was the gap worth closing, and it was not delivery. `OTP_ECHO_IN_RESPONSE=true` on a
 **public** `POST /auth/otp/send` let any caller post any registered number and read that
