@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { sql } from 'kysely';
+import { type RawBuilder, sql } from 'kysely';
 
 import {
   ConflictError,
@@ -17,6 +17,7 @@ import {
 } from '@modules/vacancies/vacancy-state';
 
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
+import { displayNameFor } from './display-name';
 
 export interface VerificationQueueItem {
   employerUserId: string;
@@ -68,6 +69,23 @@ export interface ComplaintItem {
   id: string;
   targetType: ComplaintTarget;
   targetId: string;
+
+  /**
+   * What the reported thing *is*, in one line, for the queue (MT-017).
+   *
+   * Without it every row of a queue reads "Vacancy" and a date, and an administrator
+   * has to open each one to find out whether two reports are about the same thing.
+   *
+   * Resolved per kind: a vacancy's title, a person's display name, and for a message
+   * **the sender's name rather than the message body**. That last one is the privacy
+   * decision here - a reported message is private conversation content, and the detail
+   * screen showing it after a deliberate open is different from a list showing twenty
+   * of them at once. Who sent it is what a moderator needs to triage.
+   *
+   * Null when the target is gone: a complaint outlives what it is about, on purpose.
+   * The client falls back to a short form of `targetId`.
+   */
+  targetSummary: string | null;
   reporterUserId: string;
   reason: string;
   status: string;
@@ -376,16 +394,17 @@ export class AdminModerationService {
     offset: number,
   ): Promise<ComplaintItem[]> {
     let query = this.db
-      .selectFrom('complaints')
-      .selectAll()
-      .where('status', '=', 'open');
+      .selectFrom('complaints as cq')
+      .selectAll('cq')
+      .select(this.targetSummary().as('target_summary'))
+      .where('cq.status', '=', 'open');
 
     if (targetType) {
-      query = query.where('target_type', '=', targetType);
+      query = query.where('cq.target_type', '=', targetType);
     }
 
     const rows = await query
-      .orderBy('created_at')
+      .orderBy('cq.created_at')
       .limit(limit)
       .offset(offset)
       .execute();
@@ -406,9 +425,10 @@ export class AdminModerationService {
     target: Record<string, unknown> | null;
   }> {
     const row = await this.db
-      .selectFrom('complaints')
-      .selectAll()
-      .where('id', '=', complaintId)
+      .selectFrom('complaints as cq')
+      .selectAll('cq')
+      .select(this.targetSummary().as('target_summary'))
+      .where('cq.id', '=', complaintId)
       .executeTakeFirst();
 
     if (!row) {
@@ -471,6 +491,36 @@ export class AdminModerationService {
     if ('error' in outcomeOf) {
       throw new ConflictError('complaint.not_open');
     }
+  }
+
+  /**
+   * One line naming what a complaint is about, for every row at once (MT-017).
+   *
+   * A correlated subquery per kind rather than three round trips and a merge in
+   * TypeScript: the queue is one page, the lookups are all primary-key, and keeping it
+   * in the query is what lets the detail screen use the identical expression.
+   *
+   * `target_id` is text on `complaints` because it addresses four different tables, so
+   * each arm casts. A row whose target has been deleted answers null rather than
+   * failing - a complaint is meant to outlive what it is about.
+   *
+   * **The outer table is aliased `cq`, not `c`, and that is not style.** `DISPLAY_NAME`
+   * joins `companies` as `c`, so a complaints alias of `c` is shadowed inside every
+   * `displayNameFor` subquery and `c.target_id` resolves against `companies` - which
+   * fails with "column c.target_id does not exist", a long way from the alias that
+   * caused it.
+   */
+  private targetSummary(): RawBuilder<string | null> {
+    return sql<string | null>`CASE cq.target_type
+      WHEN 'vacancy' THEN (
+        SELECT v.title FROM vacancies v WHERE v.id = cq.target_id::uuid
+      )
+      WHEN 'message' THEN (
+        SELECT ${displayNameFor(sql`m.sender_user_id`)}
+        FROM messages m WHERE m.id = cq.target_id::uuid
+      )
+      ELSE ${displayNameFor(sql`cq.target_id::uuid`)}
+    END`;
   }
 
   private async resolveTarget(
@@ -562,6 +612,7 @@ function toComplaint(row: {
   id: string;
   target_type: ComplaintTarget;
   target_id: string;
+  target_summary: string | null;
   reporter_user_id: string;
   reason: string;
   status: string;
@@ -572,6 +623,7 @@ function toComplaint(row: {
     id: row.id,
     targetType: row.target_type,
     targetId: row.target_id,
+    targetSummary: row.target_summary,
     reporterUserId: row.reporter_user_id,
     reason: row.reason,
     status: row.status,

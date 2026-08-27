@@ -1603,6 +1603,25 @@ only the seeded administrators have. `name=` searches all of them. An account th
 registered but filled nothing in has no name yet; render the phone number, not an empty
 string.
 
+**The complaint queue carries `targetSummary`** *(2026-08-27, MT-017)*: one line naming
+what a report is about, so a queue of similar reports can be told apart without opening
+each row. Resolved per kind by the same `DISPLAY_NAME` expression — a vacancy''s title, a
+person''s name, and for a message **the sender''s name, never the body**. A reported
+message is private conversation content, and a detail screen showing it after a deliberate
+open is a different thing from a list showing twenty at once.
+
+Null when the target has been deleted, which a complaint is meant to outlive; the client
+falls back to a short form of `targetId`. There is deliberately **no `targetRef`**: a short
+reference is `targetId` truncated, so it is formatting and belongs on the client rather
+than being a second field that can disagree with the first.
+
+The detail screen uses the identical expression, because a row that says one thing in a
+list and another when opened is worse than a row that says nothing.
+
+> **Alias trap, paid for once.** `DISPLAY_NAME` joins `companies` as `c`, so a query that
+> aliases its own table `c` is shadowed inside every `displayNameFor` subquery. The
+> complaint queue is `complaints as cq` for that reason; aliasing it `c` failed with
+> "column c.target_id does not exist", which names the symptom and not the cause.
 **The audit log carries `actorName` and `targetName`** *(2026-08-26)*, resolved by that
 same expression — one copy of it, shared, because two would be one person shown under two
 names depending on the screen.

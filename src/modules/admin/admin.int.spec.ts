@@ -317,6 +317,164 @@ async function draftVacancy(
   return vacancyId;
 }
 
+describe('MT-017: a complaint queue says what each report is about', () => {
+  /** Files a complaint straight into the table - the report path has its own suite. */
+  async function complain(
+    targetType: 'vacancy' | 'user' | 'profile' | 'message',
+    targetId: string,
+    reporterUserId: string,
+  ): Promise<string> {
+    const row = await db
+      .insertInto('complaints')
+      .values({
+        target_type: targetType,
+        target_id: targetId,
+        reporter_user_id: reporterUserId,
+        reason: 'Reported for testing.',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    return row.id;
+  }
+
+  async function summaryOf(complaintId: string): Promise<string | null> {
+    const queue = await moderation.complaintQueue(undefined, 100, 0);
+    const found = queue.find((item) => item.id === complaintId);
+
+    if (!found) throw new Error('complaint not in the queue');
+
+    return found.targetSummary;
+  }
+
+  it('names the vacancy a vacancy report is about', async () => {
+    // Without this every row reads "Vacancy" and a date, and two reports about
+    // different vacancies are indistinguishable until each is opened.
+    const employerUserId = await verifiedEmployer();
+    const vacancyId = await draftVacancy(employerUserId);
+    const complaintId = await complain(
+      'vacancy',
+      vacancyId,
+      await newUser('candidate'),
+    );
+
+    const vacancy = await db
+      .selectFrom('vacancies')
+      .select('title')
+      .where('id', '=', vacancyId)
+      .executeTakeFirstOrThrow();
+
+    expect(await summaryOf(complaintId)).toBe(vacancy.title);
+  });
+
+  it('names the person a profile report is about', async () => {
+    const reported = await newUser('candidate');
+    await db
+      .insertInto('candidate_profiles')
+      .values({ user_id: reported, full_name: 'Dilnoza Rashidova' })
+      .onConflict((oc) =>
+        oc.column('user_id').doUpdateSet({ full_name: 'Dilnoza Rashidova' }),
+      )
+      .execute();
+
+    const complaintId = await complain(
+      'profile',
+      reported,
+      await newUser('employer'),
+    );
+
+    expect(await summaryOf(complaintId)).toBe('Dilnoza Rashidova');
+  });
+
+  it('names the *sender* of a reported message, never its body', async () => {
+    // The privacy decision. A reported message is private conversation content;
+    // the detail screen shows it after a deliberate open, and a queue showing
+    // twenty at once is a different thing. Who sent it is what triage needs.
+    const employerUserId = await verifiedEmployer();
+    const candidateUserId = await newUser('candidate');
+    await db
+      .insertInto('candidate_profiles')
+      .values({ user_id: candidateUserId, full_name: 'Bekzod Yusupov' })
+      .onConflict((oc) =>
+        oc.column('user_id').doUpdateSet({ full_name: 'Bekzod Yusupov' }),
+      )
+      .execute();
+
+    const conversation = await db
+      .insertInto('conversations')
+      .values({
+        employer_user_id: employerUserId,
+        candidate_user_id: candidateUserId,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    const message = await db
+      .insertInto('messages')
+      .values({
+        conversation_id: conversation.id,
+        sender_user_id: candidateUserId,
+        body: 'Something a moderator should not read from a list',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    const complaintId = await complain('message', message.id, employerUserId);
+
+    const summary = await summaryOf(complaintId);
+    expect(summary).toBe('Bekzod Yusupov');
+    expect(summary).not.toContain('should not read');
+  });
+
+  it('answers null when the target is gone, rather than failing', async () => {
+    // A complaint outlives what it is about, on purpose - a vacancy can be
+    // deleted while the report about it is still open. The queue has to draw
+    // that row, and the client falls back to a short form of the id.
+    const complaintId = await complain(
+      'vacancy',
+      randomUUID(),
+      await newUser('candidate'),
+    );
+
+    expect(await summaryOf(complaintId)).toBeNull();
+  });
+
+  it('tells two reports about different things apart', async () => {
+    // The finding, stated directly: seeded complaints were visually identical.
+    const employerUserId = await verifiedEmployer();
+    const first = await complain(
+      'vacancy',
+      await draftVacancy(employerUserId),
+      await newUser('candidate'),
+    );
+    const second = await complain(
+      'vacancy',
+      await draftVacancy(employerUserId),
+      await newUser('candidate'),
+    );
+
+    const [a, b] = [await summaryOf(first), await summaryOf(second)];
+
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+  });
+
+  it('reads the same on the detail screen as in the queue', async () => {
+    // One expression, both screens: a row that says one thing in a list and
+    // another when opened is worse than a row that says nothing.
+    const employerUserId = await verifiedEmployer();
+    const complaintId = await complain(
+      'vacancy',
+      await draftVacancy(employerUserId),
+      await newUser('candidate'),
+    );
+
+    const detail = await moderation.complaint(complaintId);
+
+    expect(detail.complaint.targetSummary).toBe(await summaryOf(complaintId));
+  });
+});
+
 describe('MT-003: moderation is what makes a vacancy discoverable (BR-04)', () => {
   /** Whether a candidate can find it at all. */
   async function discoverable(

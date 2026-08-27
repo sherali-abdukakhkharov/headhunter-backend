@@ -570,6 +570,22 @@ export class ComplaintDto {
   @ApiProperty() id!: string;
   @ApiProperty({ enum: COMPLAINT_TARGETS }) targetType!: ComplaintTarget;
   @ApiProperty() targetId!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'What the reported thing **is**, in one line, so a queue of similar reports can ' +
+      'be told apart without opening each row (MT-017). A vacancy’s title, a person’s ' +
+      'name, and for a message **the sender’s name — not the body**: a reported message ' +
+      'is private conversation content, and a detail screen showing it after a ' +
+      'deliberate open is a different thing from a list showing twenty at once.\n\n' +
+      'Null when the target has been deleted, which a complaint is meant to outlive. ' +
+      'There is deliberately no separate `targetRef`: a short reference is `targetId` ' +
+      'truncated, so it is formatting and belongs on the client rather than being a ' +
+      'second field that can disagree with the first.',
+  })
+  targetSummary!: string | null;
+
   @ApiProperty() reporterUserId!: string;
   @ApiProperty() reason!: string;
   @ApiProperty({ enum: ['open', 'actioned', 'dismissed'] }) status!: string;
