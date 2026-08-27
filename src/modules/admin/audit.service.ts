@@ -32,6 +32,15 @@ export const AUDIT_ACTIONS = {
    * from nothing, so the trail has to outlive the person who used it.
    */
   walletAdjusted: 'wallet.adjusted',
+  /**
+   * §10.5's Coin price, unlock cost and registration bonus.
+   *
+   * These were environment variables, which put a price change outside this log
+   * entirely — the record of it was a redeploy in somebody's shell history. One
+   * entry per setting actually changed, so a screen that submits all three does
+   * not read as three decisions.
+   */
+  pricingChanged: 'platform.pricing_changed',
   dictionaryItemCreated: 'dictionary.item_created',
   dictionaryItemUpdated: 'dictionary.item_updated',
   dictionaryItemDeactivated: 'dictionary.item_deactivated',
@@ -43,7 +52,15 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 export interface AuditEntry {
   actorUserId: string;
   action: AuditAction;
-  targetType: 'user' | 'employer' | 'vacancy' | 'complaint' | 'dictionary_item';
+  targetType:
+    | 'user'
+    | 'employer'
+    | 'vacancy'
+    | 'complaint'
+    | 'dictionary_item'
+    // The one target that is not a row anywhere: a platform setting is named by
+    // its key, and `target_id` is a uuid column. The key goes in `details`.
+    | 'platform_setting';
   targetId: string | null;
   reason?: string | null;
   details?: Record<string, unknown> | null;

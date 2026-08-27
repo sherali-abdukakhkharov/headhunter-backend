@@ -564,6 +564,13 @@ export interface PaymentOrders {
   updated_at: Generated<Timestamp>;
 }
 
+export interface PlatformSettings {
+  key: string;
+  updated_at: Generated<Timestamp>;
+  updated_by_user_id: string | null;
+  value_int: Int8;
+}
+
 export interface RateLimitCounters {
   bucket: string;
   hits: Generated<number>;
@@ -778,6 +785,7 @@ export interface DB {
   otp_codes: OtpCodes;
   payment_events: PaymentEvents;
   payment_orders: PaymentOrders;
+  platform_settings: PlatformSettings;
   rate_limit_counters: RateLimitCounters;
   saved_candidates: SavedCandidates;
   saved_vacancies: SavedVacancies;

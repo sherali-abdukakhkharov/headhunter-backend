@@ -184,6 +184,12 @@ Employers buy Coins to unlock a candidate's contact details (§6.6). The prices 
 §10.5 allows changing them; every ledger row stores the price it was priced at, so a
 repricing never restates history.
 
+Since 2026-08-28 an administrator can change all three from inside the app
+(`PUT /admin/pricing`) without a redeploy. **The environment variables are still the
+defaults** — `platform_settings` holds only what has been changed, so a deployment that
+never touches the screen behaves exactly as it did before, and resetting a setting deletes
+its row rather than writing today's default back.
+
 **No payment provider is connected yet, and that is a supported state.** Payme and CLICK are
 both implemented behind one seam; with no credentials the adapters refuse every callback and
 `GET /payments/providers` answers with an empty list, which is what the client renders the

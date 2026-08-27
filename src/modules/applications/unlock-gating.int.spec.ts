@@ -19,6 +19,7 @@ import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.serv
 import { FieldValidatorService } from '@modules/schemas/field-validator.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
 import { SchemasService } from '@modules/schemas/schemas.service';
+import { PricingService } from '@modules/wallet/pricing.service';
 import { WalletService } from '@modules/wallet/wallet.service';
 
 import { ApplicationsService } from './applications.service';
@@ -138,7 +139,7 @@ beforeAll(() => {
     interactions,
     filesStub,
   );
-  wallet = new WalletService(db, employers, config);
+  wallet = new WalletService(db, employers, new PricingService(db, config));
   // §9.1's chat gate asks `between()` the same question BR-09 does, so the unlock reaches it
   // without a line of chat code changing - which is the property worth a test rather than an
   // assumption, because it is exactly the kind of inherited behaviour that regresses quietly.

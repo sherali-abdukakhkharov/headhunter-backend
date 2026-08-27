@@ -12,6 +12,7 @@ import { AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import { AdminModerationService } from './moderation.service';
+import { PricingAdminService } from './pricing-admin.service';
 import { RetentionService } from './retention.service';
 import { AdminWalletsService } from './wallets-admin.service';
 import { AdminUsersService } from './users-admin.service';
@@ -49,6 +50,7 @@ import { AdminUsersService } from './users-admin.service';
     AuditService,
     DashboardService,
     AdminModerationService,
+    PricingAdminService,
     AdminUsersService,
     DictionaryAdminService,
     RetentionService,

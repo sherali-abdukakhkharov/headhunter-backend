@@ -8,6 +8,8 @@ import {
   PaymentRequiredError,
 } from '@infra/api/exceptions/localized.exception';
 import { type Database, KYSELY } from '@infra/db/database.module';
+
+import { PricingService } from './pricing.service';
 import type { DB, WalletTransactionKind } from '@infra/db/database.types';
 import type { AppEnv } from '@infra/env-schema';
 import { EmployersService } from '@modules/employers/employers.service';
@@ -78,28 +80,24 @@ type UnlockOutcome =
 export class WalletService {
   private readonly logger = new Logger(WalletService.name);
 
-  private readonly coinPriceUzs: number;
-  private readonly unlockCoins: number;
-  private readonly bonusCoins: number;
-
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly employers: EmployersService,
-    config: ConfigService<AppEnv, true>,
-  ) {
-    this.coinPriceUzs = config.get('COIN_PRICE_UZS', { infer: true });
-    this.unlockCoins = config.get('CANDIDATE_UNLOCK_COINS', { infer: true });
-    this.bonusCoins = config.get('EMPLOYER_REGISTRATION_BONUS_COINS', {
-      infer: true,
-    });
-  }
+    // Read per call, never cached: these used to be constructor fields, which is
+    // exactly what made them un-editable (§10.5). A price an administrator
+    // changed and the API kept quoting for hours is worse than no screen.
+    private readonly pricing_: PricingService,
+  ) {}
 
   /** Today's prices, for the client and for anything that needs to quote a cost. */
-  pricing(): WalletView['pricing'] {
+  async pricing(): Promise<WalletView['pricing']> {
+    const { coinPriceUzs, candidateUnlockCoins } =
+      await this.pricing_.current();
+
     return {
-      coinPriceUzs: this.coinPriceUzs,
-      candidateUnlockCoins: this.unlockCoins,
-      candidateUnlockUzs: this.unlockCoins * this.coinPriceUzs,
+      coinPriceUzs,
+      candidateUnlockCoins,
+      candidateUnlockUzs: candidateUnlockCoins * coinPriceUzs,
     };
   }
 
@@ -122,11 +120,12 @@ export class WalletService {
       .execute((trx) => this.grantRegistrationBonus(trx, employerUserId));
 
     const wallet = await this.ensureWallet(this.db, employerUserId);
+    const pricing = await this.pricing();
 
     return {
       balanceCoins: wallet.balance_coins,
-      balanceValueUzs: wallet.balance_coins * this.coinPriceUzs,
-      pricing: this.pricing(),
+      balanceValueUzs: wallet.balance_coins * pricing.coinPriceUzs,
+      pricing,
       registrationBonusAt: wallet.registration_bonus_at,
     };
   }
@@ -299,28 +298,31 @@ export class WalletService {
         };
       }
 
-      if (wallet.balance_coins < this.unlockCoins) {
+      const { coinPriceUzs, candidateUnlockCoins: unlockCoins } =
+        await this.pricing_.current();
+
+      if (wallet.balance_coins < unlockCoins) {
         // §6.6: "the unlock action is blocked and the user is routed to wallet top-up".
         // Returned, not thrown: nothing has been written yet, and it stays that way.
         return {
           kind: 'insufficient',
           balance: wallet.balance_coins,
-          required: this.unlockCoins,
+          required: unlockCoins,
         };
       }
 
-      const balanceAfter = wallet.balance_coins - this.unlockCoins;
+      const balanceAfter = wallet.balance_coins - unlockCoins;
 
       const transaction = await trx
         .insertInto('wallet_transactions')
         .values({
           employer_user_id: employerUserId,
           kind: 'candidate_unlock',
-          amount_coins: -this.unlockCoins,
+          amount_coins: -unlockCoins,
           balance_before: wallet.balance_coins,
           balance_after: balanceAfter,
-          coin_price_uzs: String(this.coinPriceUzs),
-          amount_uzs: String(this.unlockCoins * this.coinPriceUzs),
+          coin_price_uzs: String(coinPriceUzs),
+          amount_uzs: String(unlockCoins * coinPriceUzs),
           reference_id: candidateUserId,
         })
         .returning(['id', 'created_at'])
@@ -331,7 +333,7 @@ export class WalletService {
         .values({
           employer_user_id: employerUserId,
           candidate_user_id: candidateUserId,
-          cost_coins: this.unlockCoins,
+          cost_coins: unlockCoins,
           transaction_id: transaction.id,
         })
         .returning(['candidate_user_id', 'cost_coins', 'created_at'])
@@ -341,7 +343,7 @@ export class WalletService {
 
       this.logger.log(
         `Employer ${employerUserId} unlocked candidate ${candidateUserId} ` +
-          `for ${this.unlockCoins} coins (balance ${balanceAfter})`,
+          `for ${unlockCoins} coins (balance ${balanceAfter})`,
       );
 
       return {
@@ -384,23 +386,26 @@ export class WalletService {
     trx: Transaction<DB>,
     employerUserId: string,
   ): Promise<void> {
-    if (this.bonusCoins === 0) {
+    const { coinPriceUzs, registrationBonusCoins: bonusCoins } =
+      await this.pricing_.current();
+
+    if (bonusCoins === 0) {
       return;
     }
 
     const wallet = await this.lockWallet(trx, employerUserId);
-    const balanceAfter = wallet.balance_coins + this.bonusCoins;
+    const balanceAfter = wallet.balance_coins + bonusCoins;
 
     const granted = await trx
       .insertInto('wallet_transactions')
       .values({
         employer_user_id: employerUserId,
         kind: 'registration_bonus',
-        amount_coins: this.bonusCoins,
+        amount_coins: bonusCoins,
         balance_before: wallet.balance_coins,
         balance_after: balanceAfter,
-        coin_price_uzs: String(this.coinPriceUzs),
-        amount_uzs: String(this.bonusCoins * this.coinPriceUzs),
+        coin_price_uzs: String(coinPriceUzs),
+        amount_uzs: String(bonusCoins * coinPriceUzs),
       })
       // The index is the rule; this is how a retry meets it without an exception.
       .onConflict((oc) => oc.doNothing())
@@ -422,7 +427,7 @@ export class WalletService {
       .execute();
 
     this.logger.log(
-      `Granted ${this.bonusCoins} registration coins to employer ${employerUserId}`,
+      `Granted ${bonusCoins} registration coins to employer ${employerUserId}`,
     );
   }
 
@@ -575,6 +580,10 @@ export class WalletService {
       .transaction()
       .execute<{ ok: true; row: WalletTransactionView } | { ok: false }>(
         async (trx) => {
+          // Today's price, for the same reason every other row stores one: the
+          // ledger records what an adjustment was worth when it was made, and
+          // a later repricing must not change that (§10.5, BR-24).
+          const { coinPriceUzs } = await this.pricing_.current();
           const wallet = await this.lockWallet(trx, employerUserId);
           const balanceAfter = wallet.balance_coins + amountCoins;
 
@@ -592,8 +601,8 @@ export class WalletService {
               amount_coins: amountCoins,
               balance_before: wallet.balance_coins,
               balance_after: balanceAfter,
-              coin_price_uzs: String(this.coinPriceUzs),
-              amount_uzs: String(Math.abs(amountCoins) * this.coinPriceUzs),
+              coin_price_uzs: String(coinPriceUzs),
+              amount_uzs: String(Math.abs(amountCoins) * coinPriceUzs),
               reason,
               actor_user_id: actorUserId,
             })

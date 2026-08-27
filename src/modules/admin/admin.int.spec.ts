@@ -25,7 +25,10 @@ import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
 import { DiscoveryService } from '@modules/discovery/discovery.service';
 import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
+import { PricingService } from '@modules/wallet/pricing.service';
+
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
+import { PricingAdminService } from './pricing-admin.service';
 import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import { AdminModerationService } from './moderation.service';
@@ -56,6 +59,7 @@ let dashboard: DashboardService;
 let moderation: AdminModerationService;
 let adminUsers: AdminUsersService;
 let adminDictionaries: DictionaryAdminService;
+let adminPricing: PricingAdminService;
 let guard: AccountStatusGuard;
 /** The candidate's side of BR-04: what a moderation decision makes visible. */
 let discovery: DiscoveryService;
@@ -81,7 +85,13 @@ const config = {
         ? true
         : key === 'FILE_MAX_SIZE_BYTES'
           ? 10_485_760
-          : undefined,
+          : key === 'COIN_PRICE_UZS'
+            ? 10_000
+            : key === 'CANDIDATE_UNLOCK_COINS'
+              ? 2
+              : key === 'EMPLOYER_REGISTRATION_BONUS_COINS'
+                ? 10
+                : undefined,
 } as unknown as ConfigService<AppEnv, true>;
 
 const filesStub = {
@@ -124,6 +134,11 @@ beforeAll(() => {
     config,
   );
   audit = new AuditService(db);
+  adminPricing = new PricingAdminService(
+    db,
+    new PricingService(db, config),
+    audit,
+  );
   dashboard = new DashboardService(db, config);
   moderation = new AdminModerationService(
     db,
@@ -1681,5 +1696,104 @@ describe('§10.4 the audit log as a read', () => {
       AUDIT_ACTIONS.userRestricted,
       AUDIT_ACTIONS.userWarned,
     ]);
+  });
+});
+
+describe('§10.5 pricing', () => {
+  beforeEach(async () => {
+    await db.deleteFrom('platform_settings').execute();
+  });
+
+  afterAll(async () => {
+    await db.deleteFrom('platform_settings').execute();
+  });
+
+  it('serves what is in force beside what the deployment declared', async () => {
+    const admin = await newUser('admin');
+    await adminPricing.update(admin, { coinPriceUzs: 15_000 });
+
+    const view = await adminPricing.read();
+
+    // Both, because a screen that shows only the current value cannot say which
+    // numbers have been changed from the default or what a reset would give.
+    expect(view.current.coinPriceUzs).toBe(15_000);
+    expect(view.declared.coinPriceUzs).toBe(10_000);
+    expect(view.current.candidateUnlockCoins).toBe(2);
+  });
+
+  it('writes one audit row per setting that actually moved', async () => {
+    const admin = await newUser('admin');
+
+    await adminPricing.update(
+      admin,
+      {
+        coinPriceUzs: 12_000,
+        // Submitted at its current value: a form that posts every field must not
+        // record a decision nobody took.
+        candidateUnlockCoins: 2,
+        registrationBonusCoins: 5,
+      },
+      'Client raised the price for Q4',
+    );
+
+    const rows = await db
+      .selectFrom('admin_audit_log')
+      .select(['action', 'target_type', 'target_id', 'reason', 'details'])
+      .where('actor_user_id', '=', admin)
+      .where('action', '=', 'platform.pricing_changed')
+      .execute();
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.target_type === 'platform_setting')).toBe(
+      true,
+    );
+    // No row anywhere is the target, so the key travels in `details`.
+    expect(rows.every((row) => row.target_id === null)).toBe(true);
+    expect(
+      rows.every((row) => row.reason === 'Client raised the price for Q4'),
+    ).toBe(true);
+
+    const details = rows
+      .map(
+        (row) => row.details as { setting: string; from: number; to: number },
+      )
+      .sort((a, b) => a.setting.localeCompare(b.setting));
+
+    expect(details).toEqual([
+      { setting: 'coinPriceUzs', from: 10_000, to: 12_000 },
+      { setting: 'registrationBonusCoins', from: 10, to: 5 },
+    ]);
+  });
+
+  it('records nothing when a submitted value is unchanged', async () => {
+    const admin = await newUser('admin');
+
+    await adminPricing.update(admin, { coinPriceUzs: 10_000 });
+
+    const rows = await db
+      .selectFrom('admin_audit_log')
+      .select('id')
+      .where('actor_user_id', '=', admin)
+      .where('action', '=', 'platform.pricing_changed')
+      .execute();
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it('refuses a free unlock and leaves no audit row behind', async () => {
+    const admin = await newUser('admin');
+
+    await expect(
+      adminPricing.update(admin, { candidateUnlockCoins: 0 }),
+    ).rejects.toThrow();
+
+    const rows = await db
+      .selectFrom('admin_audit_log')
+      .select('id')
+      .where('actor_user_id', '=', admin)
+      .execute();
+
+    expect(rows).toHaveLength(0);
+    expect((await adminPricing.read()).current.candidateUnlockCoins).toBe(2);
   });
 });

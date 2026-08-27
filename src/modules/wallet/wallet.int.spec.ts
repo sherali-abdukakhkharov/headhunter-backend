@@ -6,6 +6,7 @@ import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { EmployersService } from '@modules/employers/employers.service';
 
+import { PricingService } from './pricing.service';
 import { WalletService } from './wallet.service';
 
 /**
@@ -39,7 +40,11 @@ const config = {
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
-  wallet = new WalletService(db, new EmployersService(db), config);
+  wallet = new WalletService(
+    db,
+    new EmployersService(db),
+    new PricingService(db, config),
+  );
 });
 
 afterAll(async () => {

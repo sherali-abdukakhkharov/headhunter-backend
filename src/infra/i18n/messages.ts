@@ -781,6 +781,15 @@ export const MESSAGES = {
     ru: 'Для этого действия обязательно указать причину.',
     en: 'This action requires a reason.',
   },
+  // §10.5's money settings. The floors are the env schema's, restated because a
+  // number typed into a screen has to meet the same one as a number typed into a
+  // file — a free unlock in particular would make BR-16's entitlement meaningless.
+  'admin.pricing_out_of_range': {
+    'uz-Latn': 'Bu qiymat ruxsat etilgan chegaradan tashqarida.',
+    'uz-Cyrl': 'Бу қиймат рухсат этилган чегарадан ташқарида.',
+    ru: 'Это значение выходит за допустимые границы.',
+    en: 'That value is outside the range this setting allows.',
+  },
   'admin.cannot_target_self': {
     'uz-Latn': 'Administrator oʻz hisobiga bu amalni qoʻllay olmaydi.',
     'uz-Cyrl': 'Администратор ўз ҳисобига бу амални қўллай олмайди.',

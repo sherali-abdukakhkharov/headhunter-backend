@@ -17,6 +17,7 @@ import { UsersService } from '@modules/users/users.service';
 
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
+import { PricingService } from '@modules/wallet/pricing.service';
 import { WalletService } from '@modules/wallet/wallet.service';
 
 import { LoggingSmsSender } from './sms/logging-sms.sender';
@@ -104,7 +105,11 @@ function services(overrides: Partial<AppEnv> = {}, sender?: SmsSender) {
     db,
     sessions,
     tokens,
-    new WalletService(db, new EmployersService(db), config),
+    new WalletService(
+      db,
+      new EmployersService(db),
+      new PricingService(db, config),
+    ),
   );
   const users = new UsersService(db);
 

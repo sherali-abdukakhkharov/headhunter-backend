@@ -942,3 +942,76 @@ export class CreatedIdDto {
 }
 
 export { LOCALES };
+
+export class PricingValuesDto {
+  @ApiProperty({ example: 1000, description: 'What one Coin costs, in so’m.' })
+  coinPriceUzs!: number;
+
+  @ApiProperty({
+    example: 2,
+    description: 'What a Candidate Unlock costs, in Coins (§6.6, BR-16).',
+  })
+  candidateUnlockCoins!: number;
+
+  @ApiProperty({
+    example: 10,
+    description: 'Coins a new employer is granted once (§6.6, BR-15).',
+  })
+  registrationBonusCoins!: number;
+}
+
+export class AdminPricingDto {
+  @ApiProperty({ type: PricingValuesDto })
+  current!: PricingValuesDto;
+
+  @ApiProperty({
+    type: PricingValuesDto,
+    description:
+      'What this deployment declared in its environment. Shown so the screen can ' +
+      'say what resetting a setting would give, and so an administrator can see ' +
+      'which numbers have been changed from the default at all.',
+  })
+  declared!: PricingValuesDto;
+}
+
+/**
+ * §10.5's pricing edit. Every field optional **on purpose**: only what is sent is
+ * written, so a form that submits all three does not record three changes when
+ * somebody edited one.
+ */
+export class UpdatePricingDto {
+  @ApiPropertyOptional({ example: 1200, minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  coinPriceUzs?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    minimum: 1,
+    description:
+      'At least one: a free unlock makes BR-16’s entitlement meaningless, which ' +
+      'is the whole reason §6.6 charges for it.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  candidateUnlockCoins?: number;
+
+  @ApiPropertyOptional({ example: 10, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  registrationBonusCoins?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional, unlike a wallet adjustment’s. A price change records its own ' +
+      'from → to, which a balance adjustment cannot; a mandatory field people ' +
+      'fill with a full stop is worse than none.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}

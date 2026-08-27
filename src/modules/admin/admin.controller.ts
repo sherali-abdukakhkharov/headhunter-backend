@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -41,7 +42,7 @@ import {
 } from '@infra/time/format';
 import { PaymentOrdersService } from '@modules/payments/payment-orders.service';
 
-import { AuditService } from './audit.service';
+import { AUDIT_ACTIONS, AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import {
@@ -53,6 +54,8 @@ import {
   AuditQueryDto,
   ComplaintDetailDto,
   AdminPaymentListDto,
+  AdminPricingDto,
+  UpdatePricingDto,
   AdminPaymentSearchDto,
   ComplaintListDto,
   ComplaintQueryDto,
@@ -85,6 +88,7 @@ import {
 } from '@modules/wallet/dto/wallet.dto';
 
 import { AdminModerationService } from './moderation.service';
+import { PricingAdminService } from './pricing-admin.service';
 import { RetentionService } from './retention.service';
 import { AdminWalletsService } from './wallets-admin.service';
 import { type AdminUserRow, AdminUsersService } from './users-admin.service';
@@ -115,6 +119,9 @@ export class AdminController {
     private readonly audit: AuditService,
     private readonly retention: RetentionService,
     private readonly wallets: AdminWalletsService,
+    // §10.5's editable money settings. Named for the service rather than the
+    // setting because `pricing()` is the route two hundred lines below.
+    private readonly pricingAdmin: PricingAdminService,
     private readonly orders: PaymentOrdersService,
     config: ConfigService<AppEnv, true>,
   ) {
@@ -907,6 +914,53 @@ export class AdminController {
       reason: item.reason,
       createdAt: formatWithOffset(item.createdAt, this.timeZone),
     };
+  }
+
+  // --- §10.5 pricing --------------------------------------------------------
+
+  @Get('pricing')
+  @ApiOperation({
+    summary: 'The Coin price, unlock cost and registration bonus (§10.5)',
+    description:
+      'Both what is in force and what this deployment **declared**, so the screen ' +
+      'can say what resetting a setting would give and show which numbers have ' +
+      'been changed from the default at all.',
+  })
+  @ApiOkResponse({ type: AdminPricingDto })
+  async pricing(): Promise<AdminPricingDto> {
+    return this.pricingAdmin.read();
+  }
+
+  @Put('pricing')
+  @ApiOperation({
+    summary: 'Change one or more prices (§10.5)',
+    description:
+      'Only the fields sent are written, and each one that actually changes gets ' +
+      'its own audit row naming the setting and its before and after.\n\n' +
+      '**Future transactions only.** Nothing here rewrites what anybody was ' +
+      'charged: every `wallet_transactions` row and every `payment_orders` row ' +
+      'stores the price it was quoted at, so a repricing cannot reach backwards ' +
+      'even by accident.',
+  })
+  @ApiOkResponse({ type: AdminPricingDto })
+  @ApiBadRequestResponse({
+    description:
+      '`admin.pricing_out_of_range` — a free Coin, a free unlock, or a negative ' +
+      'registration bonus.',
+  })
+  async setPricing(
+    @ActiveUser() user: CurrentUser,
+    @Body() dto: UpdatePricingDto,
+  ): Promise<AdminPricingDto> {
+    return this.pricingAdmin.update(
+      user.id,
+      {
+        coinPriceUzs: dto.coinPriceUzs,
+        candidateUnlockCoins: dto.candidateUnlockCoins,
+        registrationBonusCoins: dto.registrationBonusCoins,
+      },
+      dto.reason,
+    );
   }
 
   private userDto(row: AdminUserRow): AdminUserDto {

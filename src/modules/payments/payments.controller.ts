@@ -75,14 +75,14 @@ export class PaymentsController {
       'both of which are then a configuration change rather than an app release.',
   })
   @ApiOkResponse({ type: PaymentProvidersDto })
-  providers(): PaymentProvidersDto {
+  async providers(): Promise<PaymentProvidersDto> {
     const { minCoins, maxCoins } = this.orders.bounds();
 
     return {
       providers: this.orders.availableProviders(),
       minCoins,
       maxCoins,
-      coinPriceUzs: this.wallet.pricing().coinPriceUzs,
+      coinPriceUzs: (await this.wallet.pricing()).coinPriceUzs,
     };
   }
 

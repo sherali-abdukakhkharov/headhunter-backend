@@ -8,6 +8,7 @@ import type { PaymentOrderStatus } from '@infra/db/database.types';
 import { createIntTestDb, fixturePhone } from '@infra/db/testing/int-db';
 import type { AppEnv } from '@infra/env-schema';
 import { EmployersService } from '@modules/employers/employers.service';
+import { PricingService } from '@modules/wallet/pricing.service';
 import { WalletService } from '@modules/wallet/wallet.service';
 
 import { PaymentOrdersService } from './payment-orders.service';
@@ -74,7 +75,11 @@ const config = {
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
-  wallet = new WalletService(db, new EmployersService(db), config);
+  wallet = new WalletService(
+    db,
+    new EmployersService(db),
+    new PricingService(db, config),
+  );
   payme = new PaymeProvider(config);
   click = new ClickProvider(config);
   orders = new PaymentOrdersService(
@@ -459,9 +464,13 @@ describe('opening a Payment Order (§6.7, §12.3.1)', () => {
     const repriced = new PaymentOrdersService(
       db,
       new PaymentProviderRegistry(payme, click),
-      new WalletService(db, new EmployersService(db), {
-        get: (key: string) => (key === 'COIN_PRICE_UZS' ? 20_000 : ENV[key]),
-      } as unknown as ConfigService<AppEnv, true>),
+      new WalletService(
+        db,
+        new EmployersService(db),
+        new PricingService(db, {
+          get: (key: string) => (key === 'COIN_PRICE_UZS' ? 20_000 : ENV[key]),
+        } as unknown as ConfigService<AppEnv, true>),
+      ),
       config,
     );
 

@@ -1879,6 +1879,7 @@ so their access is logged as an administrator's rather than looking like the emp
 | `GET /wallet/unlocks/{candidateUserId}` | Whether this candidate is already unlocked |
 | `POST /wallet/unlocks` | Buys the unlock: the debit and the entitlement, atomically |
 | `GET /admin/wallets`, `GET /admin/wallets/{userId}`, `POST /admin/wallets/{userId}/adjust` | §10.5 |
+| `GET /admin/pricing`, `PUT /admin/pricing` | §10.5 — set the three prices below |
 
 ### The prices come from the server, and the client must not hold a copy
 
@@ -1892,6 +1893,29 @@ reprices, and it becomes wrong silently.
 necessarily today's — §10.5 says a change "affects future transactions only and does not
 rewrite historical ledger records". A history screen that recomputed value from the current
 price would restate last month.
+
+### An administrator can change them, and the environment stays the default
+
+`PUT /admin/pricing` sets `coinPriceUzs`, `candidateUnlockCoins` and
+`registrationBonusCoins` — **only the fields sent**, so a form that posts all three does
+not record three decisions when somebody edited one. `GET /admin/pricing` returns both
+`current` and `declared`: the second is what the deployment's environment says, which is
+what a reset gives back and what tells an administrator which numbers have been moved at
+all.
+
+The environment variables are still the defaults. `platform_settings` holds only what has
+been *changed*, so a fresh deployment behaves exactly as it did before this existed, an
+absent row means "nobody has changed this" rather than "unconfigured", and reverting is a
+delete rather than typing the old number back from memory.
+
+Every setting that actually moves writes an audit row (`platform.pricing_changed`) naming
+the setting and its before and after. Nothing reaches backwards: §10.5's "affects future
+transactions only" is already guaranteed by every ledger row storing the price it was
+quoted at.
+
+Floors, refused with `admin.pricing_out_of_range`: a Coin costs at least 1 so'm, an unlock
+at least 1 Coin — **a free unlock makes BR-16's entitlement meaningless, which is the whole
+reason §6.6 charges for it** — and a bonus at least 0.
 
 ### A wallet exists after the first read, and the bonus arrives once
 

@@ -41,6 +41,7 @@ import { FieldValidatorService } from '@modules/schemas/field-validator.service'
 import { SchemasService } from '@modules/schemas/schemas.service';
 import { UsersService } from '@modules/users/users.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
+import { PricingService } from '@modules/wallet/pricing.service';
 import { WalletService } from '@modules/wallet/wallet.service';
 
 /**
@@ -254,7 +255,7 @@ beforeAll(() => {
   // M12 and M13. Both payment providers are configured here with test credentials, because
   // UAT-20..23 are about *verified* callbacks: a scenario that ran against an unconfigured
   // provider would assert a refusal and prove nothing about crediting.
-  wallet = new WalletService(db, employers, config);
+  wallet = new WalletService(db, employers, new PricingService(db, config));
   payme = new PaymeProvider(config);
   click = new ClickProvider(config);
   payments = new PaymentOrdersService(

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { EmployersModule } from '@modules/employers/employers.module';
 
 import { WalletController } from './wallet.controller';
+import { PricingService } from './pricing.service';
 import { WalletService } from './wallet.service';
 
 /**
@@ -28,7 +29,7 @@ import { WalletService } from './wallet.service';
 @Module({
   imports: [EmployersModule],
   controllers: [WalletController],
-  providers: [WalletService],
-  exports: [WalletService],
+  providers: [PricingService, WalletService],
+  exports: [PricingService, WalletService],
 })
 export class WalletModule {}
