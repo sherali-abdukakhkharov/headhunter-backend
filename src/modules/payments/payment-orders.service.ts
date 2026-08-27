@@ -225,6 +225,79 @@ export class PaymentOrdersService {
     return rows.map((row) => toView(row as OrderRow));
   }
 
+  /**
+   * §10.5's administrator search, across every employer's orders.
+   *
+   * A separate method from [list] rather than an optional `employerUserId`, and
+   * deliberately: [list] is scoped to its caller because "an order id is an
+   * identifier, not an authorization", and a parameter that turns that scoping off is
+   * one `undefined` away from being off by accident. Two methods, one of which the
+   * role guard only lets an administrator reach.
+   *
+   * Six filters, which is what §10.5 names: employer, provider, status, date, the
+   * internal order id and the provider's transaction id. All optional and all ANDed —
+   * a search screen narrows, it does not choose between axes.
+   */
+  async search(
+    filters: {
+      employerUserId?: string;
+      provider?: string;
+      status?: string;
+      /** Calendar dates in the platform zone, inclusive at both ends. */
+      from?: Date;
+      to?: Date;
+      orderId?: string;
+      providerTransactionId?: string;
+    },
+    limit: number,
+    offset: number,
+  ): Promise<PaymentOrderView[]> {
+    let query = this.db.selectFrom('payment_orders').selectAll();
+
+    if (filters.employerUserId) {
+      query = query.where('employer_user_id', '=', filters.employerUserId);
+    }
+
+    if (filters.provider) {
+      query = query.where('provider', '=', filters.provider as never);
+    }
+
+    if (filters.status) {
+      query = query.where('status', '=', filters.status as never);
+    }
+
+    if (filters.from) {
+      query = query.where('created_at', '>=', filters.from);
+    }
+
+    if (filters.to) {
+      query = query.where('created_at', '<=', filters.to);
+    }
+
+    if (filters.orderId) {
+      query = query.where('id', '=', filters.orderId);
+    }
+
+    if (filters.providerTransactionId) {
+      // Exact, not a prefix: this is quoted from a provider's dashboard or a
+      // support ticket, so a partial match would answer a question nobody asked.
+      query = query.where(
+        'provider_transaction_id',
+        '=',
+        filters.providerTransactionId,
+      );
+    }
+
+    const rows = await query
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .limit(limit)
+      .offset(offset)
+      .execute();
+
+    return rows.map((row) => toView(row as OrderRow));
+  }
+
   /** One order, scoped to its owner: an order id is not an authorization. */
   async read(
     employerUserId: string,

@@ -4,6 +4,7 @@ import { FilesModule } from '@infra/files/files.module';
 import { EmployersModule } from '@modules/employers/employers.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { VacanciesModule } from '@modules/vacancies/vacancies.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { WalletModule } from '@modules/wallet/wallet.module';
 
 import { AdminController } from './admin.controller';
@@ -38,6 +39,10 @@ import { AdminUsersService } from './users-admin.service';
     // the row lock stay in WalletService; this module adds the queue, the actor and the
     // audit row, exactly as it did for M4's and M5's decision machines.
     WalletModule,
+    // §10.5's other half: the Payment Order search. Same division — the order
+    // machine stays in PaymentOrdersService and this module adds the unscoped
+    // read that only an administrator can reach.
+    PaymentsModule,
   ],
   controllers: [AdminController],
   providers: [

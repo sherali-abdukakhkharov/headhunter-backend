@@ -33,10 +33,13 @@ import {
 import { RequireRole } from '@infra/api/decorators/require-role.decorator';
 import type { AppEnv } from '@infra/env-schema';
 import {
+  endOfDayInZone,
   formatDateOnly,
   formatRowTimestamps,
   formatWithOffset,
+  startOfDayInZone,
 } from '@infra/time/format';
+import { PaymentOrdersService } from '@modules/payments/payment-orders.service';
 
 import { AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
@@ -49,6 +52,8 @@ import {
   AuditLogDto,
   AuditQueryDto,
   ComplaintDetailDto,
+  AdminPaymentListDto,
+  AdminPaymentSearchDto,
   ComplaintListDto,
   ComplaintQueryDto,
   ComplaintReviewDto,
@@ -110,6 +115,7 @@ export class AdminController {
     private readonly audit: AuditService,
     private readonly retention: RetentionService,
     private readonly wallets: AdminWalletsService,
+    private readonly orders: PaymentOrdersService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -636,6 +642,62 @@ export class AdminController {
     @Body() dto: MergeDictionaryItemsDto,
   ): Promise<void> {
     await this.dictionaries.merge(user.id, itemId, dto.survivorId);
+  }
+
+  // --- §10.5 payments -------------------------------------------------------
+
+  @Get('payments')
+  @ApiOperation({
+    summary: 'Search Payment Orders (§10.5)',
+    description:
+      'The six axes §10.5 names — employer, provider, status, date, internal order id, ' +
+      'provider transaction id — all optional and all ANDed. Newest first.\n\n' +
+      'A separate route from `GET /payments/orders`, which is scoped to its caller ' +
+      'because "an order id is an identifier, not an authorization". This one is not, ' +
+      'and the role guard is what makes that safe: one route with an optional ' +
+      '`employerUserId` would be a single `undefined` away from being unscoped by ' +
+      'accident.\n\n' +
+      '**It answers an empty list until M13 ships.** Payment Orders are created by the ' +
+      'top-up flow, which is blocked on merchant credentials, so there is nothing to ' +
+      'find yet — the route exists so the screen is not the thing that has to change ' +
+      'when there is.',
+  })
+  @ApiOkResponse({ type: AdminPaymentListDto })
+  async payments(
+    @Query() query: AdminPaymentSearchDto,
+  ): Promise<AdminPaymentListDto> {
+    const items = await this.orders.search(
+      {
+        employerUserId: query.employerUserId,
+        provider: query.provider,
+        status: query.status,
+        // Calendar dates in the platform zone, inclusive at both ends: an
+        // administrator searching "the 5th" means the day as it was lived here,
+        // not a UTC window that starts at 05:00 the day before.
+        from: query.from
+          ? startOfDayInZone(query.from, this.timeZone)
+          : undefined,
+        to: query.to ? endOfDayInZone(query.to, this.timeZone) : undefined,
+        orderId: query.orderId,
+        providerTransactionId: query.providerTransactionId,
+      },
+      query.limit ?? 20,
+      query.offset ?? 0,
+    );
+
+    return {
+      // All three timestamps, not two: §2 wants an explicit offset on every one,
+      // and `updatedAt` is what a support conversation about a stuck order
+      // actually reads.
+      items: items.map((item) => ({
+        ...item,
+        createdAt: formatWithOffset(item.createdAt, this.timeZone),
+        updatedAt: formatWithOffset(item.updatedAt, this.timeZone),
+        paidAt: item.paidAt
+          ? formatWithOffset(item.paidAt, this.timeZone)
+          : null,
+      })),
+    };
   }
 
   // --- §10.4 audit ---------------------------------------------------------

@@ -21,8 +21,11 @@ import type {
   ComplaintTarget,
   DictionaryCategory,
   LocaleCode,
+  PaymentOrderStatus,
+  PaymentProvider,
   UserRole,
 } from '@infra/db/database.types';
+import { PaymentOrderDto } from '@modules/payments/dto/payment.dto';
 import { CATEGORIES } from '@modules/schemas/dto/schemas.dto';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,6 +37,15 @@ const STATUSES = [
   'deletion_requested',
 ] as const;
 const COMPLAINT_TARGETS = ['vacancy', 'user', 'profile', 'message'] as const;
+const PAYMENT_PROVIDERS = ['click', 'payme'] as const;
+const PAYMENT_STATUSES = [
+  'created',
+  'pending',
+  'paid',
+  'failed',
+  'cancelled',
+  'reversed',
+] as const;
 const LOCALES = ['uz-Latn', 'uz-Cyrl', 'ru', 'en'] as const;
 
 /** Paging shared by every queue in §10. */
@@ -564,6 +576,73 @@ export class VacancyReviewDto {
     description: 'Its structured requirements, keyed by schema field code.',
   })
   requirements!: Record<string, unknown>[];
+}
+
+/**
+ * §10.5's Payment Order search.
+ *
+ * The six axes the section names — employer, provider, status, date, internal
+ * order id, provider transaction id — all optional and all ANDed: a search
+ * screen narrows rather than choosing between axes.
+ */
+export class AdminPaymentSearchDto extends AdminPageDto {
+  @ApiPropertyOptional({ description: 'Whose orders to show.' })
+  @IsOptional()
+  @IsUUID()
+  employerUserId?: string;
+
+  @ApiPropertyOptional({ enum: PAYMENT_PROVIDERS })
+  @IsOptional()
+  @IsIn(PAYMENT_PROVIDERS)
+  provider?: PaymentProvider;
+
+  @ApiPropertyOptional({ enum: PAYMENT_STATUSES })
+  @IsOptional()
+  @IsIn(PAYMENT_STATUSES)
+  status?: PaymentOrderStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Created on or after this calendar date in the platform zone, inclusive. A ' +
+      'date rather than an instant: an administrator searching "the 5th" means the ' +
+      'day as it was lived here, not a UTC window that starts at 05:00 the day before.',
+    example: '2026-08-01',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  from?: string;
+
+  @ApiPropertyOptional({
+    description: 'Created on or before this calendar date, inclusive.',
+    example: '2026-08-31',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  to?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The internal Payment Order id, exactly. This is what a support request quotes.',
+  })
+  @IsOptional()
+  @IsUUID()
+  orderId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The provider’s own transaction id, exactly — not a prefix. It is quoted from a ' +
+      'provider dashboard or a support ticket, so a partial match would answer a ' +
+      'question nobody asked.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  providerTransactionId?: string;
+}
+
+export class AdminPaymentListDto {
+  @ApiProperty({ type: [PaymentOrderDto], description: 'Newest first.' })
+  items!: PaymentOrderDto[];
 }
 
 export class ComplaintDto {

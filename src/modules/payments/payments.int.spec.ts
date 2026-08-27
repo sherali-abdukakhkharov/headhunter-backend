@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
@@ -299,6 +299,139 @@ async function eventsFor(
 
   return rows;
 }
+
+describe("§10.5's administrator search", () => {
+  /** Only the orders this test made: the development database has others. */
+  async function found(
+    filters: Parameters<PaymentOrdersService['search']>[0],
+    mine: string[],
+  ): Promise<string[]> {
+    const rows = await orders.search(filters, 100, 0);
+
+    return rows.map((row) => row.id).filter((id) => mine.includes(id));
+  }
+
+  it('finds an order by its employer', async () => {
+    // `list` is scoped to its caller because an order id is an identifier and
+    // not an authorization. This is the deliberate exception, and the role
+    // guard is what makes it safe.
+    const a = await orderFor('payme');
+    const b = await orderFor('click');
+
+    expect(
+      await found({ employerUserId: a.employerUserId }, [a.orderId, b.orderId]),
+    ).toEqual([a.orderId]);
+  });
+
+  it('finds one by provider', async () => {
+    const payme = await orderFor('payme');
+    const click = await orderFor('click');
+
+    expect(
+      await found({ provider: 'click' }, [payme.orderId, click.orderId]),
+    ).toEqual([click.orderId]);
+  });
+
+  it('finds one by its internal id, which is what support quotes', async () => {
+    const a = await orderFor('payme');
+    const b = await orderFor('payme');
+
+    expect(await found({ orderId: a.orderId }, [a.orderId, b.orderId])).toEqual(
+      [a.orderId],
+    );
+  });
+
+  it('finds one by the provider transaction id, exactly', async () => {
+    // Exact rather than a prefix: this is quoted from a provider dashboard or a
+    // ticket, so a partial match would answer a question nobody asked.
+    //
+    // The id is minted per run because the column is UNIQUE — one order per
+    // provider transaction, deliberately — and this development database is
+    // shared, so a fixed string collides with the previous run's row.
+    const a = await orderFor('payme');
+    const b = await orderFor('payme');
+    const transactionId = `PX-${randomUUID()}`;
+    await db
+      .updateTable('payment_orders')
+      .set({ provider_transaction_id: transactionId })
+      .where('id', '=', a.orderId)
+      .execute();
+
+    expect(
+      await found({ providerTransactionId: transactionId }, [
+        a.orderId,
+        b.orderId,
+      ]),
+    ).toEqual([a.orderId]);
+    expect(
+      await found({ providerTransactionId: transactionId.slice(0, 8) }, [
+        a.orderId,
+        b.orderId,
+      ]),
+    ).toEqual([]);
+  });
+
+  it('finds one by status', async () => {
+    const a = await orderFor('payme');
+    const b = await orderFor('payme');
+    // `paid` carries a CHECK that it be traceable - a paid order with no
+    // timestamp and no provider reference is money nobody can account for.
+    await db
+      .updateTable('payment_orders')
+      .set({
+        status: 'paid',
+        paid_at: new Date(),
+        provider_transaction_id: `PX-${randomUUID()}`,
+      })
+      .where('id', '=', a.orderId)
+      .execute();
+
+    expect(await found({ status: 'paid' }, [a.orderId, b.orderId])).toEqual([
+      a.orderId,
+    ]);
+  });
+
+  it('excludes an order created before the window', async () => {
+    const a = await orderFor('payme');
+    const b = await orderFor('payme');
+    await db
+      .updateTable('payment_orders')
+      .set({ created_at: new Date('2020-01-01T00:00:00Z') })
+      .where('id', '=', a.orderId)
+      .execute();
+
+    const recent = await found(
+      { from: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      [a.orderId, b.orderId],
+    );
+
+    expect(recent).toEqual([b.orderId]);
+  });
+
+  it('ANDs its filters rather than choosing between them', async () => {
+    // A search screen narrows. Two axes that disagree find nothing, which is
+    // the answer.
+    const a = await orderFor('payme');
+
+    expect(
+      await found({ employerUserId: a.employerUserId, provider: 'click' }, [
+        a.orderId,
+      ]),
+    ).toEqual([]);
+  });
+
+  it('with no filters at all, answers the whole log newest first', async () => {
+    const first = await orderFor('payme');
+    const second = await orderFor('click');
+
+    const mine = [first.orderId, second.orderId];
+    const rows = (await orders.search({}, 100, 0))
+      .map((row) => row.id)
+      .filter((id) => mine.includes(id));
+
+    expect(rows).toEqual([second.orderId, first.orderId]);
+  });
+});
 
 describe('opening a Payment Order (§6.7, §12.3.1)', () => {
   it('calculates the payable amount from the Coin price, server-side', async () => {
