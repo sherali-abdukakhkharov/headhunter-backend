@@ -187,6 +187,25 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
       'purpose to point at.',
   },
   {
+    code: 'unsent_message_attachments',
+    subject: 'Chat files that were uploaded and never sent',
+    days: 7,
+    trigger: 'the file being uploaded',
+    action: 'purge',
+    provenance: 'provisional',
+    legalBasis:
+      'A chat attachment is stored the moment it is picked, before the message that ' +
+      'carries it exists (§9.1). Most become messages within seconds; the ones that do ' +
+      'not are a draft somebody abandoned, and they reference nothing, so nobody - not ' +
+      'the uploader, not the other participant, not an administrator - has any route ' +
+      'back to them. Data with no reader and no reference has no purpose to point at, ' +
+      'which is the whole of the argument for a period here. ' +
+      'Seven days rather than same-day because the alternative considered was deleting ' +
+      'on the "remove attachment" tap, and that makes re-attaching worse for the more ' +
+      'common case: somebody who removes a file and changes their mind. The window is ' +
+      'also what makes the sweep safe - see the comment on the sweep itself.',
+  },
+  {
     code: 'idempotency_keys',
     subject:
       'Replay-protection keys for applications, invitations and messages',

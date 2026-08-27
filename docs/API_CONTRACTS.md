@@ -1470,6 +1470,27 @@ what binds the two, and it is checked on send whatever the upload did.
 a message carries it, which is why an abandoned upload is an ordinary file its owner owns
 rather than a dangling row pointing at a thread.
 
+**An abandoned upload expires** *(2026-08-27, MT-023)*. "Ordinary file its owner owns"
+was true and was not a retention policy: the row stayed live, referenced nothing, and
+nobody — not the uploader, not the other participant, not an administrator — had a route
+back to it. BR-14 now carries `unsent_message_attachments`, **7 days from upload**, swept
+by `POST /admin/retention/purge` and counted by `/admin/retention/due` like every other
+transient subject.
+
+Three properties the sweep is built to have, and each has a test:
+
+- **A linked file is never a candidate.** The `NOT EXISTS` over `messages` is inside the
+  same statement as the write, so a message cannot lose its attachment to a purge.
+- **It never names a user**, so there is no owner to get wrong. It selects on purpose, age
+  and the absence of a message.
+- **It is idempotent**, because it only touches rows with `deleted_at IS NULL`.
+
+Seven days rather than deleting on the "remove attachment" tap: deleting synchronously
+makes the *common* case worse, which is somebody who removes a file and changes their
+mind. The window is also what makes the sweep's remaining race theoretical — a candidate
+has been sitting unsent for a week, so the send that would save it would have to land
+inside one statement's execution.
+
 **The upload re-asks the send gate** — participant, not blocked, not read-only. Same
 reason send re-asks it: an interaction can end while a client holds the screen, and bytes
 accepted into a thread that has become history could never be sent. The refusals are the

@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'kysely';
 
 import { type Database, KYSELY } from '@infra/db/database.module';
+import { FilesService } from '@infra/files/files.service';
+import { MESSAGE_ATTACHMENT_PURPOSE } from '@modules/chat/chat.service';
 import {
   RETENTION_POLICY,
   type RetentionRule,
@@ -74,6 +76,7 @@ export class RetentionService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly files: FilesService,
   ) {}
 
   /** The declared policy, verbatim, for `GET /admin/retention/policy`. */
@@ -355,6 +358,7 @@ export class RetentionService {
       ['rate_limit_counters', () => this.countRateLimits(now)],
       ['idempotency_keys', () => this.countIdempotency(now)],
       ['notifications', () => this.countNotifications(now)],
+      ['unsent_message_attachments', () => this.countUnsentAttachments(now)],
     ] as const) {
       counts.push({ code, rows: await count() });
     }
@@ -429,7 +433,92 @@ export class RetentionService {
       });
     }
 
+    const attachments = retentionCutoff('unsent_message_attachments', now);
+    if (attachments) {
+      swept.push({
+        code: 'unsent_message_attachments',
+        rows: await this.sweepUnsentAttachments(attachments),
+      });
+    }
+
     return swept;
+  }
+
+  /**
+   * Soft-deletes chat uploads that never became messages (MT-023).
+   *
+   * A chat attachment is stored the moment it is picked, and only becomes an
+   * *attachment* when a message carries its id (§9.1). One that never does
+   * references nothing and nothing references it, so it is unreachable by its own
+   * uploader as much as by anyone else.
+   *
+   * **Ownership-safe by construction**: the statement never names a user. It selects on
+   * purpose, age and the absence of a message, so there is no owner to get wrong.
+   *
+   * **A message can never lose its attachment to this.** The `NOT EXISTS` is inside the
+   * same statement as the write, so nothing that is already linked is touched. The
+   * remaining race - a file linked between the row being read and the row being written -
+   * is closed by the *period* rather than by a lock: a candidate has been sitting
+   * unsent for seven days, and the send that would save it would have to land inside
+   * this statement's execution. That is the argument for the window being days rather
+   * than minutes.
+   *
+   * Soft-delete, like every other deletion of a file here: the row stays and
+   * `deleted_at` is what every read already filters on.
+   */
+  private async sweepUnsentAttachments(cutoff: Date): Promise<number> {
+    const purged = await this.db
+      .updateTable('stored_files')
+      .set({ deleted_at: new Date() })
+      .where('deleted_at', 'is', null)
+      .where('created_at', '<', cutoff)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('dictionary_items')
+            .select('id')
+            .whereRef('dictionary_items.id', '=', 'stored_files.purpose_id')
+            .where('type_code', '=', 'file_purpose')
+            .where('code', '=', MESSAGE_ATTACHMENT_PURPOSE),
+        ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('messages')
+              .select('id')
+              .whereRef('messages.file_id', '=', 'stored_files.id'),
+          ),
+        ),
+      )
+      .returning('telegram_message_id')
+      .execute();
+
+    // The bytes, after the rows. Best-effort and one at a time: a storage message that
+    // outlives its row is rubbish in a private channel, and failing the whole sweep over
+    // it would mean the *next* run has more to do rather than less.
+    for (const row of purged) {
+      await this.files.dropStoredMessage(String(row.telegram_message_id));
+    }
+
+    return purged.length;
+  }
+
+  private async countUnsentAttachments(now: Date): Promise<number> {
+    const cutoff = retentionCutoff('unsent_message_attachments', now);
+
+    return cutoff
+      ? this.count(sql`
+          SELECT count(*) FROM stored_files f
+          JOIN dictionary_items p ON p.id = f.purpose_id
+            AND p.type_code = 'file_purpose'
+            AND p.code = ${MESSAGE_ATTACHMENT_PURPOSE}
+          WHERE f.deleted_at IS NULL
+            AND f.created_at < ${cutoff}
+            AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.file_id = f.id)
+        `)
+      : 0;
   }
 
   private async countOtp(now: Date): Promise<number> {

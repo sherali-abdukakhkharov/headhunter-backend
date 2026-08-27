@@ -21,6 +21,19 @@ import { RetentionService } from './retention.service';
  * shape that made a plain `DELETE FROM users` fail.
  */
 
+/** Telegram message ids the sweep asked to drop, in order. */
+const droppedBytes: string[] = [];
+
+// Stubbed rather than real: the storage half is a Telegram call, and what these
+// tests are about is which rows the sweep picks.
+const filesStub = {
+  dropStoredMessage: (telegramMessageId: string) => {
+    droppedBytes.push(telegramMessageId);
+
+    return Promise.resolve();
+  },
+} as never;
+
 let db: Database;
 let destroy: () => Promise<void>;
 let retention: RetentionService;
@@ -29,7 +42,7 @@ const users: string[] = [];
 
 beforeAll(() => {
   ({ db, destroy } = createIntTestDb());
-  retention = new RetentionService(db, new AuditService(db));
+  retention = new RetentionService(db, new AuditService(db), filesStub);
 });
 
 afterAll(async () => {
@@ -124,6 +137,64 @@ async function storedFile(
     .executeTakeFirstOrThrow();
 
   return row.id;
+}
+
+/** Backdates a stored file so the sweep's window has passed. */
+async function age(fileId: string, days: number): Promise<void> {
+  await db
+    .updateTable('stored_files')
+    .set({ created_at: new Date(Date.now() - days * 24 * 60 * 60 * 1000) })
+    .where('id', '=', fileId)
+    .execute();
+}
+
+/** Sends a message carrying [fileId], which is what makes a file an attachment. */
+async function sendCarrying(
+  fileId: string,
+  senderUserId: string,
+): Promise<void> {
+  // Both sides reference their *profile* table rather than `users` — a
+  // conversation is between an employer and a candidate, not between accounts.
+  const candidateUserId = await newUser('candidate');
+  await db
+    .insertInto('employers')
+    .values({ user_id: senderUserId, type: 'company' })
+    .onConflict((oc) => oc.column('user_id').doNothing())
+    .execute();
+  await db
+    .insertInto('candidate_profiles')
+    .values({ user_id: candidateUserId })
+    .onConflict((oc) => oc.column('user_id').doNothing())
+    .execute();
+
+  const conversation = await db
+    .insertInto('conversations')
+    .values({
+      employer_user_id: senderUserId,
+      candidate_user_id: candidateUserId,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+
+  await db
+    .insertInto('messages')
+    .values({
+      conversation_id: conversation.id,
+      sender_user_id: senderUserId,
+      file_id: fileId,
+    })
+    .execute();
+}
+
+/** Whether the row is still live, which is what `deleted_at IS NULL` means here. */
+async function isLive(fileId: string): Promise<boolean> {
+  const row = await db
+    .selectFrom('stored_files')
+    .select('deleted_at')
+    .where('id', '=', fileId)
+    .executeTakeFirstOrThrow();
+
+  return row.deleted_at === null;
 }
 
 /** Requests deletion, dated far enough back that the grace period has run out. */
@@ -487,6 +558,113 @@ describe('the transient sweeps', () => {
  * (BR-24, §6.7), so the answer is the one already established for administrators - erase
  * the person, keep the record.
  */
+describe('MT-023: chat uploads that never became messages', () => {
+  const window = requireRetentionRule('unsent_message_attachments').days ?? 7;
+
+  beforeEach(() => {
+    droppedBytes.length = 0;
+  });
+
+  it('purges one that has sat unsent past the window, and drops its bytes', async () => {
+    // A chat attachment is stored the moment it is picked and only becomes an
+    // attachment when a message carries its id. One that never does references
+    // nothing and nothing references it - unreachable by its own uploader as
+    // much as by anybody else.
+    const owner = await newUser('employer');
+    const fileId = await storedFile(owner, 'message_attachment');
+    await age(fileId, window + 1);
+
+    const outcome = await retention.purge(await newUser('admin'));
+
+    expect(
+      outcome.transient.find(
+        (entry) => entry.code === 'unsent_message_attachments',
+      )?.rows ?? 0,
+    ).toBeGreaterThan(0);
+    expect(await isLive(fileId)).toBe(false);
+    expect(droppedBytes).toContain('1');
+  });
+
+  it('never touches one a message carries, however old', async () => {
+    // The acceptance criterion this whole sweep has to satisfy: cleanup cannot
+    // take an attachment away from a message. The `NOT EXISTS` is inside the
+    // same statement as the write, so a linked file is not a candidate at all.
+    const owner = await newUser('employer');
+    const fileId = await storedFile(owner, 'message_attachment');
+    await age(fileId, window * 10);
+    await sendCarrying(fileId, owner);
+
+    await retention.purge(await newUser('admin'));
+
+    expect(await isLive(fileId)).toBe(true);
+    expect(droppedBytes).not.toContain('1');
+  });
+
+  it('leaves a recent one alone, because it is a draft and not litter', async () => {
+    const owner = await newUser('employer');
+    const fileId = await storedFile(owner, 'message_attachment');
+
+    await retention.purge(await newUser('admin'));
+
+    expect(await isLive(fileId)).toBe(true);
+  });
+
+  it('is scoped to the purpose, so a CV of the same age survives', async () => {
+    // The statement selects on purpose, age and the absence of a message, and
+    // never names a user - so there is no owner to get wrong. What there *is*
+    // to get wrong is the purpose, and a profile document has its own rule.
+    const owner = await newUser('candidate');
+    const cv = await storedFile(owner, 'cv');
+    await age(cv, window * 10);
+
+    await retention.purge(await newUser('admin'));
+
+    expect(await isLive(cv)).toBe(true);
+  });
+
+  it('counts in the preview what the purge then removes', async () => {
+    // BR-14's `GET /admin/retention/due`: an administrator sees the number
+    // before anything is deleted, and it has to be the same number.
+    const owner = await newUser('employer');
+    const fileId = await storedFile(owner, 'message_attachment');
+    await age(fileId, window + 1);
+
+    const due = await retention.due();
+    const previewed =
+      due.transient.find((entry) => entry.code === 'unsent_message_attachments')
+        ?.rows ?? 0;
+
+    expect(previewed).toBeGreaterThan(0);
+    expect(await isLive(fileId)).toBe(true);
+
+    const outcome = await retention.purge(await newUser('admin'));
+
+    expect(
+      outcome.transient.find(
+        (entry) => entry.code === 'unsent_message_attachments',
+      )?.rows,
+    ).toBe(previewed);
+  });
+
+  it('is idempotent: a second run finds nothing left to do', async () => {
+    const owner = await newUser('employer');
+    const fileId = await storedFile(owner, 'message_attachment');
+    await age(fileId, window + 1);
+
+    await retention.purge(await newUser('admin'));
+    droppedBytes.length = 0;
+    const second = await retention.purge(await newUser('admin'));
+
+    expect(
+      second.transient.find(
+        (entry) => entry.code === 'unsent_message_attachments',
+      )?.rows ?? 0,
+    ).toBe(0);
+    // A soft-deleted row is not swept twice, so its bytes are not re-dropped.
+    expect(droppedBytes).toHaveLength(0);
+  });
+});
+
 describe('an account with financial history', () => {
   it('is anonymized rather than deleted, and the ledger survives', async () => {
     const adminUserId = await newUser('admin');

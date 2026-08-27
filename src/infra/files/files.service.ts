@@ -254,6 +254,24 @@ export class FilesService {
     await this.telegram.deleteMessage(Number(row.telegram_message_id));
   }
 
+  /**
+   * Drops the stored bytes for a row that has **already** been soft-deleted.
+   *
+   * For the retention sweep, which removes many rows in one statement and so cannot go
+   * through [softDelete] one owner at a time. Best-effort and never thrown from: the
+   * database row is the record, and a storage message that outlives it is rubbish in a
+   * private channel rather than data anybody can reach.
+   */
+  async dropStoredMessage(telegramMessageId: string): Promise<void> {
+    try {
+      await this.telegram.deleteMessage(Number(telegramMessageId));
+    } catch (error) {
+      this.logger.warn(
+        `Stored bytes for message ${telegramMessageId} were not dropped: ${String(error)}`,
+      );
+    }
+  }
+
   /** Extension of the accepted upload, for the caller to reuse. */
   private validate(upload: FileUpload): string {
     if (upload.bytes.length === 0) {
