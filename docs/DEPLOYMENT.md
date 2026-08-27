@@ -164,12 +164,37 @@ without `CLIENT_IP_HEADER` logs a warning at boot for exactly that reason.
 
 ### `NODE_ENV=production`
 
-Two settings are refused at boot in production, both deliberately:
+**Five** settings are refused at boot in production, all deliberately:
 
 - `OTP_ECHO_IN_RESPONSE` must be `false`. It would hand any caller a login code for
   any phone number, over a **public** route.
+- `OTP_STATIC_CODE` must be empty. A fixed code is a master key to every account.
 - `TELEGRAM_JWKS_URL` must be `https`. Signing keys fetched over plaintext can be
   substituted, which forges every login.
+- **`MODERATION_ENABLED` must be `true`** *(since 2026-08-27, MT-003)*. Off, a
+  vacancy becomes discoverable with no administrator decision — §6.4, BR-04, BR-12,
+  UAT-05 and UAT-11 all unenforced, while the moderation screen still exists and
+  looks like it is doing something.
+- **`EMPLOYER_VERIFICATION_ENABLED` must be `true`** *(same change)*. Off, every
+  employer self-verifies and §6.1's decision never happens.
+
+`src/infra/env-schema.spec.ts` covers all five. They had been trusted and untested,
+which is a boot check that can stop working silently.
+
+> ### If the container stops booting after this change, that is the change working
+>
+> Three consecutive audits found `MODERATION_ENABLED=false` on the deployed API,
+> which is why it is now a refusal and not a warning — a warning is demonstrably
+> what was being ignored. The boot log names the variable and says why.
+>
+> **The fix is `MODERATION_ENABLED=true` and `EMPLOYER_VERIFICATION_ENABLED=true`
+> in the deployment's `.env`, then `pnpm api:up`.** Both need an administrator to
+> exist, which `pnpm seed` grants to `SEED_ADMIN_PHONES` — that runs against the
+> database rather than through this API, so there is no ordering problem.
+>
+> They are deliberately **not** pinned in `docker-compose.api.yml` beside
+> `LOG_PRETTY`. Pinning them would make the deployment correct and silent; the
+> point of a fail-closed check is that somebody finds out.
 
 `OTP_STATIC_CODE` is refused too, and **since 2026-08-20 `NODE_ENV=production` is
 set**: Eskiz delivers, both variables are cleared, and the guarantee has moved off

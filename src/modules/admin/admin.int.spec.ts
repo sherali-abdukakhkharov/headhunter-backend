@@ -22,6 +22,7 @@ import { SchemasService } from '@modules/schemas/schemas.service';
 import { VacanciesService } from '@modules/vacancies/vacancies.service';
 import { NotificationsService } from '@modules/notifications/notifications.service';
 import { NoopPushSender } from '@modules/notifications/push/noop-push.sender';
+import { DiscoveryService } from '@modules/discovery/discovery.service';
 import { PushDispatcher } from '@modules/notifications/push/push-dispatcher.service';
 
 import { AUDIT_ACTIONS, AuditService } from './audit.service';
@@ -56,6 +57,8 @@ let moderation: AdminModerationService;
 let adminUsers: AdminUsersService;
 let adminDictionaries: DictionaryAdminService;
 let guard: AccountStatusGuard;
+/** The candidate's side of BR-04: what a moderation decision makes visible. */
+let discovery: DiscoveryService;
 let dictionariesRead: DictionariesService;
 
 /**
@@ -132,6 +135,7 @@ beforeAll(() => {
   adminUsers = new AdminUsersService(db, audit, notifications, config);
   adminDictionaries = new DictionaryAdminService(db, audit);
   guard = new AccountStatusGuard(db);
+  discovery = new DiscoveryService(db, config);
 });
 
 afterAll(async () => {
@@ -312,6 +316,74 @@ async function draftVacancy(
 
   return vacancyId;
 }
+
+describe('MT-003: moderation is what makes a vacancy discoverable (BR-04)', () => {
+  /** Whether a candidate can find it at all. */
+  async function discoverable(
+    candidateUserId: string,
+    vacancyId: string,
+  ): Promise<boolean> {
+    const items = await discovery.recent(candidateUserId, {
+      limit: 50,
+      offset: 0,
+    });
+
+    return items.some((item) => item.id === vacancyId);
+  }
+
+  it('submitted is not discoverable, approved is', async () => {
+    // The deployment smoke the audit asked for, as a test rather than a script:
+    // submit a vacancy that needs review, assert it cannot be found, approve
+    // it, assert it can. Three consecutive audits found `MODERATION_ENABLED`
+    // false on the deployed API, so the *rule* needs a check that runs on every
+    // commit — the moderation screen existing is not the rule.
+    const adminUserId = await newUser('admin');
+    const candidateUserId = await newUser('candidate');
+    const employerUserId = await verifiedEmployer();
+    const vacancyId = await draftVacancy(employerUserId);
+
+    const submitted = await vacancies.submit(employerUserId, vacancyId);
+    expect(submitted.aggregate.row.status).toBe('under_moderation');
+    expect(await discoverable(candidateUserId, vacancyId)).toBe(false);
+
+    await moderation.moderateVacancy(adminUserId, vacancyId, 'active', null);
+
+    expect(await discoverable(candidateUserId, vacancyId)).toBe(true);
+  });
+
+  it('rejected stays out of discovery, with the reason recorded', async () => {
+    const adminUserId = await newUser('admin');
+    const candidateUserId = await newUser('candidate');
+    const employerUserId = await verifiedEmployer();
+    const vacancyId = await draftVacancy(employerUserId);
+
+    await vacancies.submit(employerUserId, vacancyId);
+    await moderation.moderateVacancy(
+      adminUserId,
+      vacancyId,
+      'rejected',
+      'Duplicated listing.',
+    );
+
+    expect(await discoverable(candidateUserId, vacancyId)).toBe(false);
+  });
+
+  it('and the decision leaves an audit row naming who made it', async () => {
+    // The audit's third acceptance criterion. A decision nobody can attribute
+    // is not a review, whatever the status column says.
+    const adminUserId = await newUser('admin');
+    const employerUserId = await verifiedEmployer();
+    const vacancyId = await draftVacancy(employerUserId);
+
+    await vacancies.submit(employerUserId, vacancyId);
+    await moderation.moderateVacancy(adminUserId, vacancyId, 'active', null);
+
+    const [entry] = await audit.list({ actorUserId: adminUserId }, 1, 0);
+
+    expect(entry.action).toBe(AUDIT_ACTIONS.vacancyModerated);
+    expect(entry.targetId).toBe(vacancyId);
+  });
+});
 
 describe('the audit log names who acted (§10.4)', () => {
   /** Gives a user the name a candidate profile would carry. */

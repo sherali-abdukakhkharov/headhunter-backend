@@ -403,11 +403,45 @@ export const envSchema = Joi.object<AppEnv, true>({
   // **On since M10**, which gives submissions a reviewer (§10.2). It stays a flag
   // because an instance with no administrator account yet has to be able to turn it
   // off: otherwise every employer parks in `under_review` with nobody to decide.
-  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean().default(true),
+  //
+  // **Refused in production** (MT-003), by the same mechanism as the OTP backdoors
+  // rather than by a deploy checklist. The escape hatch exists for an instance with
+  // nobody to approve anything, and a production instance has `SEED_ADMIN_PHONES` -
+  // seeding runs against the database, not through this API, so there is no
+  // chicken-and-egg to solve here.
+  EMPLOYER_VERIFICATION_ENABLED: Joi.boolean()
+    .default(true)
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.valid(true).messages({
+        'any.only':
+          'EMPLOYER_VERIFICATION_ENABLED must be true when NODE_ENV=production: ' +
+          '§6.1 requires a human decision, and off means every employer ' +
+          'self-verifies',
+      }),
+    }),
 
   // **On since M10**, which gives vacancies a moderator (§10.2, BR-04). Same caveat as
   // above: an instance with no administrator has to be able to turn it off.
-  MODERATION_ENABLED: Joi.boolean().default(true),
+  //
+  // **Refused in production**, and this one is MT-003 itself: three audits running
+  // found it false on the deployed API. Off, a vacancy publishes without anyone
+  // reviewing it - so §6.4, BR-04, BR-12, UAT-05 and UAT-11 are all unenforced while
+  // the moderation *screen* exists and looks like it is doing something. The
+  // existence of a queue is not the rule; this flag is.
+  //
+  // Refusing at boot rather than warning is the whole point: a warning is what the
+  // last three audits found being ignored.
+  MODERATION_ENABLED: Joi.boolean()
+    .default(true)
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.valid(true).messages({
+        'any.only':
+          'MODERATION_ENABLED must be true when NODE_ENV=production: off, a ' +
+          'vacancy becomes discoverable with no administrator decision (BR-04)',
+      }),
+    }),
 
   // §4.2 requires TTL, resend delay and attempt limits to be server config -
   // never client-supplied, never hardcoded in a service.

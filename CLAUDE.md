@@ -58,6 +58,17 @@ re-derivable from the text.
   request's `x-lang`. The key is also the client-visible error `code`.
 - **Never give a client a Telegram file URL.** It embeds the bot token. File bytes
   are proxied through this API after an ownership check (ARCHITECTURE.md §9).
+- **Five settings are refused at boot when `NODE_ENV=production`**, not warned
+  about: `OTP_ECHO_IN_RESPONSE`, `OTP_STATIC_CODE`, a plaintext
+  `TELEGRAM_JWKS_URL`, and — since 2026-08-27 (MT-003) — `MODERATION_ENABLED`
+  and `EMPLOYER_VERIFICATION_ENABLED` being **false**. Both stay flags because an
+  instance with no administrator has to be able to turn review off; a production
+  instance has `SEED_ADMIN_PHONES`, and seeding runs against the database rather
+  than through this API, so there is no ordering problem.
+  Refusing rather than warning is the finding: three consecutive audits found
+  `MODERATION_ENABLED=false` on the deployed API *while the warning printed on
+  every start*. `env-schema.spec.ts` covers all five — they had been trusted and
+  untested, which is a boot check that can stop working silently.
 - **Login is phone + OTP** (§4.1). **Eskiz delivers, and codes are random, since 2026-08-20**
   — connecting the provider was two environment variables and no code change, which is what
   the `SmsSender` seam was for ([docs/SMS_PROVIDER.md](docs/SMS_PROVIDER.md)).
