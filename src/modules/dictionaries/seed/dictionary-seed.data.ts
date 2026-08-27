@@ -596,7 +596,7 @@ export const DICTIONARY_SEED: SeedType[] = [
           en: 'Message attachment',
         },
       },
-            // --- employer verification (§6.1) ---
+      // --- employer verification (§6.1) ---
       // "verification documents if required" for a company and "identity
       // verification data if required by policy" for an individual. Which of these
       // is actually mandatory is an open client decision, so the requirement lives

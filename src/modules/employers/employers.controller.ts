@@ -1,3 +1,4 @@
+import { FilesService } from '@infra/files/files.service';
 import { Body, Controller, Get, Post, Put } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -47,6 +48,9 @@ export class EmployersController {
   constructor(
     private readonly employers: EmployersService,
     private readonly verification: VerificationService,
+    // For the upload policy only: the accepted extensions and the size cap this
+    // deployment enforces, so the app's picker matches what /files will take.
+    private readonly files: FilesService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.timeZone = config.get('PLATFORM_TIME_ZONE', { infer: true });
@@ -179,6 +183,7 @@ export class EmployersController {
         ? formatWithOffset(state.verifiedAt, this.timeZone)
         : null,
       requiredEvidence: state.requiredEvidence,
+      upload: this.files.policy(),
       submissions: state.submissions.map((submission) => ({
         id: submission.id,
         status: submission.status,

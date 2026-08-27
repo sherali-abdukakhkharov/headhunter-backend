@@ -18,6 +18,15 @@ import { TelegramFileClient } from './telegram-file.client';
 export interface StoredFile {
   id: string;
   purposeId: string;
+  /**
+   * The `file_purpose` **code**, carried beside the id because the upload takes a
+   * code and every caller that has to match a file to a slot compares codes.
+   *
+   * Without it each caller resolves the dictionary itself, and a client that only
+   * ever sees the id cannot tell which document it just uploaded — the id/code
+   * confusion CLAUDE.md warns about, one layer lower.
+   */
+  purposeCode: string;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -129,7 +138,7 @@ export class FilesService {
       ])
       .executeTakeFirstOrThrow();
 
-    return toStoredFile(row);
+    return toStoredFile({ ...row, purpose_code: purposeCode });
   }
 
   /**
@@ -145,17 +154,23 @@ export class FilesService {
   ): Promise<{ file: StoredFile; bytes: Buffer }> {
     const row = await this.db
       .selectFrom('stored_files')
+      .innerJoin(
+        'dictionary_items',
+        'dictionary_items.id',
+        'stored_files.purpose_id',
+      )
       .select([
-        'id',
-        'purpose_id',
-        'file_name',
-        'mime_type',
-        'size_bytes',
-        'created_at',
-        'telegram_file_id',
-        'sha256',
+        'stored_files.id',
+        'stored_files.purpose_id',
+        'dictionary_items.code as purpose_code',
+        'stored_files.file_name',
+        'stored_files.mime_type',
+        'stored_files.size_bytes',
+        'stored_files.created_at',
+        'stored_files.telegram_file_id',
+        'stored_files.sha256',
       ])
-      .where('id', '=', fileId)
+      .where('stored_files.id', '=', fileId)
       .where('owner_user_id', '=', viewerUserId)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
@@ -208,23 +223,33 @@ export class FilesService {
   ): Promise<StoredFile[]> {
     let query = this.db
       .selectFrom('stored_files')
+      // Inner join: a file whose purpose row is gone has no slot to appear in, so
+      // dropping it here is the same answer every caller was already computing.
+      .innerJoin(
+        'dictionary_items',
+        'dictionary_items.id',
+        'stored_files.purpose_id',
+      )
       .select([
-        'id',
-        'purpose_id',
-        'file_name',
-        'mime_type',
-        'size_bytes',
-        'created_at',
+        'stored_files.id',
+        'stored_files.purpose_id',
+        'dictionary_items.code as purpose_code',
+        'stored_files.file_name',
+        'stored_files.mime_type',
+        'stored_files.size_bytes',
+        'stored_files.created_at',
       ])
       .where('owner_user_id', '=', ownerUserId)
       .where('deleted_at', 'is', null);
 
     if (purposeCode) {
       const purpose = await this.resolvePurpose(purposeCode);
-      query = query.where('purpose_id', '=', purpose.id);
+      query = query.where('stored_files.purpose_id', '=', purpose.id);
     }
 
-    const rows = await query.orderBy('created_at', 'desc').execute();
+    const rows = await query
+      .orderBy('stored_files.created_at', 'desc')
+      .execute();
 
     return rows.map(toStoredFile);
   }
@@ -273,6 +298,21 @@ export class FilesService {
   }
 
   /** Extension of the accepted upload, for the caller to reuse. */
+  /**
+   * What an upload may be, for a client that has to draw a picker.
+   *
+   * Served rather than duplicated in the app for the same reason
+   * `requiredEvidence` is: the size cap is `FILE_MAX_SIZE_BYTES`, a deployment
+   * setting, and an app that hardcodes it either rejects files this instance
+   * would take or promises ones it would not.
+   */
+  policy(): { acceptedExtensions: string[]; maxSizeBytes: number } {
+    return {
+      acceptedExtensions: Object.keys(ACCEPTED),
+      maxSizeBytes: this.maxBytes,
+    };
+  }
+
   private validate(upload: FileUpload): string {
     if (upload.bytes.length === 0) {
       throw new BadRequestError('file.empty');
@@ -343,6 +383,7 @@ export class FilesService {
 interface StoredFileRow {
   id: string;
   purpose_id: string;
+  purpose_code: string;
   file_name: string;
   mime_type: string;
   size_bytes: number;
@@ -353,6 +394,7 @@ function toStoredFile(row: StoredFileRow): StoredFile {
   return {
     id: row.id,
     purposeId: row.purpose_id,
+    purposeCode: row.purpose_code,
     fileName: row.file_name,
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,

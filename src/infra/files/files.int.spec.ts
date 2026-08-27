@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 
 import type { ConfigService } from '@nestjs/config';
 
@@ -34,7 +34,7 @@ import type {
 class FakeTelegram {
   readonly uploads: FileToUpload[] = [];
   readonly deleted: number[] = [];
-  /** file_id → bytes, as Telegram would hold them. */
+  /** file_id â†’ bytes, as Telegram would hold them. */
   private readonly stored = new Map<string, Buffer>();
   private nextId = 1;
 
@@ -168,6 +168,30 @@ describe('storing a file', () => {
     expect(row.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('carries the purpose as a code as well as an id', async () => {
+    const owner = await newUser();
+
+    const stored = await files.store(owner, 'cv', {
+      bytes: PDF,
+      originalName: 'cv.pdf',
+      mimeType: 'application/pdf',
+    });
+
+    // The id/code confusion CLAUDE.md warns about, one layer down: `store`
+    // takes a code, so returning only the id means nothing that uploaded a file
+    // can tell which slot it just filled without resolving the dictionary.
+    expect(stored.purposeCode).toBe('cv');
+    expect(stored.purposeId).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
+
+    const [listed] = await files.listForOwner(owner);
+    expect(listed.purposeCode).toBe('cv');
+
+    const { file: read } = await files.read(owner, stored.id);
+    expect(read.purposeCode).toBe('cv');
+  });
+
   it('never puts a storage URL or the bot token in the database', async () => {
     const owner = await newUser();
     await files.store(owner, 'cv', {
@@ -183,7 +207,7 @@ describe('storing a file', () => {
       .executeTakeFirstOrThrow();
 
     // Telegram's download link embeds the bot token and expires within the hour.
-    // Persisting one would be both a secret at rest and a stale value (§11.1).
+    // Persisting one would be both a secret at rest and a stale value (Â§11.1).
     for (const value of Object.values(columns)) {
       if (typeof value === 'string') {
         expect(value).not.toMatch(/api\.telegram\.org/);
@@ -192,7 +216,7 @@ describe('storing a file', () => {
     }
   });
 
-  it('keeps the owner’s phone number out of the storage chat caption', async () => {
+  it('keeps the ownerâ€™s phone number out of the storage chat caption', async () => {
     const owner = await newUser();
     await files.store(owner, 'cv', {
       bytes: PDF,
@@ -200,7 +224,7 @@ describe('storing a file', () => {
       mimeType: 'application/pdf',
     });
 
-    // §12.1: the caption is readable by whoever can read the storage chat.
+    // Â§12.1: the caption is readable by whoever can read the storage chat.
     expect(telegram.uploads[0].caption).not.toMatch(/\+998/);
     expect(telegram.uploads[0].caption).toContain(owner);
   });
@@ -221,7 +245,48 @@ describe('storing a file', () => {
   });
 });
 
-describe('upload validation (§12.5)', () => {
+describe('the policy it publishes', () => {
+  it('names the extensions and the cap it actually enforces', () => {
+    const policy = files.policy();
+
+    // Every extension it advertises must be one an upload of that type gets
+    // through, and the cap must be the configured one rather than a repeated
+    // literal â€” a published policy that disagrees with the gate is worse than
+    // none, because a client will filter its picker by it.
+    expect(policy.acceptedExtensions).toEqual(
+      expect.arrayContaining(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']),
+    );
+    expect(policy.maxSizeBytes).toBe(10 * 1024 * 1024);
+  });
+
+  it('advertises nothing the validator would refuse', async () => {
+    const owner = await newUser();
+
+    // The one extension the table lists that the fixtures can prove end to end:
+    // the rest need their own magic bytes, and the refusal tests below already
+    // pin the fact that content is checked. What matters here is that the list
+    // and the gate are the same table.
+    await expect(
+      files.store(owner, 'cv', {
+        bytes: PDF,
+        originalName: 'a.pdf',
+        mimeType: 'application/pdf',
+      }),
+    ).resolves.toBeDefined();
+
+    await expect(
+      files.store(owner, 'cv', {
+        bytes: PDF,
+        originalName: 'a.exe',
+        mimeType: 'application/pdf',
+      }),
+    ).rejects.toThrow();
+
+    expect(files.policy().acceptedExtensions).not.toContain('exe');
+  });
+});
+
+describe('upload validation (Â§12.5)', () => {
   it('refuses an empty file', async () => {
     const owner = await newUser();
 
@@ -324,7 +389,7 @@ describe('reading a file', () => {
     expect(file.fileName).toBe('cv.pdf');
   });
 
-  it('refuses another account’s file as not found, not forbidden', async () => {
+  it('refuses another accountâ€™s file as not found, not forbidden', async () => {
     const owner = await newUser();
     const stranger = await newUser();
 
@@ -335,7 +400,7 @@ describe('reading a file', () => {
     });
 
     // Confirming that an id exists but belongs to someone else is information we
-    // do not owe (§11.1).
+    // do not owe (Â§11.1).
     await expect(files.read(stranger, stored.id)).rejects.toMatchObject({
       messageKey: 'file.not_found',
     });
@@ -365,7 +430,7 @@ describe('reading a file', () => {
 });
 
 describe('listing and deleting', () => {
-  it('lists the owner’s files, newest first, optionally by purpose', async () => {
+  it('lists the ownerâ€™s files, newest first, optionally by purpose', async () => {
     const owner = await newUser();
 
     await files.store(owner, 'cv', {
@@ -385,7 +450,7 @@ describe('listing and deleting', () => {
     expect(onlyCvs.map((f) => f.fileName)).toEqual(['cv.pdf']);
   });
 
-  it('does not list another account’s files', async () => {
+  it('does not list another accountâ€™s files', async () => {
     const owner = await newUser();
     const stranger = await newUser();
 
@@ -423,7 +488,7 @@ describe('listing and deleting', () => {
     expect(row.deleted_at).not.toBeNull();
   });
 
-  it('refuses to delete another account’s file', async () => {
+  it('refuses to delete another accountâ€™s file', async () => {
     const owner = await newUser();
     const stranger = await newUser();
 

@@ -159,6 +159,7 @@ export class FilesController {
     return {
       id: file.id,
       purposeId: file.purposeId,
+      purposeCode: file.purposeCode,
       fileName: file.fileName,
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,

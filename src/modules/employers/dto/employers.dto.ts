@@ -208,6 +208,26 @@ export class RequiredEvidenceDto {
   required!: boolean;
 }
 
+export class UploadPolicyDto {
+  @ApiProperty({
+    type: [String],
+    example: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
+    description:
+      'Extensions `POST /files` accepts, for the picker’s filter. The server ' +
+      'also checks the leading bytes, so this is a convenience, not the gate.',
+  })
+  acceptedExtensions!: string[];
+
+  @ApiProperty({
+    example: 10485760,
+    description:
+      '`FILE_MAX_SIZE_BYTES` — a deployment setting, which is why it is served. ' +
+      'A client that hardcodes it either bounces files this instance would take ' +
+      'or promises ones it would refuse.',
+  })
+  maxSizeBytes!: number;
+}
+
 export class VerificationSubmissionDto {
   @ApiProperty() id!: string;
   @ApiProperty({ enum: VERIFICATION_STATUSES }) status!: VerificationStatus;
@@ -230,4 +250,12 @@ export class VerificationStateDto {
     description: 'Newest first. Past attempts and why they were refused.',
   })
   submissions!: VerificationSubmissionDto[];
+
+  @ApiProperty({
+    type: UploadPolicyDto,
+    description:
+      'What the evidence in `requiredEvidence` may be uploaded as. Here rather ' +
+      'than on each row because the policy is per deployment, not per document.',
+  })
+  upload!: UploadPolicyDto;
 }

@@ -46,20 +46,17 @@ export class AttachmentsService {
   ) {}
 
   async list(userId: string): Promise<ProfileAttachment[]> {
-    const purposes = await this.purposeCodesById();
     const files = await this.files.listForOwner(userId);
 
-    return files
-      .filter((file) => purposes.has(file.purposeId))
-      .map((file) => ({
-        id: file.id,
-        purposeCode: purposes.get(file.purposeId) as string,
-        fileName: file.fileName,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        createdAt: file.createdAt,
-        downloadPath: `/files/${file.id}/content`,
-      }));
+    return files.map((file) => ({
+      id: file.id,
+      purposeCode: file.purposeCode,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      createdAt: file.createdAt,
+      downloadPath: `/files/${file.id}/content`,
+    }));
   }
 
   async upload(
@@ -147,13 +144,4 @@ export class AttachmentsService {
   }
 
   /** `file_purpose` id → code, so a stored file can name its purpose. */
-  private async purposeCodesById(): Promise<Map<string, string>> {
-    const rows = await this.db
-      .selectFrom('dictionary_items')
-      .select(['id', 'code'])
-      .where('type_code', '=', 'file_purpose')
-      .execute();
-
-    return new Map(rows.map((row) => [row.id, row.code]));
-  }
 }

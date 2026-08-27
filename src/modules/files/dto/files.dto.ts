@@ -34,6 +34,15 @@ export class StoredFileResponseDto {
   })
   purposeId!: string;
 
+  @ApiProperty({
+    example: 'company_registration',
+    description:
+      'The same purpose as a **code** — what `POST /files` took and what every ' +
+      'slot on a screen is keyed by. Sent beside the id so a client can match a ' +
+      'file to the document it satisfies without first resolving the dictionary.',
+  })
+  purposeCode!: string;
+
   @ApiProperty({ example: 'cv.pdf' })
   fileName!: string;
 
