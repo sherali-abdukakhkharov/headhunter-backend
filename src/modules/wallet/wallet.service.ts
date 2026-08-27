@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { LedgerSign } from './dto/wallet.dto';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
@@ -134,8 +135,9 @@ export class WalletService {
     employerUserId: string,
     limit: number,
     offset: number,
+    sign?: LedgerSign,
   ): Promise<WalletTransactionView[]> {
-    const rows = await this.db
+    let query = this.db
       .selectFrom('wallet_transactions')
       .select([
         'id',
@@ -147,7 +149,16 @@ export class WalletService {
         'reason',
         'created_at',
       ])
-      .where('employer_user_id', '=', employerUserId)
+      .where('employer_user_id', '=', employerUserId);
+
+    if (sign) {
+      // BR-24 makes every row's sign meaningful: a credit is money or Coins
+      // arriving and a debit is them leaving, whatever the kind says. Zero is
+      // not a legal amount, so the two halves are exhaustive.
+      query = query.where('amount_coins', sign === 'credit' ? '>' : '<', 0);
+    }
+
+    const rows = await query
       // Newest first, and `id` as the tiebreaker: two transactions can share a timestamp,
       // and a page boundary that fell between them would repeat or skip one.
       .orderBy('created_at', 'desc')

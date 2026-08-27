@@ -108,6 +108,7 @@ export class WalletController {
       user.id,
       query.limit ?? 20,
       query.offset ?? 0,
+      query.sign,
     );
 
     return { items: items.map((item) => this.transactionDto(item)) };

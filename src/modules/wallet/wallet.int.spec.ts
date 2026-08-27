@@ -401,6 +401,59 @@ describe('Candidate Unlock (BR-16, BR-18)', () => {
   });
 });
 
+describe('the ledger filter (§06, E-52)', () => {
+  it('answers one side of the ledger, from the whole ledger', async () => {
+    const employerUserId = await newUser('employer');
+
+    // A bonus in, an unlock out, an adjustment in: three rows, two signs.
+    await wallet.read(employerUserId);
+    await wallet.unlock(employerUserId, await newUser('candidate'));
+    await wallet.adjust(
+      await newUser('admin'),
+      employerUserId,
+      5,
+      'Support credit',
+    );
+
+    const all = await wallet.transactions(employerUserId, 50, 0);
+    const credits = await wallet.transactions(employerUserId, 50, 0, 'credit');
+    const debits = await wallet.transactions(employerUserId, 50, 0, 'debit');
+
+    expect(all).toHaveLength(3);
+    expect(credits.every((row) => row.amountCoins > 0)).toBe(true);
+    expect(debits.every((row) => row.amountCoins < 0)).toBe(true);
+    // Exhaustive: zero is not a legal amount, so every row is on one side.
+    expect(credits.length + debits.length).toBe(all.length);
+  });
+
+  it('pages the filtered ledger, not the page it filtered', async () => {
+    const employerUserId = await newUser('employer');
+    await wallet.read(employerUserId);
+
+    const admin = await newUser('admin');
+    for (let i = 0; i < 3; i++) {
+      await wallet.adjust(admin, employerUserId, -1, `Correction ${i}`);
+    }
+
+    // The **newest** row is a credit on purpose. Without it the first two rows
+    // of the unfiltered ledger happen to be debits anyway, and the case would
+    // pass with the filter removed - which is the only thing it is here to
+    // notice.
+    await wallet.adjust(admin, employerUserId, 5, 'Support credit');
+
+    const unfiltered = await wallet.transactions(employerUserId, 2, 0);
+    expect(unfiltered.some((row) => row.amountCoins > 0)).toBe(true);
+
+    // **This is the bug the parameter exists for.** Filtering after paging
+    // gives "the debits among the first two rows" - one of them here.
+    // Filtering before it gives the first two debits.
+    const firstTwo = await wallet.transactions(employerUserId, 2, 0, 'debit');
+
+    expect(firstTwo).toHaveLength(2);
+    expect(firstTwo.every((row) => row.amountCoins < 0)).toBe(true);
+  });
+});
+
 describe('the ledger (BR-24)', () => {
   it('refuses an UPDATE, whatever it matches', async () => {
     const employerUserId = await employerWith(10);

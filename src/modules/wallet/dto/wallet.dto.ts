@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -152,7 +153,32 @@ export class UnlockRequestDto {
   candidateUserId!: string;
 }
 
+/**
+ * Which side of the ledger a page is asking for.
+ *
+ * **Sign, not kind.** The client's filter offers "money in" and "money out",
+ * and a kind list would have to be kept in step with it on both sides — a
+ * `reversal` is a credit or a debit depending on what it reverses, so a kind
+ * cannot answer the question the screen is actually asking. The sign of
+ * `amount_coins` can.
+ */
+export const LEDGER_SIGNS = ['credit', 'debit'] as const;
+
+export type LedgerSign = (typeof LEDGER_SIGNS)[number];
+
 export class WalletPageDto {
+  @ApiPropertyOptional({
+    enum: LEDGER_SIGNS,
+    description:
+      'Restrict to money in or money out. Omitted means the whole ledger.\n\n' +
+      'Filtered **here** rather than in the app: a client filtering a page it ' +
+      'has already loaded shows "the spends among these twenty", which looks ' +
+      'like a complete answer and is not.',
+  })
+  @IsOptional()
+  @IsIn(LEDGER_SIGNS)
+  sign?: LedgerSign;
+
   @ApiPropertyOptional({ default: 20, maximum: 100 })
   @IsOptional()
   @Type(() => Number)

@@ -1889,6 +1889,13 @@ not hard-coded in Flutter", and §10.5 allows changing them. `GET /wallet` retur
 render from those. A hard-coded "2 Coins" in the app becomes wrong the day the client
 reprices, and it becomes wrong silently.
 
+`GET /wallet/transactions` takes an optional `sign` — `credit` or `debit` — and filters
+**before paging**. §06's ledger screen offers "topped up" and "spent", and a client filtering
+a page it already holds answers "the spends among these twenty", which looks like a complete
+answer and is not; it also makes "show more" page the wrong list. Sign rather than kind
+because an `admin_adjustment` can be either and a `reversal` is a credit that undoes a debit,
+so no list of kinds answers the question the screen is asking.
+
 `GET /wallet/transactions` reports the price **each transaction was priced at**, which is not
 necessarily today's — §10.5 says a change "affects future transactions only and does not
 rewrite historical ledger records". A history screen that recomputed value from the current
