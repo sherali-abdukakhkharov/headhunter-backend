@@ -338,6 +338,26 @@ export interface AppEnv {
   TELEGRAM_TIMEOUT_MS: number;
 
   /**
+   * Where new client releases are announced, or empty to announce nothing.
+   *
+   * A chat id, not a secret: it names a destination and grants nothing. The
+   * credential this uses is `TELEGRAM_BOT_TOKEN`, which is already here for the
+   * file store — see `ReleaseNotifierService` for why the poster lives on the
+   * server rather than in the release workflow.
+   *
+   * **Deliberately not `TELEGRAM_STORAGE_CHAT_ID`.** That chat holds every CV
+   * and verification document a user has uploaded; release notices do not
+   * belong in it, and nobody should be reading one to find the other.
+   */
+  RELEASE_CHAT_ID: string;
+
+  /** `owner/repo` of the client, whose releases are watched. */
+  RELEASE_REPO: string;
+
+  /** How often to look. The GitHub API allows 60 unauthenticated calls an hour. */
+  RELEASE_POLL_MINUTES: number;
+
+  /**
    * Upload ceiling. Bounded above by Telegram's **download** limit of 20 MB, not
    * its 50 MB send limit: a larger file would upload successfully and then be
    * permanently unreadable.
@@ -662,6 +682,9 @@ export const envSchema = Joi.object<AppEnv, true>({
     .uri({ scheme: ['https', 'http'] })
     .default('https://api.telegram.org'),
   TELEGRAM_TIMEOUT_MS: Joi.number().integer().min(1_000).default(30_000),
+  RELEASE_CHAT_ID: Joi.string().allow('').default(''),
+  RELEASE_REPO: Joi.string().default('sherali-abdukakhkharov/headhunter-app'),
+  RELEASE_POLL_MINUTES: Joi.number().integer().min(1).default(10),
 
   // 10 MB by default, matching the client contract's `maxSizeBytes` (§4.1). The
   // 20 MB ceiling is Telegram's getFile download limit - anything above it can be

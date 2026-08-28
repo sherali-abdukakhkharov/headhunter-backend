@@ -29,6 +29,7 @@ import { PaymentsModule } from '@modules/payments/payments.module';
 import { WalletModule } from '@modules/wallet/wallet.module';
 import { UsersModule } from '@modules/users/users.module';
 import { VacanciesModule } from '@modules/vacancies/vacancies.module';
+import { ReleasesModule } from '@modules/releases/releases.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { VacanciesModule } from '@modules/vacancies/vacancies.module';
     AdminModule,
     NotificationsModule,
     FilesHttpModule,
+    ReleasesModule,
     HealthModule,
   ],
   providers: [
