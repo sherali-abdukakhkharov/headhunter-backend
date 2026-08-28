@@ -248,6 +248,12 @@ change had caused it.
 - **`OTP_STATIC_CODE` is removed by clearing it**, not by editing code. It substitutes
   at code generation only, so a real sender inherits every behaviour the fixed code was
   tested with.
+- **Nothing is sent for a tester account.** The ten seeded demo numbers (`+99801…`)
+  carry their own fixed code and `OtpService` skips delivery for them entirely — the
+  provider is never called, so a QA pass costs nothing in messages and cannot be
+  blocked by an Eskiz outage. A number in that range with no fixture is refused before
+  the provider is reached, because it provably cannot receive anything.
+  See [TEST_ACCOUNTS.md](TEST_ACCOUNTS.md).
 
 ## Ask on purchase
 

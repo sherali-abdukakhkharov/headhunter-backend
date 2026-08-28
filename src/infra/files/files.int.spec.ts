@@ -181,9 +181,7 @@ describe('storing a file', () => {
     // takes a code, so returning only the id means nothing that uploaded a file
     // can tell which slot it just filled without resolving the dictionary.
     expect(stored.purposeCode).toBe('cv');
-    expect(stored.purposeId).toMatch(
-      /^[0-9a-f-]{36}$/,
-    );
+    expect(stored.purposeId).toMatch(/^[0-9a-f-]{36}$/);
 
     const [listed] = await files.listForOwner(owner);
     expect(listed.purposeCode).toBe('cv');

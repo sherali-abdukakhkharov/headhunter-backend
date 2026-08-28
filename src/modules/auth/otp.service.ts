@@ -14,6 +14,7 @@ import type { AppEnv } from '@infra/env-schema';
 import { translate } from '@infra/i18n/translate';
 import { maskPhone } from '@infra/phone/phone';
 
+import { DemoAccountService } from './demo-account.service';
 import { SmsSender } from './sms/sms-sender';
 
 export interface OtpSendResult {
@@ -56,6 +57,7 @@ export class OtpService {
   constructor(
     @Inject(KYSELY) private readonly db: Database,
     private readonly sms: SmsSender,
+    private readonly demo: DemoAccountService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.pepper = config.get('TOKEN_HASH_PEPPER', { infer: true });
@@ -103,7 +105,32 @@ export class OtpService {
     requestedIp: string | null,
     locale: LocaleCode = 'uz-Latn',
   ): Promise<OtpSendResult> {
-    const issued = await this.issue(phone, purpose, requestedIp);
+    const demo = await this.demo.find(phone);
+
+    if (!demo && this.demo.isReserved(phone)) {
+      // A number in the reserved range that has no fixture cannot be reached by
+      // either route: no fixed code to issue, and no operator to carry an SMS. Refused
+      // here rather than three lines later, because the alternative is spending a
+      // message on a number that provably does not exist and then reporting the
+      // provider's refusal as if it were an outage.
+      this.logger.error(
+        `No fixed code for reserved number ${maskPhone(phone)}; refusing to send.`,
+      );
+      throw new UpstreamError('auth.otp_send_failed');
+    }
+
+    const issued = await this.issue(phone, purpose, requestedIp, demo?.code);
+
+    if (demo) {
+      // The whole of "seed users get no SMS". Not a stubbed provider and not a
+      // swallowed failure - the provider is never called, so nothing is charged for
+      // and nothing can fail. Everything else about this login is the real one.
+      this.logger.log(
+        `Fixed code issued for ${demo.label} (${maskPhone(phone)}); no SMS sent.`,
+      );
+
+      return issued.result;
+    }
 
     await this.deliver(phone, purpose, locale, issued.code);
 
@@ -122,6 +149,7 @@ export class OtpService {
     phone: string,
     purpose: OtpPurpose,
     requestedIp: string | null,
+    fixedCode?: string,
   ): Promise<{ result: OtpSendResult; code: string; id: string }> {
     return this.db.transaction().execute(async (trx) => {
       // The delay is evaluated entirely in the database. Comparing a Postgres
@@ -167,7 +195,14 @@ export class OtpService {
       // the row, the TTL, the attempt counter, `verify` - is identical either
       // way, so clearing OTP_STATIC_CODE once an SMS provider is connected
       // changes no behaviour that has been exercised.
-      const code = this.staticCode || generateOtpCode(this.length);
+      //
+      // `fixedCode` is the same substitution narrowed to one account: the caller
+      // has already established that this phone is in the reserved range and has a
+      // `demo_accounts` row. It is first because it is the specific case -
+      // OTP_STATIC_CODE is instance-wide and cannot be set in production at all,
+      // so on a deployment that has both, the account's own code is the one a
+      // tester was given.
+      const code = fixedCode || this.staticCode || generateOtpCode(this.length);
 
       const inserted = await trx
         .insertInto('otp_codes')

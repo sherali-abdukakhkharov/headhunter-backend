@@ -347,6 +347,13 @@ export interface DeletionRequests {
   user_id: string;
 }
 
+export interface DemoAccounts {
+  code: string;
+  created_at: Generated<Timestamp>;
+  label: string;
+  phone: string;
+}
+
 export interface DeviceTokens {
   app_version: string | null;
   created_at: Generated<Timestamp>;
@@ -767,6 +774,7 @@ export interface DB {
   conversation_blocks: ConversationBlocks;
   conversations: Conversations;
   deletion_requests: DeletionRequests;
+  demo_accounts: DemoAccounts;
   device_tokens: DeviceTokens;
   dictionary_item_translations: DictionaryItemTranslations;
   dictionary_items: DictionaryItems;

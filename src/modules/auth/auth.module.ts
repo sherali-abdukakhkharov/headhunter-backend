@@ -7,6 +7,7 @@ import { WalletModule } from '@modules/wallet/wallet.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { DemoAccountService } from './demo-account.service';
 import { OtpController } from './otp.controller';
 import { OtpEnabledGuard } from './otp-enabled.guard';
 import { OtpService } from './otp.service';
@@ -45,6 +46,7 @@ import { TokenService } from './token.service';
   controllers: [AuthController, OtpController],
   providers: [
     AuthService,
+    DemoAccountService,
     OtpService,
     OtpEnabledGuard,
     SessionService,

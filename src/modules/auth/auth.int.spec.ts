@@ -16,6 +16,7 @@ import { EmployersService } from '@modules/employers/employers.service';
 import { UsersService } from '@modules/users/users.service';
 
 import { AuthService } from './auth.service';
+import { DemoAccountService } from './demo-account.service';
 import { OtpService } from './otp.service';
 import { PricingService } from '@modules/wallet/pricing.service';
 import { WalletService } from '@modules/wallet/wallet.service';
@@ -95,7 +96,15 @@ function services(overrides: Partial<AppEnv> = {}, sender?: SmsSender) {
   // The logging sender by default: it reports `failed` with `sms_not_configured`,
   // which `OtpService` treats as "no provider configured" and leaves the code in place
   // - the state every one of these tests has always run in.
-  const otp = new OtpService(db, sender ?? new LoggingSmsSender(), config);
+  // The real `DemoAccountService`, not a stub: every phone number in these tests is
+  // a `+9987` fixture, so it answers "not a demo account" without a query and the
+  // login path under test is the ordinary one.
+  const otp = new OtpService(
+    db,
+    sender ?? new LoggingSmsSender(),
+    new DemoAccountService(db, config),
+    config,
+  );
   const sessions = new SessionService(db, config);
   // JwtService needs no Nest container: TokenService passes the secret per call.
   const tokens = new TokenService(new JwtService({}), config);

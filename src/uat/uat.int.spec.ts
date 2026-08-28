@@ -11,6 +11,7 @@ import type { AppEnv } from '@infra/env-schema';
 import { IdempotencyService } from '@infra/idempotency/idempotency.service';
 import { HiringInteractionService } from '@infra/privacy/hiring-interaction.service';
 import { AuthService } from '@modules/auth/auth.service';
+import { DemoAccountService } from '@modules/auth/demo-account.service';
 import { OtpService } from '@modules/auth/otp.service';
 import { SessionService } from '@modules/auth/session.service';
 import { LoggingSmsSender } from '@modules/auth/sms/logging-sms.sender';
@@ -186,7 +187,12 @@ beforeAll(() => {
   // No SMS provider on this instance, which is the state UAT-01 actually runs in: the
   // logging sender reports failure and `OtpService` leaves the code in place, so
   // `OTP_ECHO_IN_RESPONSE` returns it exactly as a developer would see.
-  otp = new OtpService(db, new LoggingSmsSender(), config);
+  otp = new OtpService(
+    db,
+    new LoggingSmsSender(),
+    new DemoAccountService(db, config),
+    config,
+  );
   auth = new AuthService(
     db,
     new SessionService(db, config),

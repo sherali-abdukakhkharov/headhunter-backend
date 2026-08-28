@@ -109,6 +109,26 @@ export interface AppEnv {
   OTP_STATIC_CODE: string;
 
   /**
+   * Whether a seeded tester account may sign in with its fixed code
+   * (`docs/TEST_ACCOUNTS.md`).
+   *
+   * **Allowed in production, unlike `OTP_STATIC_CODE`, and the difference is the
+   * blast radius.** That one fixes the code for every account on the instance, so it
+   * is refused above. This one only lets `OtpService` read `demo_accounts`, and that
+   * table can only hold numbers in the `+99801` range — which Uzbekistan's numbering
+   * plan cannot allocate to anybody, enforced as a CHECK constraint. There is no real
+   * account it can reach.
+   *
+   * It has to be allowed in production because that is where testing happens: the QA
+   * pass installs the release APK, which talks to the production API.
+   *
+   * Off by default, and it is the *second* gate rather than the only one — with no
+   * seeded rows this changes nothing either way. It exists so demo logins can be
+   * switched off for a live client demo without destroying the fixtures.
+   */
+  DEMO_ACCOUNTS_ENABLED: boolean;
+
+  /**
    * Bot id the Telegram `id_token` must be addressed to - its `aud` claim.
    *
    * The numeric part of the bot token, before the colon. Checking it is what stops
@@ -505,6 +525,12 @@ export const envSchema = Joi.object<AppEnv, true>({
         'any.only': 'OTP_STATIC_CODE must be empty when NODE_ENV=production',
       }),
     }),
+
+  // Deliberately *not* refused in production, and the contrast with the two above is
+  // the argument: those are instance-wide master keys, this one can only reach a phone
+  // number that cannot exist. Production is where the QA pass runs, so a switch that
+  // could not be on there would not answer the question it was added for.
+  DEMO_ACCOUNTS_ENABLED: Joi.boolean().default(false),
 
   // Defaults to not trusting any forwarded header: an over-permissive value is
   // a rate-limit bypass, while too low a value only makes the limit stricter.

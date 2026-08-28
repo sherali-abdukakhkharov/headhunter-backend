@@ -315,7 +315,9 @@ export class ReleaseNotifierService
         updated_at: new Date(),
       })
       .onConflict((oc) =>
-        oc.column('key').doUpdateSet({ value_int: rank, updated_at: new Date() }),
+        oc
+          .column('key')
+          .doUpdateSet({ value_int: rank, updated_at: new Date() }),
       )
       .execute();
   }

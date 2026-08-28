@@ -73,6 +73,9 @@ pnpm api:up               # build the image and run the API in Docker (see below
 pnpm api:down / api:logs  # stop it / follow its logs
 pnpm api:build            # rebuild the image without restarting anything
 
+pnpm seed:demo            # ten tester accounts - docs/TEST_ACCOUNTS.md
+pnpm seed:demo:clean      # remove them, and the fixed codes with them
+
 pnpm load:seed [n] [m]    # synthetic volume for measurement - docs/PERFORMANCE.md
 pnpm load:clean           # remove every synthetic row it wrote
 pnpm perf [clients] [n]   # §12.4's budgets; exits non-zero on a miss
@@ -92,6 +95,35 @@ pnpm kysely:generate      # regenerate src/infra/db/database.types.ts from the l
 
 pnpm seed                 # apply the dictionary seed; idempotent, see below
 ```
+
+## Tester accounts
+
+`pnpm seed:demo` writes ten accounts a tester can sign in as without an SMS —
+six candidates covering all five §2.1 categories, three employers, and an
+administrator whose queues are not empty. The numbers, the codes and what each
+account is in the middle of are in **[docs/TEST_ACCOUNTS.md](docs/TEST_ACCOUNTS.md)**.
+
+Three properties are worth knowing before touching it:
+
+- **The numbers cannot exist.** They are all `+99801…`, and after the country
+  code Uzbekistan's numbering plan has no destination code starting with `0` —
+  that digit is the domestic trunk prefix. So no real person can be issued one
+  and find a published login code attached to their account. `demo_accounts`
+  repeats the rule as a CHECK constraint.
+- **It is not `OTP_STATIC_CODE`.** That variable fixes the code for every
+  account on the instance and the schema refuses it in production.
+  `DEMO_ACCOUNTS_ENABLED` only lets `OtpService` read a fixed code for a number
+  in that reserved range, which is why it *is* allowed in production — where the
+  QA pass actually runs.
+- **The rollback removes the capability, not just the data.** With no
+  `demo_accounts` rows there is no fixed code to resolve and the reserved range
+  is refused outright, so there is no configuration anybody has to remember to
+  switch off afterwards.
+
+It writes through the production services rather than inserting rows, so the
+completeness percentages, status histories and uploaded files are the real
+ones — the opposite choice from `pnpm load:seed`, which needs volume rather
+than content and says so in its own header.
 
 ## Public URL
 
@@ -291,6 +323,8 @@ src/
       migrate.ts                 standalone migration runner
       seed.ts                    standalone dictionary seed runner
       testing/int-db.ts          the pool every *.int.spec.ts connects with
+      demo-seed/                 the ten tester accounts: fixture, generated CVs
+                                 and avatars, and the ordered rollback
   modules/
     schemas/                     category-driven field schemas: the form, the write
                                  routing and the completeness definition, in one

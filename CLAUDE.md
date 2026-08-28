@@ -25,6 +25,7 @@ Code session rooted there can edit this repo too (see that repo's
 | [docs/RETENTION.md](docs/RETENTION.md) | BR-14 as data: what is purged, when, and what the client still owes. |
 | [docs/SUPPORT.md](docs/SUPPORT.md) | The runbook: symptoms, causes, and what needs a decision instead. |
 | [docs/TEST_EVIDENCE.md](docs/TEST_EVIDENCE.md) | §13.2's test results, and the UAT-to-test mapping. |
+| [docs/TEST_ACCOUNTS.md](docs/TEST_ACCOUNTS.md) | The ten seeded tester accounts: numbers, fixed codes, and what each one is in the middle of. Hand this to a QA pass. |
 | [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | §12.5 point by point: what is held, how, and the one gap left. |
 | [docs/TELEGRAM_LOGIN_SETUP.md](docs/TELEGRAM_LOGIN_SETUP.md) | BotFather and Flutter setup for Telegram login *(deprecated path)*. |
 
@@ -87,6 +88,22 @@ re-derivable from the text.
   `sms_transport_failed` is not. That last asymmetry is why a *misconfigured* provider takes
   login down while *no* provider does not — it cost an outage, and the reasoning is in
   MEMORY.md under 2026-08-20.
+- **Ten tester accounts sign in with a fixed code, and that is not a second
+  acceptance path.** `demo_accounts` holds one code per phone; `OtpService`
+  substitutes it at the same single line `OTP_STATIC_CODE` used, so the hash, the
+  TTL, the attempt limit, single-use consumption and the one shared
+  `auth.otp_invalid` are all untouched — `verify` does not know demo accounts
+  exist. What is different is delivery: the provider is never called for them, so
+  nothing is charged and nothing can fail. Two gates guard the lookup, and the
+  first is checked in memory so a real login never reaches the table: the phone
+  must be in the `+99801` reserved range, and `DEMO_ACCOUNTS_ENABLED` must be on.
+  **That flag is deliberately allowed in production** where the other two are
+  refused, and the reason is the range: Uzbekistan's numbering plan cannot
+  allocate a number whose first digit after the country code is `0`, so there is
+  no real account it can reach — while production is exactly where the QA pass
+  runs. A reserved number with no row is refused rather than handed to Eskiz.
+  `pnpm seed:demo:clean` deletes the rows and the capability goes with them.
+  See [docs/TEST_ACCOUNTS.md](docs/TEST_ACCOUNTS.md).
 - **Telegram login is deprecated but still works** (`POST /auth/telegram`). If you
   touch it: an `id_token` is trusted only after signature, issuer, `aud` = our bot id
   and `iat` age all pass, and an account is never matched on a phone Telegram did not
