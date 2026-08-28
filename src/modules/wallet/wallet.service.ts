@@ -1,6 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { LedgerSign } from './dto/wallet.dto';
-import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
 
 import {
@@ -12,7 +11,6 @@ import { type Database, KYSELY } from '@infra/db/database.module';
 
 import { PricingService } from './pricing.service';
 import type { DB, WalletTransactionKind } from '@infra/db/database.types';
-import type { AppEnv } from '@infra/env-schema';
 import { EmployersService } from '@modules/employers/employers.service';
 import type { Transaction } from 'kysely';
 

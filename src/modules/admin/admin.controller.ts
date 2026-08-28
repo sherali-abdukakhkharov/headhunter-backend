@@ -42,7 +42,7 @@ import {
 } from '@infra/time/format';
 import { PaymentOrdersService } from '@modules/payments/payment-orders.service';
 
-import { AUDIT_ACTIONS, AuditService } from './audit.service';
+import { AuditService } from './audit.service';
 import { DashboardService } from './dashboard.service';
 import { DictionaryAdminService } from './dictionary-admin.service';
 import {
