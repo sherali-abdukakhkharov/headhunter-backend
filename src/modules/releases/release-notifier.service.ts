@@ -69,6 +69,15 @@ interface GithubRelease {
  * between the two; that is why the workflow builds it with `--target-platform`
  * rather than `--split-per-abi`.
  *
+ * ## Its own timeout
+ *
+ * `RELEASE_TIMEOUT_MS`, not the file store's `TELEGRAM_TIMEOUT_MS`. That one is
+ * 30 seconds because a CV is a few hundred kilobytes each way; this moves a
+ * 23 MB APK **twice** — down from GitHub, up to Telegram. The first attempt on
+ * the deployed API aborted at 30 s and logged "This operation was aborted",
+ * which is what a shared timeout tuned for the smaller case looks like from the
+ * larger one.
+ *
  * ## What it is not
  *
  * Not an update check for the app. This tells a person a build exists; a client
@@ -100,7 +109,7 @@ export class ReleaseNotifierService
     this.token = config.get('TELEGRAM_BOT_TOKEN', { infer: true });
     this.chatId = config.get('RELEASE_CHAT_ID', { infer: true });
     this.apiBase = config.get('TELEGRAM_API_BASE_URL', { infer: true });
-    this.timeoutMs = config.get('TELEGRAM_TIMEOUT_MS', { infer: true });
+    this.timeoutMs = config.get('RELEASE_TIMEOUT_MS', { infer: true });
     this.repo = config.get('RELEASE_REPO', { infer: true });
     this.pollMinutes = config.get('RELEASE_POLL_MINUTES', { infer: true });
   }
@@ -178,7 +187,13 @@ export class ReleaseNotifierService
       this.logger.log(`Sent ${release.tag_name} to Telegram.`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Release check failed: ${reason}`);
+      // An abort names the timeout it hit, because "This operation was
+      // aborted" on its own says nothing about which knob to turn.
+      const detail =
+        error instanceof Error && error.name === 'AbortError'
+          ? `${reason} (RELEASE_TIMEOUT_MS is ${this.timeoutMs}ms)`
+          : reason;
+      this.logger.error(`Release check failed: ${detail}`);
     }
   }
 

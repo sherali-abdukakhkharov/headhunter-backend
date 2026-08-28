@@ -358,6 +358,16 @@ export interface AppEnv {
   RELEASE_POLL_MINUTES: number;
 
   /**
+   * How long one leg of a release delivery may take.
+   *
+   * **Not `TELEGRAM_TIMEOUT_MS`.** That one is tuned for a CV — a few hundred
+   * kilobytes each way — and this moves a 23 MB APK twice: down from GitHub and
+   * up to Telegram. The first attempt on the deployed API aborted at 30 s with
+   * nothing to show for it.
+   */
+  RELEASE_TIMEOUT_MS: number;
+
+  /**
    * Upload ceiling. Bounded above by Telegram's **download** limit of 20 MB, not
    * its 50 MB send limit: a larger file would upload successfully and then be
    * permanently unreadable.
@@ -685,6 +695,7 @@ export const envSchema = Joi.object<AppEnv, true>({
   RELEASE_CHAT_ID: Joi.string().allow('').default(''),
   RELEASE_REPO: Joi.string().default('sherali-abdukakhkharov/headhunter-app'),
   RELEASE_POLL_MINUTES: Joi.number().integer().min(1).default(10),
+  RELEASE_TIMEOUT_MS: Joi.number().integer().min(10_000).default(300_000),
 
   // 10 MB by default, matching the client contract's `maxSizeBytes` (§4.1). The
   // 20 MB ceiling is Telegram's getFile download limit - anything above it can be

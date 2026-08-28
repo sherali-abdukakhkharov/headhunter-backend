@@ -86,7 +86,7 @@ describe('ReleaseNotifierService', () => {
         ({
           TELEGRAM_BOT_TOKEN: 'token',
           TELEGRAM_API_BASE_URL: 'https://telegram.test',
-          TELEGRAM_TIMEOUT_MS: 1000,
+          RELEASE_TIMEOUT_MS: 1000,
           RELEASE_CHAT_ID: chatId,
           RELEASE_REPO: 'owner/repo',
           RELEASE_POLL_MINUTES: 10,
