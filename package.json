@@ -46,6 +46,7 @@
     "seed": "tsx src/infra/db/seed.ts",
     "docs:openapi": "nest build && node dist/infra/api/export-openapi.js",
     "seed:demo": "nest build && node dist/infra/db/demo-seed/main.js",
+  "seed:demo:reviewers": "nest build && node dist/infra/db/demo-seed/main.js --reviewers",
   "seed:demo:clean": "nest build && node dist/infra/db/demo-seed/main.js --clean",
   "load:seed": "tsx src/infra/db/load-seed.ts",
     "load:clean": "tsx src/infra/db/load-seed.ts --clean",

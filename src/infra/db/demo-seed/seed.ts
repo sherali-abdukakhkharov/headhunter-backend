@@ -128,8 +128,23 @@ const SEED_DEVICE = {
   appVersion: 'seed',
 };
 
+/**
+ * What to leave out.
+ *
+ * `reviewersOnly` is the shape a public instance needs: the ten accounts exist so
+ * that Google Play's reviewers (and anybody else with the document) can sign in, but
+ * nothing they own is visible to a real user. Candidates are hidden from search, no
+ * vacancy is published, nothing is applied to. Without this a real job seeker finds
+ * a vacancy nobody placed, and a real employer spends Coins unlocking a phone number
+ * that cannot ring.
+ */
+export interface SeedOptions {
+  reviewersOnly: boolean;
+}
+
 export async function seedDemoWorld(
   app: INestApplicationContext,
+  options: SeedOptions = { reviewersOnly: false },
 ): Promise<void> {
   const db = app.get<Database>(KYSELY);
 
@@ -159,7 +174,10 @@ export async function seedDemoWorld(
   const candidateIds = new Map<string, string>();
 
   for (const person of DEMO_CANDIDATES) {
-    candidateIds.set(person.key, await seedCandidate(services, person));
+    candidateIds.set(
+      person.key,
+      await seedCandidate(services, person, options),
+    );
   }
 
   console.log('Employers');
@@ -167,8 +185,20 @@ export async function seedDemoWorld(
   const vacancyIds = new Map<string, string>();
 
   for (const employer of DEMO_EMPLOYERS) {
-    const userId = await seedEmployer(services, employer, adminId, vacancyIds);
+    const userId = await seedEmployer(
+      services,
+      employer,
+      adminId,
+      vacancyIds,
+      options,
+    );
     employerIds.set(employer.key, userId);
+  }
+
+  if (options.reviewersOnly) {
+    console.log('Reviewer mode: nothing published, nothing searchable.');
+
+    return;
   }
 
   console.log('What they are in the middle of');
@@ -262,6 +292,7 @@ async function seedAdmin(services: Services): Promise<string> {
 async function seedCandidate(
   services: Services,
   person: DemoCandidate,
+  options: SeedOptions,
 ): Promise<string> {
   const { dictionary } = services;
   const userId = await createAccount(services, person.phone, person.locale, [
@@ -370,13 +401,17 @@ async function seedCandidate(
     });
   }
 
-  await services.candidates.setVisibility(userId, person.visibility);
+  // Hidden on a public instance whatever the fixture says: a searchable profile
+  // is one a real employer can pay to unlock.
+  const visibility = options.reviewersOnly ? 'hidden' : person.visibility;
+
+  await services.candidates.setVisibility(userId, visibility);
   await recordDemoLogin(services, person.phone, person.code, person.fullName);
 
   const profile = await services.candidates.read(userId);
   step(
     `${person.fullName} — ${profile.completeness.percent}% complete, ` +
-      `${person.visibility}`,
+      `${visibility}`,
   );
 
   return userId;
@@ -453,6 +488,7 @@ async function seedEmployer(
   employer: DemoEmployer,
   adminId: string,
   vacancyIds: Map<string, string>,
+  options: SeedOptions,
 ): Promise<string> {
   const { dictionary } = services;
   const userId = await createAccount(
@@ -532,7 +568,9 @@ async function seedEmployer(
       `${employer.verification}`,
   );
 
-  for (const vacancy of employer.vacancies) {
+  // A reviewer needs a verified employer to look at, not an advert the public can
+  // apply to.
+  for (const vacancy of options.reviewersOnly ? [] : employer.vacancies) {
     vacancyIds.set(
       vacancy.key,
       await seedVacancy(services, userId, vacancy, adminId),

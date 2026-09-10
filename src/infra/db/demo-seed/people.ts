@@ -22,11 +22,38 @@ import type { Rgb } from './documents';
  * that a tester reading the document can tell what they are logging into before they
  * log in: `1` is a candidate, `2` an employer, `9` an administrator.
  *
+ * **No real business is named anywhere in this file.** The first version had the main
+ * employer as "Uzum Technologies" and past employers at UzAuto and IT Park — and the
+ * seeded vacancy went straight into the public search on a production instance that
+ * real people had already signed into. A job advert under a real company's name that
+ * the company never placed is not test data, it is a misrepresentation with a phone
+ * number that cannot be reached. Every employer, past or present, is invented, and
+ * `docs/TEST_ACCOUNTS.md` says so. Keep it that way when adding to the cast.
+ *
  * **The codes are memorable on purpose.** They are published in
  * `docs/TEST_ACCOUNTS.md`; a shared credential nobody can remember gets written on a
  * sticky note, and there is nothing here to protect — the numbers cannot exist and
  * the accounts hold invented data.
  */
+
+/**
+ * A date a given number of days from today, as `YYYY-MM-DD`.
+ *
+ * Every forward-looking date in the cast is relative, because the first version
+ * hard-coded them and the harvest vacancy's deadline fell behind the calendar eleven
+ * days after it was written: `VacanciesService.submit` refuses a vacancy whose
+ * deadline has passed (BR-06), so the seeder failed mid-run for a reason nobody
+ * touching it that day had caused. Computed in UTC with every margin at three days
+ * or more, so the Tashkent/UTC day boundary cannot put one on the wrong side of
+ * the validator's "today". Historical dates - jobs held, degrees earned - stay
+ * literal; they are meant to be in the past.
+ */
+export function inDays(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
+}
 
 /** A ground colour per person, so the avatar in a screenshot identifies the account. */
 const NAVY: Rgb = [0x14, 0x2c, 0x4a];
@@ -183,7 +210,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     headline: 'Backend Developer',
     purpose:
       'The complete professional profile. Searchable, has a CV and a photo, ' +
-      'and is mid-interview on Uzum Technologies.',
+      'and is mid-interview on Chinor Technologies.',
     dateOfBirth: '1997-04-18',
     genderCode: 'female',
     regionCode: 'tashkent_city',
@@ -209,7 +236,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     salaryFrom: 12_000_000,
     salaryTo: 18_000_000,
     salaryPeriodCode: 'monthly',
-    availableFrom: '2026-10-01',
+    availableFrom: inDays(30),
     willingToRelocate: false,
     willingToTravel: true,
     attributes: {
@@ -221,7 +248,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     },
     experience: [
       {
-        employerName: 'Uzum Market',
+        employerName: 'Chinor Market',
         roleTitle: 'Backend Developer',
         occupationCode: 'backend_developer',
         startedOn: '2023-02-01',
@@ -231,7 +258,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
           'idempotency layer and the Payme integration.',
       },
       {
-        employerName: 'IT Park Uzbekistan',
+        employerName: 'Navro‘z Soft',
         roleTitle: 'Junior Developer',
         occupationCode: 'software_developer',
         startedOn: '2020-09-01',
@@ -291,7 +318,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     salaryFrom: 7_000_000,
     salaryTo: 10_000_000,
     salaryPeriodCode: 'monthly',
-    availableFrom: '2026-09-15',
+    availableFrom: inDays(14),
     willingToRelocate: true,
     willingToTravel: false,
     attributes: {
@@ -363,7 +390,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     salaryFrom: 3_500_000,
     salaryTo: 5_000_000,
     salaryPeriodCode: 'monthly',
-    availableFrom: '2026-09-01',
+    availableFrom: inDays(3),
     willingToRelocate: false,
     willingToTravel: false,
     attributes: {
@@ -380,7 +407,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
           'Espresso bar, morning shift; trains new staff on the machine.',
       },
       {
-        employerName: 'Bon! Bakery',
+        employerName: 'Yangi Non Bakery',
         roleTitle: 'Cashier',
         occupationCode: 'cashier',
         startedOn: '2022-08-01',
@@ -438,7 +465,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     salaryFrom: 6_000_000,
     salaryTo: 9_000_000,
     salaryPeriodCode: 'monthly',
-    availableFrom: '2026-09-08',
+    availableFrom: inDays(7),
     willingToRelocate: true,
     willingToTravel: true,
     attributes: {
@@ -459,13 +486,13 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     },
     experience: [
       {
-        employerName: 'UzAuto Motors',
+        employerName: 'Asaka Metall Konstruksiya',
         roleTitle: 'Welder, 5th grade',
         occupationCode: 'welder',
         startedOn: '2019-04-01',
         isCurrent: true,
         responsibilities:
-          'Body-shop welding on the assembly line; leads a crew of four on ' +
+          'Structural welding for warehouse frames; leads a crew of four on ' +
           'the night shift.',
       },
     ],
@@ -481,8 +508,8 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     wantsCv: true,
     wantsPhoto: false,
     summary:
-      'Welder with a 5th-grade certificate and seven years on an automotive ' +
-      'line. Leads a four-person crew and holds B and C licences.',
+      'Welder with a 5th-grade certificate and seven years of structural ' +
+      'work. Leads a four-person crew and holds B and C licences.',
   },
   {
     key: 'c_seasonal',
@@ -516,7 +543,7 @@ export const DEMO_CANDIDATES: DemoCandidate[] = [
     salaryFrom: 250_000,
     salaryTo: 400_000,
     salaryPeriodCode: 'daily',
-    availableFrom: '2026-09-05',
+    availableFrom: inDays(5),
     willingToRelocate: true,
     willingToTravel: true,
     attributes: {
@@ -613,15 +640,15 @@ export const DEMO_EMPLOYERS: DemoEmployer[] = [
     purpose:
       'The main employer account. Verified, has a logo, a Coin balance, three ' +
       'vacancies in three different states and applications at four stages.',
-    legalName: 'ООО «Uzum Technologies»',
-    publicName: 'Uzum Technologies',
+    legalName: 'ООО «Chinor Technologies»',
+    publicName: 'Chinor Technologies',
     industryCode: 'it_software',
     regionCode: 'tashkent_city',
     districtCode: 'tc_mirzo_ulugbek',
     address: 'Amir Temur shoh ko‘chasi 108, Tashkent',
     description:
-      'Product engineering for the Uzum group: marketplace, fintech and ' +
-      'logistics. Around 400 engineers in Tashkent.',
+      'Product engineering for a Tashkent marketplace: catalogue, payments ' +
+      'and delivery. Around 120 engineers.',
     contactPhone: '+998712000001',
     verification: 'verified',
     wantsLogo: true,
@@ -644,7 +671,7 @@ export const DEMO_EMPLOYERS: DemoEmployer[] = [
         salaryFrom: 13_000_000,
         salaryTo: 20_000_000,
         salaryPeriodCode: 'monthly',
-        deadlineOn: '2026-11-30',
+        deadlineOn: inDays(60),
         skills: [
           { code: 'nodejs', levelCode: 'advanced', mandatory: true },
           { code: 'postgresql', levelCode: 'intermediate', mandatory: true },
@@ -769,9 +796,9 @@ export const DEMO_EMPLOYERS: DemoEmployer[] = [
         salaryFrom: 200_000,
         salaryTo: 300_000,
         salaryPeriodCode: 'daily',
-        startsOn: '2026-09-10',
-        endsOn: '2026-10-25',
-        deadlineOn: '2026-09-08',
+        startsOn: inDays(10),
+        endsOn: inDays(55),
+        deadlineOn: inDays(7),
         land: 'active',
       },
     ],

@@ -50,7 +50,7 @@ describe('pdfDocument', () => {
   const pdf = pdfDocument([
     { kind: 'title', text: 'Aziza Karimova' },
     { kind: 'heading', text: 'Experience' },
-    { kind: 'line', text: 'Backend Developer, Uzum Technologies' },
+    { kind: 'line', text: 'Backend Developer, Chinor Technologies' },
     { kind: 'gap' },
     { kind: 'muted', text: '(demo) 50% of a line \\ with escapes' },
   ]);

@@ -20,8 +20,9 @@ import { demoUserCount, removeDemoWorld } from './teardown';
 /**
  * Tester accounts, created and removed.
  *
- *   pnpm seed:demo          write the demo world
- *   pnpm seed:demo:clean    remove every row it wrote
+ *   pnpm seed:demo             write the demo world
+ *   pnpm seed:demo:reviewers   accounts only - nothing published, nothing searchable
+ *   pnpm seed:demo:clean       remove every row it wrote
  *
  * **Boots the whole application rather than opening a connection**, unlike every other
  * script in this directory. It has to: the point is that these rows are written by the
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
   dotenv.config({ quiet: true });
 
   const clean = process.argv.includes('--clean');
+  const reviewersOnly = process.argv.includes('--reviewers');
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     // The seeder's own output is the report; Nest's boot chatter buries it.
@@ -121,7 +123,7 @@ async function main(): Promise<void> {
     }
 
     const started = Date.now();
-    await seedDemoWorld(app);
+    await seedDemoWorld(app, { reviewersOnly });
 
     console.log(`\nDone in ${Math.round((Date.now() - started) / 1000)}s.\n`);
     printRoster();

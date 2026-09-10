@@ -26,7 +26,7 @@ gives you the same digits back.
 | `011000004` | `111114` | Candidate | Bekzod Rahimov — Welder |
 | `011000005` | `111115` | Candidate | Sardor Yo‘ldoshev — Tractor Driver |
 | `011000006` | `111116` | Candidate | Malika Usmonova — Shift worker |
-| `012000001` | `222221` | Employer | Uzum Technologies — Dilshod Nazarov |
+| `012000001` | `222221` | Employer | Chinor Technologies — Dilshod Nazarov |
 | `012000002` | `222222` | Employer | Silk Road Logistics — Kamola Yusupova |
 | `012000003` | `222223` | Employer | Otabek Sattorov (individual) |
 | `019000001` | `999999` | Admin | Shahzod Alimov |
@@ -40,7 +40,7 @@ employer, `9` the administrator.
 
 | Account | What to look at |
 |---|---|
-| **Aziza Karimova** `011000001` | The complete professional profile — 91 %, searchable, CV and photo uploaded, five skills, three languages, two jobs. She is at the **interview** stage on Uzum Technologies and has an open conversation with them. Uzbek Latin. |
+| **Aziza Karimova** `011000001` | The complete professional profile — 91 %, searchable, CV and photo uploaded, five skills, three languages, two jobs. She is at the **interview** stage on Chinor Technologies and has an open conversation with them. Uzbek Latin. |
 | **Jasur Toshmatov** `011000002` | A second professional, **in Russian** and outside Tashkent (Samarkand). Use him for the Russian interface and for region filters. He has an **unanswered invitation**. |
 | **Nilufar Ergasheva** `011000003` | Service and trade, **in Uzbek Cyrillic**. She has been **hired**, so her application history ends in a terminal stage. Photo, no CV. |
 | **Bekzod Rahimov** `011000004` | Physical and industrial: licences, transport, tools and crew size — fields no other category shows. His application was **rejected**, with a reason. |
@@ -51,7 +51,7 @@ employer, `9` the administrator.
 
 | Account | What to look at |
 |---|---|
-| **Uzum Technologies** `012000001` | The main employer. Verified, has a logo, a Coin balance with the registration bonus and one spend, and three vacancies: one **active**, one **paused**, one **waiting for moderation**. Four applications across four stages. It has **unlocked Aziza**, so her phone and CV are visible on that one candidate and not on the others. |
+| **Chinor Technologies** `012000001` | The main employer. Verified, has a logo, a Coin balance with the registration bonus and one spend, and three vacancies: one **active**, one **paused**, one **waiting for moderation**. Four applications across four stages. It has **unlocked Aziza**, so her phone and CV are visible on that one candidate and not on the others. |
 | **Silk Road Logistics** `012000002` | **Waiting for verification**, documents already submitted. Use it to check what an unverified employer cannot do — it cannot publish a vacancy or invite anybody — and to give the administrator something in the queue. In Russian. |
 | **Otabek Sattorov** `012000003` | An **individual**, not a company: a different profile form and different required evidence. Verified, one active seasonal vacancy with two applicants, one of them hired. |
 
@@ -59,7 +59,7 @@ employer, `9` the administrator.
 
 `019000001` — the queues are deliberately not empty:
 
-- **1 vacancy** waiting for moderation (Uzum's *Data Analyst*)
+- **1 vacancy** waiting for moderation (Chinor's *Data Analyst*)
 - **1 employer** waiting for verification (Silk Road Logistics)
 - **1 complaint** waiting for review (about the harvest vacancy's pay)
 
@@ -75,6 +75,10 @@ by design, so anything you approve or reject stays recorded.
 - **The CVs and the registration certificates are generated PDFs.** They open,
   they are readable, and each says what the profile it belongs to says. Every
   one is stamped as demo data. The registration certificate certifies nothing.
+- **Every company is invented** — the employers, and every past employer on a
+  CV. None is a real business, on purpose: a seeded vacancy is visible to real
+  users on a production instance, and a job advert under a real company's name
+  that the company never placed is a misrepresentation, not test data.
 - **The phone numbers cannot exist.** After the country code, Uzbekistan's
   numbering plan has no destination code starting with `0` — `0` is the trunk
   prefix for dialling inside the country. So nobody can be issued one of these
@@ -103,6 +107,28 @@ This is exactly what happens when a real user deletes their account.
 
 Uploaded documents stay in the Telegram storage chat: a bot may only delete its
 own messages for 48 hours.
+
+## Before a public launch
+
+The full demo world must not be on an instance real people use. Two of its
+rows are actively harmful there: the active vacancies appear in every real job
+seeker's search, and the searchable candidates can be **unlocked for Coins** by a
+real employer — who then pays for a phone number that cannot ring.
+
+But Google Play's reviewers still need something to sign in with (the *App
+access* section of the Console), and so does anybody reproducing a report. So
+the launch sequence is:
+
+```powershell
+pnpm seed:demo:clean
+pnpm seed:demo:reviewers
+```
+
+The second command writes the same ten accounts with the same codes — the table
+above stays true — but every candidate is **hidden from search**, no vacancy
+exists, and nothing has been applied to. A reviewer sees a verified employer
+with an empty dashboard and a complete candidate profile, which is enough to
+walk every screen; a real user sees nothing that was not put there by a person.
 
 ## Turning it off
 
