@@ -186,9 +186,12 @@ processors in the table.
 ## Who can see what
 
 - A candidate's **phone number, CV and other contact details are never shown
-  on a search card** and are **not** released by an application alone. An
-  employer sees them only after a **paid unlock** of that specific candidate
-  with Coins. This is a deliberate product rule.
+  on a search card**. An employer sees them through one of three entitlements
+  and nothing else: the candidate applied to that employer's vacancy, the
+  candidate accepted that employer's invitation, or the employer paid Coins to
+  unlock that specific candidate. (The client signed off this reading on
+  2026-08-20; an earlier version of this brief wrongly said an application does
+  not count.)
 - A candidate controls whether their profile is searchable at all (the
   visibility setting). A hidden profile is invisible to employers.
 - Employers see applications to their own vacancies, and candidates they have

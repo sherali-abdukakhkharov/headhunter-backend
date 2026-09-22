@@ -75,7 +75,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 30,
     trigger: 'the deletion request',
     action: 'keep',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'A grace period is a protection, not a delay: a request made in anger or by ' +
       'somebody who got hold of a phone has to be reversible, and 30 days is the ' +
@@ -89,7 +89,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 30,
     trigger: 'the deletion request',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'This is the erasure BR-14 exists for, and it happens as soon as the grace ' +
       'period above ends. Nothing here is needed for any other rule.',
@@ -133,7 +133,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: null,
     trigger: 'never',
     action: 'keep',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'An accountability record with an expiry date protects the wrong party. Kept ' +
       'indefinitely, and made lawful by holding no personal data of its own: the actor ' +
@@ -158,7 +158,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 1,
     trigger: 'the code being issued',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'A code is dead within minutes (OTP_TTL_SECONDS); the row is worth one more day ' +
       'only for investigating a login somebody disputes. Hashed, never the code itself.',
@@ -169,7 +169,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 90,
     trigger: 'the session expiring or being revoked',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'A revoked family has to outlive its own refresh token so that reuse detection ' +
       'still recognises a stolen one (§4.2). 90 days is well past REFRESH_TOKEN_TTL_DAYS.',
@@ -180,7 +180,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 2,
     trigger: 'the window closing',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'A closed window is never read again - the phone subject is hashed and the IP is ' +
       'personal data under most readings, so keeping either past its window has no ' +
@@ -192,7 +192,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 7,
     trigger: 'the file being uploaded',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'A chat attachment is stored the moment it is picked, before the message that ' +
       'carries it exists (§9.1). Most become messages within seconds; the ones that do ' +
@@ -212,7 +212,7 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 7,
     trigger: 'the key being stored',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'These exist so a retry from a flaky mobile connection does not create a second ' +
       'application. A retry a week later is a new intent, not a duplicate.',
@@ -223,11 +223,25 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     days: 180,
     trigger: 'the notification being created',
     action: 'purge',
-    provenance: 'provisional',
+    provenance: 'client_approved',
     legalBasis:
       'The in-app list is the record of what a user was told (§9.2) and is the fallback ' +
       'for a device with no Google Play services. Six months is longer than any hiring ' +
       'cycle it describes.',
+  },
+  {
+    code: 'server_logs',
+    subject: 'API server logs: request metadata and the caller’s IP address',
+    days: 30,
+    trigger: 'the line being written',
+    action: 'purge',
+    provenance: 'client_approved',
+    legalBasis:
+      'Enough to investigate an abuse report or an outage after the fact, and no ' +
+      'longer: an IP address is personal data. Enforced by Docker log rotation in ' +
+      'docker-compose.api.yml, which rotates by volume rather than by age - the files ' +
+      'are sized to hold well under 30 days at launch traffic, and docs/RETENTION.md ' +
+      'says to re-check the sizing as traffic grows.',
   },
 ] as const;
 

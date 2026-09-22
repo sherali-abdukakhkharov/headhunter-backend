@@ -75,14 +75,33 @@ describe('the retention policy as data', () => {
     expect(requireRetentionRule('sessions').days as number).toBeGreaterThan(30);
   });
 
-  it('names the rules a lawyer has not seen', () => {
-    const provisional = provisionalRules().map((rule) => rule.code);
+  it('has no rule a lawyer has not seen', () => {
+    // Every provisional period was put to the operator's lawyer on 2026-09-22 and
+    // approved as proposed, so this list is empty - and a new rule added as
+    // `provisional` will show up here, which is the point: it has to go through the
+    // same review rather than ride in on the old approval.
+    expect(provisionalRules().map((rule) => rule.code)).toEqual([]);
 
-    expect(provisional).toContain('account_personal_data');
-    // `required` rules are fixed by another rule in the specification, so they are not
-    // waiting on anybody.
-    expect(provisional).not.toContain('admin_actor_identity');
-    expect(provisional).not.toContain('status_history');
+    expect(requireRetentionRule('account_personal_data').provenance).toBe(
+      'client_approved',
+    );
+    // `required` rules are fixed by another rule in the specification, so they were
+    // never waiting on anybody and did not change.
+    expect(requireRetentionRule('admin_actor_identity').provenance).toBe(
+      'required',
+    );
+    expect(requireRetentionRule('status_history').provenance).toBe('required');
+  });
+
+  it('bounds the server logs, which carry IP addresses', () => {
+    // Added at the same review. The number is enforced outside this module - Docker
+    // log rotation in docker-compose.api.yml - so the rule here is what the policy
+    // page and the admin API say, and the compose file is what makes it true.
+    const logs = requireRetentionRule('server_logs');
+
+    expect(logs.days).toBe(30);
+    expect(logs.action).toBe('purge');
+    expect(logs.provenance).toBe('client_approved');
   });
 });
 

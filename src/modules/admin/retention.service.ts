@@ -242,7 +242,7 @@ export class RetentionService {
     actorUserId: string,
     now: Date,
   ): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
+    const messageIds = await this.db.transaction().execute(async (trx) => {
       // 1. A company logo points at a file this user owns.
       await trx
         .updateTable('companies')
@@ -264,12 +264,14 @@ export class RetentionService {
         .where('sender_user_id', '=', account.userId)
         .execute();
 
-      // 4. The files. Only the metadata: the bytes live in a Telegram chat, and there is
-      //    no delete in the Bot API worth trusting for this (ARCHITECTURE.md §9) - which
-      //    is stated in docs/RETENTION.md rather than hidden here.
-      await trx
+      // 4. The files. The metadata here; the bytes after the commit, below - a
+      //    Telegram call inside this transaction would hold every lock above for the
+      //    provider's latency. The message ids are collected now because this
+      //    statement is the last place they exist.
+      const files = await trx
         .deleteFrom('stored_files')
         .where('owner_user_id', '=', account.userId)
+        .returning('telegram_message_id')
         .execute();
 
       if (account.action === 'purge') {
@@ -343,7 +345,19 @@ export class RetentionService {
           paymentOrders: account.paymentOrders,
         },
       });
+
+      return files.map((file) => file.telegram_message_id);
     });
+
+    // Best effort, after the commit. A bot may delete only its own messages, and only
+    // for 48 hours (ARCHITECTURE.md §9), so this removes recent uploads and cannot
+    // remove old ones. What it cannot remove is logged by message id — one warning
+    // per file — because the privacy policy promises the operator deletes those by
+    // hand, and the id would otherwise have gone with the row. docs/SUPPORT.md has
+    // the runbook.
+    for (const messageId of messageIds) {
+      await this.files.dropStoredMessage(messageId);
+    }
   }
 
   /** How many rows each transient rule would remove, for the preview. */

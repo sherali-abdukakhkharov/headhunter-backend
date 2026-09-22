@@ -45,6 +45,7 @@
     "migrate:status": "tsx src/infra/db/migrate.ts status",
     "seed": "tsx src/infra/db/seed.ts",
     "docs:openapi": "nest build && node dist/infra/api/export-openapi.js",
+  "legal:build": "tsx src/modules/legal/build-legal-pages.ts",
     "seed:demo": "nest build && node dist/infra/db/demo-seed/main.js",
   "seed:demo:reviewers": "nest build && node dist/infra/db/demo-seed/main.js --reviewers",
   "seed:demo:clean": "nest build && node dist/infra/db/demo-seed/main.js --clean",

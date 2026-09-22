@@ -1,7 +1,7 @@
 # JobBridge hisobini o‘chirish
 
-**Yangilangan sana:** [KUN OY YIL]  
-**Aloqa:** [CONTACT EMAIL]
+**Yangilangan sana:** 2026-yil 22-sentabr  
+**Aloqa:** sherali.abdukakhkharov@gmail.com
 
 JobBridge hisobingizni ilovada yoki e-mail orqali o‘chirishni so‘rashingiz
 mumkin.
@@ -14,7 +14,7 @@ mumkin.
 
 ## Ilovasiz o‘chirish
 
-[CONTACT EMAIL] manziliga **“JobBridge hisobini o‘chirish”** mavzusida xat
+sherali.abdukakhkharov@gmail.com manziliga **“JobBridge hisobini o‘chirish”** mavzusida xat
 yuboring. Hisobga bog‘langan telefon raqamini xalqaro formatda yozing. Parol
 yoki SMS kodini yubormang. Hisob boshqa shaxsga tegishli emasligini tekshirish
 uchun operator qo‘shimcha tasdiq so‘rashi mumkin.
@@ -31,7 +31,11 @@ uchun operator qo‘shimcha tasdiq so‘rashi mumkin.
 - JobBridge faylga olib boruvchi yozuvni o‘chiradi va fayl ilovadan ochilmaydi.
   Telegram avtomatik o‘chira olmagan 48 soatdan eski fayllar operator ularni
   qo‘lda o‘chirguncha saqlash chatida qolishi mumkin.
+- So‘rovni ilovada bekor qilib bo‘lmaydi. 30 kun ichida fikringiz o‘zgarsa,
+  istalgan manzildan sherali.abdukakhkharov@gmail.com ga hisobga bog‘langan telefon raqamini
+  yozib xat yuboring — operator hisob sizniki ekanini tasdiqlab, so‘rovni bekor
+  qiladi.
 
-So‘rov holati bo‘yicha savollar uchun [CONTACT EMAIL] manziliga yozing.
+So‘rov holati bo‘yicha savollar uchun sherali.abdukakhkharov@gmail.com manziliga yozing.
 
 [JobBridge maxfiylik siyosati](https://hh.qitmir.uz/privacy)

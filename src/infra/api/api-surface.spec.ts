@@ -20,6 +20,7 @@ import { FilesController } from '@modules/files/files.controller';
 import { HealthController } from '@modules/health/health.controller';
 import { InterviewsController } from '@modules/interviews/interviews.controller';
 import { InvitationsController } from '@modules/invitations/invitations.controller';
+import { LegalController } from '@modules/legal/legal.controller';
 import { NotificationsController } from '@modules/notifications/notifications.controller';
 import { PaymentsController } from '@modules/payments/payments.controller';
 import { PaymentsCallbackController } from '@modules/payments/payments-callback.controller';
@@ -61,6 +62,7 @@ const CONTROLLERS = [
   HealthController,
   InterviewsController,
   InvitationsController,
+  LegalController,
   NotificationsController,
   PaymentsController,
   PaymentsCallbackController,
@@ -119,6 +121,14 @@ const PUBLIC_ROUTES = [
   // have their own rate-limit bucket, so provider retries never share a budget with people.
   'POST /payments/callbacks/payme',
   'POST /payments/callbacks/click',
+
+  // The two documents Google Play requires on public URLs (docs/PLAY_STORE.md §1),
+  // served as HTML because this product has no website. No user data in either
+  // direction: they read nothing but a query parameter naming the language, and they
+  // return text rendered at build time from docs/legal/*.md. A store reviewer, and a
+  // user who has never signed in, both have to be able to open them.
+  'GET /privacy',
+  'GET /account/delete',
 ].sort();
 
 interface Route {

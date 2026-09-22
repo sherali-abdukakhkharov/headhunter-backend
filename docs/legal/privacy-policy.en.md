@@ -1,8 +1,8 @@
 # JobBridge Privacy Policy
 
-**Effective date:** [DAY MONTH YEAR]  
+**Effective date:** 22 September 2026  
 **Operator:** “ELITE BRIDGE GROUP” LLC, Republic of Uzbekistan  
-**Contact:** [CONTACT EMAIL]
+**Contact:** sherali.abdukakhkharov@gmail.com
 
 ## 1. About this policy
 
@@ -107,9 +107,11 @@ decision about hiring, rejection or account moderation.
 ## 5. Who can see data
 
 A candidate controls profile visibility. A hidden profile is not visible to
-employers. Search cards do not show the candidate's phone number, email or CV.
-Submitting an application does not unlock that information. An employer sees
-it only after spending Coins to unlock that specific candidate.
+employers. Search cards do not show the candidate's phone number, email or CV. An
+employer sees them only when one of three things has happened: the candidate
+applied to that employer's vacancy, the candidate accepted that employer's
+invitation, or the employer spent Coins to unlock that specific candidate.
+Nothing else releases them.
 
 An employer sees its own vacancies and applications to them. A candidate and
 employer see the messages and files exchanged in their conversation.
@@ -161,11 +163,11 @@ Users can view and edit their profile, remove uploaded files, change language,
 revoke device sessions, block another user and report content.
 
 To delete an account, go to **Profile → Account → Delete account**. If you
-cannot access the app, email [CONTACT EMAIL]. More information is available on
+cannot access the app, email sherali.abdukakhkharov@gmail.com. More information is available on
 the [account-deletion page](https://hh.qitmir.uz/account/delete).
 
 To ask about your data, request a correction or ask for processing to be
-suspended, email [CONTACT EMAIL].
+suspended, email sherali.abdukakhkharov@gmail.com.
 
 ## 9. Age
 
@@ -182,5 +184,4 @@ The database is backed up nightly.
 ## 11. Changes and contact
 
 If this policy changes, the effective date on this page will be updated. For
-questions about privacy, access to data or account deletion, email [CONTACT
-EMAIL].
+questions about privacy, access to data or account deletion, email sherali.abdukakhkharov@gmail.com.

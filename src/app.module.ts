@@ -12,6 +12,7 @@ import { type AppEnv, envSchema } from '@infra/env-schema';
 import { RateLimitModule } from '@infra/rate-limit/rate-limit.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { LegalModule } from '@modules/legal/legal.module';
 import { CandidateSearchModule } from '@modules/candidate-search/candidate-search.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { CandidatesModule } from '@modules/candidates/candidates.module';
@@ -68,6 +69,7 @@ import { ReleasesModule } from '@modules/releases/releases.module';
     DatabaseModule,
     RateLimitModule,
     AuthModule,
+    LegalModule,
     UsersModule,
     WalletModule,
     PaymentsModule,

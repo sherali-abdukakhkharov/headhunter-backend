@@ -1,8 +1,8 @@
 # JobBridge maxfiylik siyosati
 
-**Kuchga kirish sanasi:** [KUN OY YIL]  
+**Kuchga kirish sanasi:** 2026-yil 22-sentabr  
 **Operator:** “ELITE BRIDGE GROUP” MCHJ, O‘zbekiston Respublikasi  
-**Aloqa:** [CONTACT EMAIL]
+**Aloqa:** sherali.abdukakhkharov@gmail.com
 
 ## 1. Ushbu siyosat haqida
 
@@ -113,8 +113,10 @@ avtomatik tizim emas, ish beruvchi yoki administrator qabul qiladi.
 
 Nomzod profilining ko‘rinishini o‘zi boshqaradi. Yashirin profil ish
 beruvchilarga ko‘rinmaydi. Qidiruv kartasida telefon raqami, e-mail va rezyume
-ko‘rsatilmaydi. Ariza yuborishning o‘zi bu ma’lumotlarni ochmaydi. Ish beruvchi
-ularni faqat aynan shu nomzodni Coin evaziga ochgandan keyin ko‘radi.
+ko‘rsatilmaydi. Ish beruvchi ularni faqat uch holatdan birida ko‘radi: nomzod
+shu ish beruvchining vakansiyasiga ariza yuborgan bo‘lsa, nomzod shu ish
+beruvchining taklifini qabul qilgan bo‘lsa, yoki ish beruvchi aynan shu nomzodni
+Coin evaziga ochgan bo‘lsa. Boshqa hech narsa ularni ochmaydi.
 
 Ish beruvchi o‘z vakansiyalari va ularga yuborilgan arizalarni ko‘radi.
 Suhbatdagi nomzod va ish beruvchi bir-biriga yuborilgan xabar va fayllarni
@@ -171,11 +173,11 @@ tilni o‘zgartirishi, qurilma seanslarini tugatishi, boshqa foydalanuvchini
 bloklashi yoki kontent ustidan shikoyat qilishi mumkin.
 
 Hisobni o‘chirish uchun **Profil → Hisob → Hisobni o‘chirish** bo‘limiga kiring.
-Ilovaga kira olmasangiz, [CONTACT EMAIL] manziliga yozing. Batafsil tartib
+Ilovaga kira olmasangiz, sherali.abdukakhkharov@gmail.com manziliga yozing. Batafsil tartib
 [hisobni o‘chirish sahifasida](https://hh.qitmir.uz/account/delete) berilgan.
 
 O‘z ma’lumotlaringiz haqida ma’lumot olish, ularni tuzatish yoki ishlov berishni
-to‘xtatishni so‘rash uchun [CONTACT EMAIL] manziliga murojaat qilishingiz mumkin.
+to‘xtatishni so‘rash uchun sherali.abdukakhkharov@gmail.com manziliga murojaat qilishingiz mumkin.
 
 ## 9. Yosh
 
@@ -194,5 +196,5 @@ nusxasi olinadi.
 ## 11. O‘zgarishlar va aloqa
 
 Siyosat o‘zgarsa, ushbu sahifadagi kuchga kirish sanasi yangilanadi. Maxfiylik,
-ma’lumot olish yoki hisobni o‘chirish bo‘yicha savollar uchun [CONTACT EMAIL]
+ma’lumot olish yoki hisobni o‘chirish bo‘yicha savollar uchun sherali.abdukakhkharov@gmail.com
 manziliga yozing.

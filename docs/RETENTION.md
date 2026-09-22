@@ -16,8 +16,11 @@ Each rule carries a `provenance` tag:
 | `required` | Fixed by another rule in the specification, not by preference |
 | `client_approved` | Confirmed against the approved privacy policy |
 
-**Nothing is currently `client_approved`.** What we need from you is a review of the table
-below; the answer is an edit to one file, not a change to the product.
+**Every period in the table was approved by the operator’s lawyer on 2026-09-22** and is
+tagged `client_approved` in `retention-policy.ts`. Server logs were added the same day at
+**30 days**, enforced by Docker log rotation — by volume, not by age, so the files are sized to
+hold well under 30 days at launch traffic (`docker-compose.api.yml`); re-check that sizing
+as traffic grows. The next review is an edit to one file, not a change to the product.
 
 | What | We assume | Why not shorter |
 |---|---|---|

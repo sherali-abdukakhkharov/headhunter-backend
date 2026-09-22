@@ -168,6 +168,39 @@ output is in [BACKUP.md](BACKUP.md) - read that before you need it, not after.
 > compose files share one project name, so each command sees the other three services as
 > orphans and that flag would delete the API, the database and the tunnel.
 
+### "A user emailed to cancel their deletion request"
+
+The app has no cancel control — the operator's lawyer confirmed on 2026-09-22
+that none is required — so the deletion page tells a user who changes their mind
+within the 30 days to email. Confirm the mail comes from the account's phone
+holder (reply and ask for the number if it is not in the mail), then, with the
+number in E.164:
+
+```sql
+UPDATE deletion_requests SET cancelled_at = now()
+ WHERE user_id = (SELECT id FROM users WHERE phone = '+998…')
+   AND cancelled_at IS NULL;
+
+UPDATE users SET status = 'active', updated_at = now()
+ WHERE phone = '+998…' AND status = 'deletion_requested';
+
+INSERT INTO account_status_history (user_id, from_status, to_status, reason)
+SELECT id, 'deletion_requested', 'active', 'deletion_cancelled_by_email'
+  FROM users WHERE phone = '+998…';
+```
+
+`RetentionService` skips a request with `cancelled_at` set; the second statement
+lets the person sign in again, and the third is BR-08 — no status change without
+its history row.
+
+### "A purged account's files are still in the Telegram chat"
+
+Expected for anything older than 48 hours: a bot may delete only its own recent
+messages. The purge tries anyway and logs one warning per file it could not
+remove — `Stored bytes for message <id> were not dropped` — so `pnpm api:logs`
+around the purge lists the message ids. Delete those by hand in the storage
+chat. The privacy policy promises the operator does this, so it is not optional.
+
 ## Escalation: what needs a decision rather than a fix
 
 - **`OTP_ECHO_IN_RESPONSE=true` hands a login code to anyone who asks.** `OTP_STATIC_CODE`

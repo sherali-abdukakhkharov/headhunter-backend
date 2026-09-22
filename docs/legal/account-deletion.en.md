@@ -1,7 +1,7 @@
 # Delete a JobBridge account
 
-**Last updated:** [DAY MONTH YEAR]  
-**Contact:** [CONTACT EMAIL]
+**Last updated:** 22 September 2026  
+**Contact:** sherali.abdukakhkharov@gmail.com
 
 You can request deletion of your JobBridge account in the app or by email.
 
@@ -13,7 +13,7 @@ You can request deletion of your JobBridge account in the app or by email.
 
 ## Delete without the app
 
-Email [CONTACT EMAIL] with the subject **“Delete my JobBridge account”**. Include
+Email sherali.abdukakhkharov@gmail.com with the subject **“Delete my JobBridge account”**. Include
 the account's phone number in international format. Do not send a password or
 SMS code. The operator may request additional verification to confirm that the
 account belongs to you.
@@ -29,7 +29,11 @@ account belongs to you.
 - JobBridge removes the record that locates a file, so the file is unavailable
   through the app. Files older than 48 hours that Telegram cannot delete
   automatically may remain in storage until the operator removes them manually.
+- The request cannot be cancelled in the app. If you change your mind within
+  the 30 days, email sherali.abdukakhkharov@gmail.com from any address and state the account's
+  phone number; the operator will confirm the account is yours and cancel the
+  request.
 
-For questions about the request status, email [CONTACT EMAIL].
+For questions about the request status, email sherali.abdukakhkharov@gmail.com.
 
 [JobBridge Privacy Policy](https://hh.qitmir.uz/privacy)

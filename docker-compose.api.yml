@@ -49,3 +49,14 @@ services:
       # mapping exists only so a developer can curl 127.0.0.1:3001 and Swagger.
       - '127.0.0.1:3001:3001'
     init: true
+    # The retention policy says server logs are kept for 30 days
+    # (retention-policy.ts, `server_logs`), and Docker rotates by size, not by
+    # age. Two files of 10 MB hold between 10 and 20 MB of lines; measured on
+    # 2026-09-22 the API wrote about 0.75 MB a day, so that is two to four weeks
+    # at launch traffic and shorter as traffic grows - never longer than the
+    # policy. If daily volume ever *falls* far below that, shrink the files.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '2'
