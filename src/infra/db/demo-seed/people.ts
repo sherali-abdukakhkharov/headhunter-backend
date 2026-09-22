@@ -47,6 +47,13 @@ import type { Rgb } from './documents';
  * or more, so the Tashkent/UTC day boundary cannot put one on the wrong side of
  * the validator's "today". Historical dates - jobs held, degrees earned - stay
  * literal; they are meant to be in the past.
+ *
+ * **And the margins are weeks, not days.** Relative dates fixed the seeder; they
+ * did not fix the world it seeds. The harvest vacancy's deadline was `inDays(7)`,
+ * so nine days after a re-seed it silently left every candidate's list — BR-06
+ * closes a vacancy past its deadline — and the QA pass shot a one-card screen and
+ * filed the missing card. A demo world has to outlive a closed test (14 days) and
+ * a store review on top of it, so every forward date here clears 60 days.
  */
 export function inDays(days: number): string {
   const date = new Date();
@@ -671,7 +678,7 @@ export const DEMO_EMPLOYERS: DemoEmployer[] = [
         salaryFrom: 13_000_000,
         salaryTo: 20_000_000,
         salaryPeriodCode: 'monthly',
-        deadlineOn: inDays(60),
+        deadlineOn: inDays(90),
         skills: [
           { code: 'nodejs', levelCode: 'advanced', mandatory: true },
           { code: 'postgresql', levelCode: 'intermediate', mandatory: true },
@@ -796,9 +803,9 @@ export const DEMO_EMPLOYERS: DemoEmployer[] = [
         salaryFrom: 200_000,
         salaryTo: 300_000,
         salaryPeriodCode: 'daily',
-        startsOn: inDays(10),
-        endsOn: inDays(55),
-        deadlineOn: inDays(7),
+        startsOn: inDays(75),
+        endsOn: inDays(120),
+        deadlineOn: inDays(70),
         land: 'active',
       },
     ],
