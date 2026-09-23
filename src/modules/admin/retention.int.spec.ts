@@ -289,12 +289,11 @@ describe('what is due (BR-14)', () => {
     );
   });
 
-  it('names the provisional periods, so a caller cannot miss them', async () => {
-    // The client has approved no privacy policy, and the API says so rather than
-    // presenting an engineer's guess as policy.
-    expect((await retention.due()).provisional).toContain(
-      'account_personal_data',
-    );
+  it('names no provisional period once the lawyer has approved them all', async () => {
+    // Until 2026-09-22 every period was an engineer's guess and the API said so here.
+    // The operator's lawyer approved all of them that day (docs/legal/questions.md,
+    // Q5), so a period reappearing in this list is a rule nobody has signed off.
+    expect((await retention.due()).provisional).toEqual([]);
   });
 });
 

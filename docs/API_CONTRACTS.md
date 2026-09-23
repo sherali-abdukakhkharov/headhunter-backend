@@ -1006,6 +1006,13 @@ naming them as missing.
 original application instead of failing, which is what makes a lost response safe (§12.4).
 A different body under the same key is `409 idempotency.key_reused`.
 
+**A refusal gives the key back.** After any of the errors below, send the same key again once
+the cause is fixed - the client need not mint a new one. `409 idempotency.in_progress` means
+another request under this key is still running; an attempt that died without answering
+frees its key after two minutes. (Until 2026-09-23 a refused attempt held its key forever,
+and the retry answered `in_progress` indefinitely.) The same holds for invitations and chat
+messages.
+
 | Code | Status | Meaning |
 |---|---|---|
 | `candidate.profile_required` | 403 | BR-02 — fill in the profile first. |

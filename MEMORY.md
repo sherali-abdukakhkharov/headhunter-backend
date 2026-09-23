@@ -39,6 +39,34 @@ Not for: things the code already says, or the milestone checklist (that is
 
 ## Architectural decisions
 
+### 2026-09-23 - A refused request must give its idempotency key back
+The first real user to hit it: a new candidate tapped Apply before filling in a profile
+(`403 candidate.profile_required`), filled it in, and every retry after that answered
+`409 idempotency.in_progress` - four taps, no application, nothing in "My applications".
+
+`IdempotencyService.run` claimed the key before the work and recorded the result after it,
+and a work that *threw* left the claim with no result, forever. Each half was correct on its
+own: the app keeps its key until it sees a success, because §12.4 is about the retry whose
+response was lost; and the service refuses an unfinished claim, because it cannot tell a
+running attempt from a dead one. Together they turned any refusal - a missing profile, a
+closed vacancy, the invitation cap - into a permanent lock on that vacancy for that device.
+Two claims for `invitation.create` had been stuck since August the same way, and the app
+keeps an invitation's key per candidate and target, deliberately *through* a cap refusal so
+that tomorrow's retry is the same intent - so that retry would have been told "in progress"
+too.
+
+Now a throw releases the claim (every guarded operation refuses *after* its transaction
+rolled back, so a throw means nothing was written), and an unfinished claim older than
+`ABANDONED_CLAIM_SECONDS` (120, past Cloudflare's 100-second origin timeout) may be taken
+over by the same request. The takeover is what healed the rows already stuck in production -
+no manual SQL.
+
+**Not caught earlier because the integration tests only ever retried a success.** The
+missing case was "refuse, fix the cause, retry under the same key", which is the most
+ordinary sequence a form produces. `idempotency.int.spec.ts` now covers the lifecycle, and
+the applications spec replays the production sequence; against the old service it fails
+with exactly `idempotency.in_progress`.
+
 ### 2026-08-20 - A configured-but-broken provider is worse than no provider
 Eskiz went live, and the way it first went live took **login down** for a morning. Three
 correct decisions composed into an outage, which is the interesting part - none of them is

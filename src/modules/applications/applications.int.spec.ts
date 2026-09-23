@@ -414,6 +414,37 @@ describe('applying (BR-02, BR-06, BR-07, BR-08)', () => {
     expect(replay.id).toBe(first.id);
   });
 
+  it('accepts the key again once a refused apply has been fixed (§12.4)', async () => {
+    // Production, 2026-09-23: the app keeps its key until it sees a success, so a
+    // candidate who applied before having a profile retried under the same key - and
+    // was told "in progress" forever, because the refusal had kept the key claimed.
+    const { vacancyId } = await publishedVacancy();
+    const candidateUserId = await newUser('candidate');
+    const key = randomUUID();
+
+    await expect(
+      applications.apply(candidateUserId, vacancyId, null, key),
+    ).rejects.toMatchObject({ messageKey: 'candidate.profile_required' });
+
+    const { regionId, districtId } = await region();
+    await candidates.patch(candidateUserId, {
+      full_name: 'Anvar Karimov',
+      date_of_birth: '1996-04-12',
+      region_id: regionId,
+      district_id: districtId,
+      primary_occupation_id: await seededId('occupation', 'software_developer'),
+    });
+
+    const application = await applications.apply(
+      candidateUserId,
+      vacancyId,
+      null,
+      key,
+    );
+
+    expect(application.status).toBe('submitted');
+  });
+
   it('rejects the same key used for a different request', async () => {
     const { vacancyId } = await publishedVacancy();
     const other = await publishedVacancy();
