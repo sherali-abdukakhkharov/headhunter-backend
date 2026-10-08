@@ -130,6 +130,15 @@ exists, and nothing has been applied to. A reviewer sees a verified employer
 with an empty dashboard and a complete candidate profile, which is enough to
 walk every screen; a real user sees nothing that was not put there by a person.
 
+**Done on production on 2026-10-08**, after the closed test and before the
+production-access application, with a verified backup taken first
+(`headhunter-20261008T160144Z.dump`). Four of the ten accounts had audit or
+ledger rows and were anonymised rather than deleted; the reviewer seed then
+wrote all ten afresh. Afterwards the instance had no active vacancy at all and
+four searchable candidates, every one a real tester. So **do not run
+`pnpm seed:demo` there again** — it republishes the full world. A tester who
+needs data on production makes it through the app, as a real user would.
+
 ## Turning it off
 
 One value in the backend environment:
