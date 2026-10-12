@@ -188,6 +188,17 @@ Five decisions are worth knowing before changing any of it.
 
 Neither the code nor the full number is ever logged; `maskPhone` is used throughout.
 
+## Perfectum numbers are refused *(found 2026-10-12)*
+
+On launch day, 2026-10-10, Eskiz answered one login with
+`400 {"message":"perfectum: Not allowed"}`, and the user got a 502. Perfectum
+Mobile is the operator behind `+998 98 …`; this Eskiz account is not allowed to
+route to it, so **nobody on that network can sign in**. Nothing in this codebase
+can fix it — it is a setting or a contract on Eskiz's side, raised with their
+support from the `my.eskiz.uz` cabinet. Until then the API's answer is the generic
+`auth.otp_send_failed`, which is honest but does not say why; the log line above is
+how to recognise the case.
+
 ## The credential trap, which cost an outage *(2026-08-20)*
 
 **Eskiz issues two logins, and only one of them works here.** The `my.eskiz.uz` *personal
